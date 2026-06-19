@@ -102,4 +102,4 @@ The Python collector and old PyObjC prototype are kept for development and histo
 
 ## License
 
-License is not set yet. MIT is recommended for a public open-source launch.
+MIT. See [LICENSE](LICENSE).
