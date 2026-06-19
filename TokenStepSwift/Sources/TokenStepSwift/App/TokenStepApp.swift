@@ -19,7 +19,7 @@ struct TokenStepApp: App {
         } label: {
             StatusBarLabelView(
                 tokens: appState.today.totalTokens,
-                progress: appState.progress,
+                lap: appState.todayLap,
                 refreshing: appState.isRefreshing
             )
         }

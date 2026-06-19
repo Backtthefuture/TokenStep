@@ -52,7 +52,8 @@ struct PopoverPanelView: View {
     }
 
     private var todayCard: some View {
-        TokenCard {
+        let lap = appState.todayLap
+        return TokenCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text("今日 AI 步数")
@@ -66,14 +67,14 @@ struct PopoverPanelView: View {
 
                 HStack(spacing: 20) {
                     ZStack {
-                        ProgressRingView(progress: appState.progress, lineWidth: 16)
+                        ProgressRingView(progress: lap.currentLapProgress, lineWidth: 16, color: lap.color)
                         VStack(spacing: 3) {
                             Text(TokenStepFormat.tokens(appState.today.totalTokens))
                                 .font(.system(size: 31, weight: .heavy, design: .rounded))
                                 .foregroundStyle(Color.tokenInk)
                                 .minimumScaleFactor(0.52)
                                 .lineLimit(1)
-                            Text("/ \(TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true))")
+                            Text("/ \(TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)) 每圈")
                                 .font(.callout.weight(.bold))
                                 .foregroundStyle(.secondary)
                         }
@@ -82,13 +83,16 @@ struct PopoverPanelView: View {
                     .frame(width: 148, height: 148)
 
                     VStack(alignment: .leading, spacing: 11) {
-                        Text(TokenStepFormat.percent(min(appState.progress * 100, 999)))
-                            .font(.system(size: 43, weight: .heavy, design: .rounded))
+                        Text(lap.lapTitle)
+                            .font(.headline.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
+                        Text(lap.lapPercentText)
+                            .font(.system(size: 43, weight: .heavy, design: .rounded))
+                            .foregroundStyle(lap.color)
                             .monospacedDigit()
-                        Text(popoverSentence)
+                        Text(lap.completedLapsText)
                             .font(.headline.weight(.bold))
-                            .foregroundStyle(Color.tokenGreenDark)
+                            .foregroundStyle(.secondary)
 
                         VStack(alignment: .leading, spacing: 8) {
                             MetricPill(label: "消耗金额", value: TokenStepFormat.money(appState.today.cost))
@@ -169,18 +173,6 @@ struct PopoverPanelView: View {
         }
     }
 
-    private var popoverSentence: String {
-        if appState.progress >= 1 {
-            return "今日目标完成"
-        }
-        if appState.progress >= 0.65 {
-            return "快走满一个亿"
-        }
-        if appState.progress >= 0.3 {
-            return "节奏很好"
-        }
-        return "继续热身"
-    }
 }
 
 private struct PopoverActionButton: View {

@@ -3,16 +3,16 @@ import SwiftUI
 
 struct StatusBarLabelView: View {
     var tokens: Int
-    var progress: Double
+    var lap: TokenStepLapProgress
     var refreshing: Bool
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(nsImage: StatusBarIconRenderer.progressRing(progress: progress, refreshing: refreshing))
+            Image(nsImage: StatusBarIconRenderer.progressRing(progress: lap.currentLapProgress, lap: lap.currentLap, refreshing: refreshing))
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 22, height: 22)
-                .accessibilityLabel("今日进度 \(TokenStepFormat.percent(progress * 100))")
+                .accessibilityLabel("\(lap.lapTitle) \(lap.lapPercentText)")
 
             Text(TokenStepFormat.tokens(tokens, compact: true))
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -125,6 +125,7 @@ struct ErrorBanner: View {
 struct ProgressRingView: View {
     var progress: Double
     var lineWidth: CGFloat = 18
+    var color: Color = .tokenGreen
 
     var body: some View {
         ZStack {
@@ -133,11 +134,11 @@ struct ProgressRingView: View {
             Circle()
                 .trim(from: 0, to: min(max(progress, 0), 1))
                 .stroke(
-                    LinearGradient(colors: [.tokenMint, .tokenGreen, .tokenGreenDark], startPoint: .bottomLeading, endPoint: .topTrailing),
+                    LinearGradient(colors: [color.opacity(0.82), color, Color.tokenGreenDark], startPoint: .bottomLeading, endPoint: .topTrailing),
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: Color.tokenGreen.opacity(0.18), radius: 8, x: 0, y: 4)
+                .shadow(color: color.opacity(0.18), radius: 8, x: 0, y: 4)
         }
         .aspectRatio(1, contentMode: .fit)
     }
@@ -295,7 +296,7 @@ struct ContributionWallView: View {
                 Text("少")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                ForEach([0, Int(Double(goal) * 0.18), Int(Double(goal) * 0.45), Int(Double(goal) * 0.75), goal], id: \.self) { value in
+                ForEach([0, Int(Double(goal) * 0.25), Int(Double(goal) * 0.7), goal, goal * 2, goal * 3], id: \.self) { value in
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(contributionColor(tokens: value, goal: goal))
                         .frame(width: 15, height: 15)
@@ -310,7 +311,10 @@ struct ContributionWallView: View {
 
 func contributionColor(tokens: Int, goal: Int) -> Color {
     guard tokens > 0 else { return Color.tokenTrack }
-    let progress = min(Double(tokens) / Double(max(goal, 1)), 1)
+    if tokens >= max(goal, 1) {
+        return TokenStepLapProgress(tokens: tokens, goal: goal).color
+    }
+    let progress = Double(tokens) / Double(max(goal, 1))
     switch progress {
     case 0.65...: return .tokenGreenDark
     case 0.35..<0.65: return .tokenGreen

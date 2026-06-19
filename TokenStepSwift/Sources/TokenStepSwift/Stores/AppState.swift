@@ -40,6 +40,10 @@ final class AppState: ObservableObject {
         return Double(today.totalTokens) / Double(settings.dailyGoalTokens)
     }
 
+    var todayLap: TokenStepLapProgress {
+        TokenStepLapProgress(tokens: today.totalTokens, goal: settings.dailyGoalTokens)
+    }
+
     var monthAverage: Int {
         let rows = Array(snapshot.daily.suffix(30))
         guard !rows.isEmpty else { return 0 }

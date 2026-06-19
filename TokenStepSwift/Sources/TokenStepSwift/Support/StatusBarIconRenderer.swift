@@ -1,7 +1,7 @@
 import AppKit
 
 enum StatusBarIconRenderer {
-    static func progressRing(progress: Double, refreshing: Bool) -> NSImage {
+    static func progressRing(progress: Double, lap: Int, refreshing: Bool) -> NSImage {
         let size = NSSize(width: 22, height: 22)
         let image = NSImage(size: size)
         image.lockFocus()
@@ -22,7 +22,9 @@ enum StatusBarIconRenderer {
         context.addArc(center: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
         context.strokePath()
 
-        context.setStrokeColor(NSColor(calibratedRed: 45 / 255, green: 164 / 255, blue: 78 / 255, alpha: 1).cgColor)
+        let rgb = TokenStepLapProgress.rgb(for: lap)
+        let ringColor = NSColor(calibratedRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+        context.setStrokeColor(ringColor.cgColor)
         context.addArc(
             center: center,
             radius: radius,
@@ -34,7 +36,7 @@ enum StatusBarIconRenderer {
 
         let dotColor = refreshing
             ? NSColor.secondaryLabelColor.withAlphaComponent(0.78)
-            : NSColor(calibratedRed: 45 / 255, green: 164 / 255, blue: 78 / 255, alpha: 1)
+            : ringColor
         dotColor.setFill()
         NSBezierPath(ovalIn: NSRect(x: center.x - 1.65, y: center.y - 1.65, width: 3.3, height: 3.3)).fill()
 
