@@ -20,10 +20,11 @@ enum UsageCollector {
     }
 
     private static func collectCodex(cache: inout CollectorCache, livePaths: inout Set<String>) -> CollectorResult {
-        if let sqliteResult = collectCodexFromSQLite() {
-            return sqliteResult
+        let jsonlResult = collectCodexFromJSONL(cache: &cache, livePaths: &livePaths)
+        if jsonlResult.source.status == "ok" {
+            return jsonlResult
         }
-        return collectCodexFromJSONL(cache: &cache, livePaths: &livePaths)
+        return collectCodexFromSQLite() ?? jsonlResult
     }
 
     private static func collectCodexFromSQLite() -> CollectorResult? {
@@ -387,17 +388,26 @@ enum UsageCollector {
             }
             buffer.append(chunk)
 
-            while let range = buffer.firstRange(of: newline) {
+            var consumedEnd = buffer.startIndex
+            var lineStart = buffer.startIndex
+            var searchRange = buffer.startIndex..<buffer.endIndex
+            while let range = buffer.range(of: newline, options: [], in: searchRange) {
                 let lineEnd = range.lowerBound
-                if lineEnd > 0 {
-                    let lineData = buffer.subdata(in: buffer.startIndex..<lineEnd)
+                if lineEnd > lineStart {
+                    let lineData = buffer.subdata(in: lineStart..<lineEnd)
                     if lineMatches(lineData, markers: markerData),
                        let line = String(data: lineData, encoding: .utf8),
                        !line.isEmpty {
                         body(line)
                     }
                 }
-                buffer.removeSubrange(buffer.startIndex..<range.upperBound)
+                consumedEnd = range.upperBound
+                lineStart = range.upperBound
+                searchRange = lineStart..<buffer.endIndex
+            }
+
+            if consumedEnd > buffer.startIndex {
+                buffer.removeSubrange(buffer.startIndex..<consumedEnd)
             }
         }
 
