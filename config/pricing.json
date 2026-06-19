@@ -7,9 +7,6 @@
     },
     "Claude Code": {
       "total_usd_per_1m": 3.0
-    },
-    "Gemini": {
-      "total_usd_per_1m": 0.5
     }
   },
   "models": {
@@ -42,12 +39,6 @@
     },
     "minimax": {
       "total_usd_per_1m": 0.2
-    },
-    "gemini": {
-      "input_usd_per_1m": 0.3,
-      "output_usd_per_1m": 2.5,
-      "cache_read_usd_per_1m": 0.075
     }
   }
 }
-

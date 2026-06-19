@@ -53,7 +53,7 @@ from objc import python_method
 from objc import super as objc_super
 
 
-ROOT = Path("/Users/superhuang/Documents/黄叔知识库/03-工具与效率/token-usage-monitor")
+ROOT = Path(__file__).resolve().parents[1]
 USAGE_JSON = ROOT / "data" / "usage.json"
 SETTINGS_JSON = ROOT / "config" / "settings.json"
 COLLECTOR = ROOT / "token_usage_monitor.py"

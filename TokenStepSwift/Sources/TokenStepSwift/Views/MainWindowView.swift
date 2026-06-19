@@ -104,7 +104,7 @@ struct MainWindowView: View {
             Spacer(minLength: 24)
 
             sidebarFooter
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 14)
                 .padding(.bottom, 22)
         }
         .frame(width: 226)
@@ -122,39 +122,35 @@ struct MainWindowView: View {
     }
 
     private var sidebarFooter: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SettingsLink {
-                Label("设置", systemImage: "gearshape.fill")
-                    .font(.callout.weight(.bold))
-                    .foregroundStyle(Color.tokenInk.opacity(0.82))
+        VStack(alignment: .leading, spacing: 10) {
+            SidebarSettingsButton {
+                SettingsWindowPresenter.shared.show(appState: appState)
             }
-            .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Label("本地统计", systemImage: "checkmark.shield.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.tokenGreenDark)
-                Text("不上传代码或对话")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
+            SidebarPrivacyStatus()
         }
     }
 
     private var content: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                pageHeader
-                if let error = appState.lastError {
-                    ErrorBanner(message: error) {
-                        appState.clearError()
+        ScrollView(.vertical, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 0) {
+                Spacer(minLength: 0)
+
+                VStack(alignment: .leading, spacing: 26) {
+                    pageHeader
+                    if let error = appState.lastError {
+                        ErrorBanner(message: error) {
+                            appState.clearError()
+                        }
                     }
+                    detailView
                 }
-                detailView
+                .frame(maxWidth: 1160, alignment: .leading)
+
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 38)
             .padding(.vertical, 32)
-            .frame(maxWidth: 1040, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -254,5 +250,82 @@ private struct SidebarNavButton: View {
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct SidebarSettingsButton: View {
+    @State private var isHovering = false
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 11) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Color.tokenGreen.opacity(isHovering ? 0.18 : 0.12))
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.tokenGreenDark)
+                }
+                .frame(width: 34, height: 34)
+
+                Text("设置")
+                    .font(.callout.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk.opacity(0.86))
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(Color.secondary.opacity(isHovering ? 0.82 : 0.52))
+            }
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .padding(.horizontal, 12)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.tokenSurface.opacity(isHovering ? 0.98 : 0.82))
+                    .shadow(color: Color.black.opacity(isHovering ? 0.075 : 0.035), radius: isHovering ? 16 : 10, x: 0, y: 7)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.black.opacity(isHovering ? 0.08 : 0.055))
+            )
+            .scaleEffect(isHovering ? 1.01 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.84), value: isHovering)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel("设置")
+    }
+}
+
+private struct SidebarPrivacyStatus: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.tokenGreenDark)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("本地统计")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Color.tokenGreenDark)
+                Text("不上传代码或对话")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .fill(Color.tokenGreen.opacity(0.055))
+        )
     }
 }

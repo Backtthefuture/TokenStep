@@ -1,58 +1,105 @@
 # TokenStep
 
-把 AI token 用量做成“今日 AI 步数”的本地 macOS 菜单栏 App。
+TokenStep turns AI token usage into a daily step ring for macOS.
 
-第一版只统计本机数据，不上传任何内容。默认每日目标是 1 亿 token，自动刷新 1 分钟一次，成本字段显示为“消耗金额”。
+It is a native menu bar app that tracks local usage from supported AI coding agents, shows today's progress toward a token goal, and keeps history like an activity dashboard.
 
-## 当前支持
+## Current Support
 
-- Codex：读取 `~/.codex/sessions`、`~/.codex/archived_sessions` 中的 `token_count` 事件。
-- Claude Code：读取 `~/.claude/projects/**/*.jsonl` 中的 usage 元数据。
-- Gemini：只读取 `~/.gemini/tmp/**/chats/session-*.json` 中明确的聊天 token 统计。
+- Codex: reads token metadata from `~/.codex/sessions` and `~/.codex/archived_sessions`.
+- Claude Code: reads usage metadata from `~/.claude/projects/**/*.jsonl`.
 
-不会读取或输出代码、prompt、对话正文。生成结果只包含日期、工具、模型、token 数量和粗略成本估算。
+TokenStep only reads usage metadata such as date, model, client name, and token counts. It does not upload code, prompts, or conversation content.
 
-## macOS App
+## Install
+
+Download the latest `TokenStep.dmg` from GitHub Releases, open it, and drag `TokenStep.app` into Applications.
+
+On first launch, TokenStep starts from the macOS menu bar. It defaults to:
+
+- daily goal: 100 million tokens
+- refresh interval: 1 minute
+- local-only stats
+- login item enabled, configurable in Settings
+
+For more detail, see [docs/INSTALL.md](docs/INSTALL.md).
+
+## Features
+
+- Menu bar progress ring and today's token count.
+- Popover with today's AI steps, goal progress, spend estimate, and recent activity.
+- Native dashboard for Today, History, Stats, and Privacy.
+- Settings for daily goal, refresh interval, login launch, and privacy status.
+- Local data storage under `~/Library/Application Support/TokenStep`.
+
+## Privacy
+
+TokenStep is local-first.
+
+- It reads token usage metadata from supported local agent logs.
+- It stores generated summaries on your Mac.
+- It does not upload data by default.
+- Estimated spend is approximate and not a bill.
+
+See [docs/PRIVACY.md](docs/PRIVACY.md).
+
+## Build Locally
+
+Requirements:
+
+- macOS 14+
+- Xcode Command Line Tools
+
+Build and run:
 
 ```bash
-./script/build_and_run.sh
+./script/build_and_run.sh --verify
 ```
 
-构建后会生成：
+Build without launching:
+
+```bash
+./script/build_swiftui_and_run.sh --no-launch
+```
+
+The app bundle is created at:
 
 ```text
 TokenStepSwift/dist/TokenStep.app
 ```
 
-App 提供：
+## Package a Release
 
-- 菜单栏进度环 + 今日 token 数。
-- 浮层：今日 AI 步数、目标进度、消耗金额、30 天趋势。
-- 客户端窗口：今日、历史、统计、隐私。
-- 设置：每日目标、自动刷新频率（1/5/15 分钟/手动）、登录后自动启动。
-
-首次运行 SwiftUI 版会默认开启开机自启动；之后完全跟随设置里的开关。
-
-## 数据刷新
+Developer ID signing:
 
 ```bash
-python3 token_usage_monitor.py collect
+TOKENSTEP_VERSION=0.1.0 \
+CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+./script/package_release.sh
 ```
 
-菜单栏 App 运行时会按 `config/settings.json` 的设置自动刷新。当前默认是 1 分钟。
-
-也可以继续使用 launchd 后台任务：
+Signing plus notarization:
 
 ```bash
-./install-launchd.sh
+TOKENSTEP_VERSION=0.1.0 \
+CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
+./script/package_release.sh --notarize
 ```
 
-停止后台刷新：
+Release outputs are written to:
 
-```bash
-./uninstall-launchd.sh
+```text
+release/TokenStep-<version>.zip
+release/TokenStep-<version>.dmg
 ```
 
-## 价格估算
+See [docs/RELEASE.md](docs/RELEASE.md).
 
-价格在 `config/pricing.json` 里配置。默认值只是粗略估算，用来做趋势对比，不应当作为真实账单。
+## Legacy Developer Tools
+
+The Python collector and old PyObjC prototype are kept for development and historical comparison. The native SwiftUI app no longer depends on Python for normal installed use.
+
+## License
+
+License is not set yet. MIT is recommended for a public open-source launch.

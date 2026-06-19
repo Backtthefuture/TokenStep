@@ -28,24 +28,15 @@ enum DataService {
     }
 
     static func runCollector() throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["python3", AppPaths.collector.path, "collect"]
-        process.currentDirectoryURL = AppPaths.projectRoot
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let message = String(data: data, encoding: .utf8)?
-                .split(separator: "\n")
-                .suffix(4)
-                .joined(separator: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            throw TokenStepError.collectorFailed(status: process.terminationStatus, message: message)
-        }
+        let snapshot = UsageCollector.collect()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(snapshot)
+        try FileManager.default.createDirectory(
+            at: AppPaths.usageJSON.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: AppPaths.usageJSON, options: .atomic)
     }
 
     static func normalize(_ settings: TokenStepSettings) -> TokenStepSettings {

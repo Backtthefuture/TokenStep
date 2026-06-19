@@ -31,7 +31,6 @@ LOCAL_TZ = ZoneInfo(TZ_NAME) if ZoneInfo else dt.timezone(dt.timedelta(hours=8))
 TOOL_COLORS = {
     "Codex": "#2563eb",
     "Claude Code": "#df7656",
-    "Gemini": "#16a34a",
 }
 
 
@@ -324,46 +323,6 @@ def collect_claude_code() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return records, {"status": "ok" if records else "missing", "files": files_read, "records": len(records)}
 
 
-def collect_gemini() -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    paths = glob.glob(str(Path.home() / ".gemini" / "tmp" / "**" / "chats" / "session-*.json"), recursive=True)
-    records: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    files_read = 0
-
-    for path in sorted(paths):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                obj = json.load(f)
-            files_read += 1
-            for idx, message in enumerate(obj.get("messages", [])):
-                if not isinstance(message, dict) or not isinstance(message.get("tokens"), dict):
-                    continue
-                usage = normalize_usage(message.get("tokens"))
-                if usage["total_tokens"] <= 0:
-                    continue
-                day = date_from_iso(message.get("timestamp") or obj.get("lastUpdated") or obj.get("startTime"))
-                if not day:
-                    continue
-                unique = message.get("id") or f"{path}:{idx}"
-                if unique in seen:
-                    continue
-                seen.add(unique)
-                records.append(
-                    {
-                        "date": day,
-                        "timestamp": message.get("timestamp"),
-                        "tool": "Gemini",
-                        "model": model_key(message.get("model")),
-                        "usage": usage,
-                        "source": "gemini-chat",
-                    }
-                )
-        except Exception:
-            continue
-
-    return records, {"status": "ok" if records else "missing", "files": files_read, "records": len(records)}
-
-
 def aggregate(records: list[dict[str, Any]], pricing: dict[str, Any]) -> dict[str, Any]:
     daily_map: dict[str, dict[str, Any]] = defaultdict(lambda: {"date": "", "tools": {}, "total_tokens": 0, "cost": 0.0})
     tool_map: dict[str, dict[str, Any]] = defaultdict(lambda: {"usage": empty_usage(), "cost": 0.0})
@@ -450,13 +409,11 @@ def collect_all() -> dict[str, Any]:
     pricing = load_pricing()
     codex_records, codex_meta = collect_codex()
     claude_records, claude_meta = collect_claude_code()
-    gemini_records, gemini_meta = collect_gemini()
-    records = codex_records + claude_records + gemini_records
+    records = codex_records + claude_records
     result = aggregate(records, pricing)
     result["sources"] = {
         "Codex": codex_meta,
         "Claude Code": claude_meta,
-        "Gemini": gemini_meta,
     }
     return result
 
@@ -493,7 +450,6 @@ def render_dashboard(data: dict[str, Any]) -> str:
       --panel: rgba(255, 255, 255, 0.96);
       --codex: #2563eb;
       --claude: #df7656;
-      --gemini: #16a34a;
     }}
     * {{ box-sizing: border-box; }}
     html, body {{ max-width: 100%; overflow-x: hidden; }}
@@ -767,7 +723,6 @@ def render_dashboard(data: dict[str, Any]) -> str:
       <div class="legend">
         <span><i class="dot" style="background:var(--codex)"></i>Codex</span>
         <span><i class="dot" style="background:var(--claude)"></i>Claude Code</span>
-        <span><i class="dot" style="background:var(--gemini)"></i>Gemini</span>
       </div>
       <div class="chart-wrap">
         <div class="chart" id="chart"></div>
@@ -791,7 +746,7 @@ def render_dashboard(data: dict[str, Any]) -> str:
         <table>
           <thead>
             <tr>
-              <th>日期</th><th>Codex</th><th>Claude Code</th><th>Gemini</th><th>合计</th><th>预估成本</th>
+              <th>日期</th><th>Codex</th><th>Claude Code</th><th>合计</th><th>预估成本</th>
             </tr>
           </thead>
           <tbody id="dailyRows"></tbody>
@@ -808,8 +763,8 @@ def render_dashboard(data: dict[str, Any]) -> str:
   <script>
     window.USAGE_DATA = {inline_data};
     const data = window.USAGE_DATA;
-    const colors = {{ "Codex": "#2563eb", "Claude Code": "#df7656", "Gemini": "#16a34a" }};
-    const tools = ["Codex", "Claude Code", "Gemini"];
+    const colors = {{ "Codex": "#2563eb", "Claude Code": "#df7656" }};
+    const tools = ["Codex", "Claude Code"];
 
     function fmtTokens(n) {{
       n = Number(n || 0);
@@ -869,7 +824,6 @@ def render_dashboard(data: dict[str, Any]) -> str:
         <td>${{shortDate(day.date)}}</td>
         <td>${{day.tools.Codex ? fmtTokens(day.tools.Codex) : "—"}}</td>
         <td>${{day.tools["Claude Code"] ? fmtTokens(day.tools["Claude Code"]) : "—"}}</td>
-        <td>${{day.tools.Gemini ? fmtTokens(day.tools.Gemini) : "—"}}</td>
         <td class="total">${{fmtTokens(day.total_tokens)}}</td>
         <td>${{fmtMoney(day.cost)}}</td>
       </tr>

@@ -1,6 +1,6 @@
 import Foundation
 
-struct UsageSnapshot: Decodable {
+struct UsageSnapshot: Codable {
     var generatedAt: String?
     var timezone: String?
     var totals: UsageTotals
@@ -30,7 +30,7 @@ struct UsageSnapshot: Decodable {
     )
 }
 
-struct UsageTotals: Decodable {
+struct UsageTotals: Codable {
     var tokens: Int
     var cost: Double
     var activeDays: Int
@@ -42,7 +42,7 @@ struct UsageTotals: Decodable {
     }
 }
 
-struct DailyUsage: Decodable, Identifiable {
+struct DailyUsage: Codable, Identifiable {
     var id: String { date }
     var date: String
     var tools: [String: Int]
@@ -57,7 +57,7 @@ struct DailyUsage: Decodable, Identifiable {
     }
 }
 
-struct ToolUsage: Decodable, Identifiable {
+struct ToolUsage: Codable, Identifiable {
     var id: String { tool }
     var tool: String
     var tokens: Int
@@ -66,7 +66,7 @@ struct ToolUsage: Decodable, Identifiable {
     var percentValue: Double { percent ?? 0 }
 }
 
-struct ModelUsage: Decodable, Identifiable {
+struct ModelUsage: Codable, Identifiable {
     var id: String { "\(model)-\(tool ?? "")" }
     var model: String
     var tool: String?
@@ -76,7 +76,9 @@ struct ModelUsage: Decodable, Identifiable {
     var percentValue: Double { percent ?? 0 }
 }
 
-struct SourceInfo: Decodable {
+struct SourceInfo: Codable {
+    var status: String?
+    var files: Int?
     var records: Int?
 }
 

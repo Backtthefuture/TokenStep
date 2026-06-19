@@ -17,6 +17,24 @@ MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 EXECUTABLE="$BUILD_DIR/$PRODUCT_NAME"
 ICON_FILE="$ROOT_DIR/TokenUsageMenuApp/assets/TokenStepIcon.icns"
+VERSION="${TOKENSTEP_VERSION:-0.1.0}"
+LAUNCH=true
+VERIFY=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --no-launch)
+      LAUNCH=false
+      ;;
+    --verify)
+      VERIFY=true
+      ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      exit 2
+      ;;
+  esac
+done
 
 pkill -f "TokenUsageMenu.py" 2>/dev/null || true
 pkill -x "$PRODUCT_NAME" 2>/dev/null || true
@@ -87,6 +105,10 @@ cat > "$CONTENTS/Info.plist" <<PLIST
   <string>$APP_NAME</string>
   <key>CFBundleIconFile</key>
   <string>TokenStepIcon</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$VERSION</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>
@@ -101,9 +123,15 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 </plist>
 PLIST
 
-/usr/bin/open -n "$APP_BUNDLE"
+if [[ "$LAUNCH" == true ]]; then
+  /usr/bin/open -n "$APP_BUNDLE"
+fi
 
-if [[ "${1:-}" == "--verify" ]]; then
+if [[ "$VERIFY" == true ]]; then
+  if [[ "$LAUNCH" != true ]]; then
+    echo "--verify requires launch; remove --no-launch" >&2
+    exit 2
+  fi
   sleep 2
   if pgrep -x "$PRODUCT_NAME" >/dev/null; then
     echo "TokenStep SwiftUI is running"

@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class MainWindowPresenter {
-    static let shared = MainWindowPresenter()
+final class SettingsWindowPresenter {
+    static let shared = SettingsWindowPresenter()
 
     private var window: NSWindow?
 
@@ -17,29 +17,33 @@ final class MainWindowPresenter {
         window.orderFrontRegardless()
     }
 
+    func close() {
+        window?.close()
+    }
+
     private func makeWindow(appState: AppState) -> NSWindow {
-        let rootView = MainWindowView()
+        let rootView = SettingsView()
             .environmentObject(appState)
-            .frame(minWidth: 1080, minHeight: 720)
 
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
-        window.title = "TokenStep"
-        window.identifier = NSUserInterfaceItemIdentifier("main")
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.title = "设置"
+        window.identifier = NSUserInterfaceItemIdentifier("settings")
+        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.toolbarStyle = .unifiedCompact
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 1080, height: 720)
-        window.maxSize = NSSize(width: 1440, height: 980)
-        window.setContentSize(NSSize(width: 1240, height: 820))
+        window.minSize = NSSize(width: 920, height: 700)
+        window.setContentSize(NSSize(width: 920, height: 700))
         window.center()
-        window.setFrameAutosaveName("TokenStepMainWindow.v2")
+        window.setFrameAutosaveName("TokenStepSettingsWindow")
         return window
     }
 
-    private func closeTransientPanels(except mainWindow: NSWindow) {
-        for window in NSApp.windows where window !== mainWindow && window.title.isEmpty {
+    private func closeTransientPanels(except settingsWindow: NSWindow) {
+        for window in NSApp.windows where window !== settingsWindow && window.title.isEmpty {
             window.close()
         }
     }

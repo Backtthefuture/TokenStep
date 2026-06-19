@@ -40,6 +40,11 @@ struct TokenStepApp: App {
                     MainWindowPresenter.shared.show(appState: appState)
                 }
                 .keyboardShortcut("o", modifiers: [.command])
+
+                Button("设置") {
+                    SettingsWindowPresenter.shared.show(appState: appState)
+                }
+                .keyboardShortcut(",", modifiers: [.command])
             }
         }
     }

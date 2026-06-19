@@ -11,3 +11,4 @@ config/autostart-default-applied
 TokenStepSwift/.build/
 TokenStepSwift/dist/
 TokenUsageMenuApp/dist/
+release/
