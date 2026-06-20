@@ -10,6 +10,7 @@ final class AppState: ObservableObject {
     @Published private(set) var isCheckingForUpdates = false
     @Published private(set) var isRefreshingCodexQuota = false
     @Published private(set) var codexQuota: CodexQuotaSnapshot = .unavailable
+    @Published private(set) var claudeQuota: CodexQuotaSnapshot = .unavailable
     @Published private(set) var isDownloadingUpdate = false
     @Published private(set) var updateDownloadProgress = 0.0
     @Published private(set) var updateInstallStatus = L("准备更新")
@@ -104,6 +105,7 @@ final class AppState: ObservableObject {
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
         if !loadedSettings.showCodexQuota {
             codexQuota = .unavailable
+            claudeQuota = .unavailable
         }
         autostartEnabled = AutostartService.isEnabled
     }
@@ -130,23 +132,45 @@ final class AppState: ObservableObject {
     func refreshCodexQuota() {
         guard settings.showCodexQuota else {
             codexQuota = .unavailable
+            claudeQuota = .unavailable
             isRefreshingCodexQuota = false
             return
         }
         guard !isRefreshingCodexQuota else { return }
         isRefreshingCodexQuota = true
         Task {
-            do {
-                let quota = try await Task.detached(priority: .utility) {
-                    try CodexQuotaService.read()
-                }.value
+            let quotas = await Task.detached(priority: .utility) {
+                let codex = Result { try CodexQuotaService.read() }
+                let claude = Result { try ClaudeQuotaService.read() }
+                return (try? codex.get(), try? claude.get())
+            }.value
+
+            if let quota = quotas.0 {
                 codexQuota = quota
-            } catch {
-                if !codexQuota.isAvailable {
-                    codexQuota = .unavailable
-                }
+            } else if !codexQuota.isAvailable {
+                codexQuota = .unavailable
             }
+
+            if let quota = quotas.1 {
+                claudeQuota = quota
+            } else if !claudeQuota.isAvailable {
+                claudeQuota = .unavailable
+            }
+
             isRefreshingCodexQuota = false
+        }
+    }
+
+    var hasAnyQuota: Bool {
+        codexQuota.isAvailable || claudeQuota.isAvailable
+    }
+
+    func quota(for tool: String) -> CodexQuotaSnapshot {
+        switch tool {
+        case "Claude Code":
+            return claudeQuota
+        default:
+            return codexQuota
         }
     }
 
@@ -200,6 +224,7 @@ final class AppState: ObservableObject {
             refreshCodexQuota()
         } else {
             codexQuota = .unavailable
+            claudeQuota = .unavailable
             isRefreshingCodexQuota = false
         }
     }

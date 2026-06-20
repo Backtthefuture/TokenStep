@@ -57,7 +57,7 @@ TokenStep 适合这些人：
 - 开机启动，可在设置里关闭。
 - 多种主题色，菜单栏、圆环、活动墙和按钮会一起变化。
 - 一键截图分享当前页面。
-- Codex 5 小时 / 7 天剩余额度可在设置中打开，默认关闭。
+- Codex / Claude Code 剩余额度可在设置中打开，默认关闭。
 - 自动检查更新，发现新版后可下载已签名公证的 DMG。
 - 本地数据存放在 `~/Library/Application Support/TokenStep`。
 
@@ -65,6 +65,7 @@ TokenStep 适合这些人：
 
 - Codex：优先读取 Codex 本地 SQLite token 汇总，必要时回退 JSONL。
 - Claude Code：读取 `~/.claude/projects/**/*.jsonl` 里的 usage 元数据。
+- 额度显示：Codex 读取本机 Codex 账户限额；Claude Code 会在本机读取 Claude Code 钥匙串凭证，并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度。
 
 更多 AI 编程工具支持会逐步加入。
 

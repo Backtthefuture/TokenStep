@@ -113,8 +113,8 @@ struct CodexQuotaSnapshot: Equatable {
     static let unavailable = CodexQuotaSnapshot(fetchedAt: nil, fiveHour: nil, sevenDay: nil)
 }
 
-struct CodexQuotaWindow: Equatable, Identifiable {
-    enum Kind: Equatable {
+struct CodexQuotaWindow: Equatable, Identifiable, Codable {
+    enum Kind: String, Equatable, Codable {
         case fiveHour
         case sevenDay
     }

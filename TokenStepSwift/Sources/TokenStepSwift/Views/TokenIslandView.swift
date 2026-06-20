@@ -122,8 +122,8 @@ private struct TokenIslandExpandedView: View {
 
             TokenIslandToolSplitView(tools: appState.today.tools, total: appState.today.totalTokens)
 
-            if appState.settings.showCodexQuota, appState.codexQuota.isAvailable {
-                TokenIslandQuotaMiniView(quota: appState.codexQuota)
+            if appState.settings.showCodexQuota, appState.hasAnyQuota {
+                TokenIslandQuotaMiniView(codexQuota: appState.codexQuota, claudeQuota: appState.claudeQuota)
             }
 
             HStack(spacing: 8) {
@@ -279,16 +279,23 @@ private struct TokenIslandSplitRow: View {
 }
 
 private struct TokenIslandQuotaMiniView: View {
-    var quota: CodexQuotaSnapshot
+    var codexQuota: CodexQuotaSnapshot
+    var claudeQuota: CodexQuotaSnapshot
 
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "hourglass.circle.fill")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Color.tokenGreen)
-            quotaText(quota.fiveHour, fallback: L("5 小时"))
-            Divider().frame(height: 12).overlay(.white.opacity(0.18))
-            quotaText(quota.sevenDay, fallback: L("7 天"))
+            if codexQuota.isAvailable {
+                quotaBlock(title: "Codex", quota: codexQuota)
+            }
+            if codexQuota.isAvailable, claudeQuota.isAvailable {
+                Divider().frame(height: 15).overlay(.white.opacity(0.18))
+            }
+            if claudeQuota.isAvailable {
+                quotaBlock(title: "Claude", quota: claudeQuota)
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
@@ -296,13 +303,28 @@ private struct TokenIslandQuotaMiniView: View {
         .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
+    private func quotaBlock(title: String, quota: CodexQuotaSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white.opacity(0.48))
+                .lineLimit(1)
+            HStack(spacing: 6) {
+                quotaText(quota.fiveHour, fallback: L("5 小时"))
+                quotaText(quota.sevenDay, fallback: L("7 天"))
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.78)
+    }
+
     private func quotaText(_ window: CodexQuotaWindow?, fallback: String) -> some View {
-        HStack(spacing: 5) {
-            Text(window?.title ?? fallback)
-                .font(.caption2.weight(.heavy))
-                .foregroundStyle(.white.opacity(0.52))
+        HStack(spacing: 3) {
+            Text((window?.title ?? fallback).replacingOccurrences(of: " ", with: ""))
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white.opacity(0.50))
             Text(window.map { TokenStepFormat.percent($0.remainingPercent) } ?? "—")
-                .font(.caption2.weight(.heavy))
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.tokenGreen)
                 .monospacedDigit()
         }

@@ -6,8 +6,8 @@ TokenStep 的原则是：能从本地日志中稳定读到 token 数，才进入
 
 | Agent | 状态 | 数据来源 | 说明 |
 | --- | --- | --- | --- |
-| Codex | 已支持 | `~/.codex/sessions` / `~/.codex/archived_sessions`，必要时回退 SQLite | 读取本地 token_count 事件，只统计数量。 |
-| Claude Code | 已支持 | `~/.claude/projects` | 读取 assistant message 的 usage 字段，只统计数量。 |
+| Codex | 已支持 | `~/.codex/sessions` / `~/.codex/archived_sessions`，必要时回退 SQLite | 读取本地 token_count 事件，只统计数量；可选读取 5h / 7d 额度。 |
+| Claude Code | 已支持 | `~/.claude/projects` | 读取 assistant message 的 usage 字段，只统计数量；可选通过 Claude Code 本机钥匙串凭证读取 usage 额度。 |
 
 ## 已参考的项目
 
@@ -48,6 +48,7 @@ TokenStep 暂不采用代理方案：
 TokenStep 采用：
 
 - Codex 额度窗口按 duration 明确区分 5 小时和 7 天。
+- Claude Code 额度在设置打开后，尝试读取本机 Keychain 里的 `Claude Code-credentials`，并调用 Anthropic OAuth usage 接口。
 - VS Code 扩展类 Agent 先列为候选支持，等有真实本机样本后再接入。
 
 ## 候选支持
@@ -57,9 +58,10 @@ TokenStep 采用：
 | Roo Code | 较高 | 需要真实 `ui_messages.json` 样本确认字段。 |
 | Cline | 较高 | 需要真实任务目录样本确认模型和 usage 字段。 |
 | Kilo Code | 较高 | 可按 `api_req_started` 事件读取 token，但需要本机样本验证。 |
-| CodeBuddy | 中 | 如果完全复用 Claude Code 日志结构，可以作为 Claude Code 变体接入。 |
+| CodeBuddy | 中 | 本机看到 VS Code secret buffer 和产品缓存，但不是明文 usage；需要官方 usage 文件或可验证字段。 |
 | Cursor / Windsurf / Trae | 中 | 需要确认是否本地暴露 token usage，不应只按聊天字数估算。 |
-| Hermes Agent / WorkBuddy | 待确认 | 当前未找到稳定 token 日志路径，需要产品侧提供本地统计文件或事件。 |
+| Hermes Agent | 待确认 | 本机日志存在 `tokens=~` 估算和压缩/错误记录，暂不进入正式总量。需要真实 API usage 或统一事件。 |
+| WorkBuddy | 待确认 | 本机未找到稳定 token usage 日志；需要产品侧提供本地统计文件或事件。 |
 
 ## 接入规则
 
@@ -68,4 +70,3 @@ TokenStep 采用：
 3. 不用“字数估算 token”作为默认统计口径。
 4. 新 Agent 默认先进入实验区，至少用 2-3 台真实机器样本验证后再进入正式统计。
 5. UI 上只展示有数据的 Agent，避免空状态造成误解。
-

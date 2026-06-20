@@ -35,7 +35,7 @@ struct SettingsDisplayCard: View {
                 )
 
                 SettingsToggleRow(
-                    title: L("Codex 额度显示"),
+                    title: L("Agent 额度显示"),
                     isOn: Binding(
                         get: { appState.settings.showCodexQuota },
                         set: { appState.setCodexQuotaVisible($0) }

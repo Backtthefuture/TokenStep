@@ -17,6 +17,17 @@ TokenStep does not upload anything by default.
 
 TokenStep does not need to send your code, prompts, or conversation text to any server.
 
+## Optional Quota Display
+
+The Agent quota display is off by default.
+
+When enabled, TokenStep may read local account metadata needed by supported tools:
+
+- Codex quota is read from the local Codex account/rate limit interface.
+- Claude Code quota is read by using the local macOS Keychain item for Claude Code and requesting Anthropic's OAuth usage endpoint.
+
+TokenStep uses this only to show remaining quota. The account token is not stored by TokenStep and is not uploaded to a TokenStep server.
+
 ## Local Files
 
 Generated app data is stored at:
