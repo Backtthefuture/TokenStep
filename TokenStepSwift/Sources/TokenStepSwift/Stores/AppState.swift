@@ -84,7 +84,7 @@ final class AppState: ObservableObject {
 
     var tokenIslandStatusDetail: String {
         if shouldShowTokenIsland {
-            return L("鼠标移入后展开浮层")
+            return L("鼠标移入后展开 Island")
         }
         if settings.tokenIslandPlacement == .menuBar {
             return L("仅使用右上角菜单栏入口")

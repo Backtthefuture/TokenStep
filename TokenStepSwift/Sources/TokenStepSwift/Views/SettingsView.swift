@@ -139,9 +139,14 @@ struct SettingsView: View {
 
     private var footer: some View {
         HStack {
-            Text(L("TokenStep · Local usage tracker"))
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L("TokenStep · Local usage tracker"))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                Text(LFormat("当前版本 %@", UpdateService.currentVersion))
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary.opacity(0.82))
+            }
 
             Spacer()
 

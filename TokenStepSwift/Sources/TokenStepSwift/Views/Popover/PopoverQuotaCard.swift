@@ -8,7 +8,7 @@ struct PopoverQuotaCard: View {
             VStack(alignment: .leading, spacing: 13) {
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(Self.codexBlue)
+                        .fill(Color.tokenGreen)
                         .frame(width: 8, height: 8)
                     Text(L("Codex 剩余额度"))
                         .font(.callout.weight(.heavy))
@@ -34,9 +34,9 @@ struct PopoverQuotaCard: View {
                     HStack(spacing: 10) {
                         Image(systemName: "terminal")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Self.codexBlue)
+                            .foregroundStyle(Color.tokenGreen)
                             .frame(width: 28, height: 28)
-                            .background(Self.codexBlue.opacity(0.10), in: Circle())
+                            .background(Color.tokenMint.opacity(0.22), in: Circle())
                         VStack(alignment: .leading, spacing: 2) {
                             Text(L("暂未读取到 Codex 额度"))
                                 .font(.caption.weight(.heavy))
@@ -73,10 +73,10 @@ struct PopoverQuotaCard: View {
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Self.codexBlue.opacity(0.10))
+                            .fill(Color.tokenGreen.opacity(0.10))
                         if let window {
                             Capsule()
-                                .fill(Self.codexBlue)
+                                .fill(Color.tokenGreen)
                                 .frame(width: max(5, proxy.size.width * window.remainingPercent / 100))
                         }
                     }
@@ -111,6 +111,4 @@ struct PopoverQuotaCard: View {
         }
         return LFormat("%d 分钟前", max(1, seconds / 60))
     }
-
-    private static let codexBlue = Color(red: 39 / 255, green: 111 / 255, blue: 246 / 255)
 }

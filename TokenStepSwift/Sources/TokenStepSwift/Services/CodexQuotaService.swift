@@ -7,10 +7,11 @@ enum CodexQuotaService {
         let output = try runAppServerRequest()
         let response = try parseRateLimitResponse(output)
         let snapshot = response.rateLimitsByLimitId?["codex"] ?? response.rateLimits
+        let windows = classifiedWindows(snapshot)
         return CodexQuotaSnapshot(
             fetchedAt: Date(),
-            fiveHour: window(snapshot.primary, kind: .fiveHour),
-            sevenDay: window(snapshot.secondary, kind: .sevenDay)
+            fiveHour: window(windows.fiveHour, kind: .fiveHour),
+            sevenDay: window(windows.sevenDay, kind: .sevenDay)
         )
     }
 
@@ -21,6 +22,28 @@ enum CodexQuotaService {
             usedPercent: payload.usedPercent,
             resetsAt: payload.resetsAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
         )
+    }
+
+    private static func classifiedWindows(_ snapshot: RateLimitSnapshotPayload) -> (fiveHour: RateLimitWindowPayload?, sevenDay: RateLimitWindowPayload?) {
+        var fiveHour: RateLimitWindowPayload?
+        var sevenDay: RateLimitWindowPayload?
+
+        for payload in [snapshot.primary, snapshot.secondary].compactMap({ $0 }) {
+            switch payload.windowDurationMins {
+            case 300:
+                if fiveHour == nil { fiveHour = payload }
+            case 10_080:
+                if sevenDay == nil { sevenDay = payload }
+            default:
+                continue
+            }
+        }
+
+        if fiveHour == nil, sevenDay == nil {
+            return (fiveHour: snapshot.primary, sevenDay: snapshot.secondary)
+        }
+
+        return (fiveHour: fiveHour, sevenDay: sevenDay)
     }
 
     private static func runAppServerRequest() throws -> String {

@@ -31,18 +31,20 @@ struct TokenIslandPopoverWindowView: View {
     var onHoverChanged: (Bool) -> Void
 
     var body: some View {
-        PopoverPanelView()
+        TokenIslandExpandedView()
             .environmentObject(appState)
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .frame(width: TokenIslandWindowPresenter.expandedSize.width, height: TokenIslandWindowPresenter.expandedSize.height)
+            .background(TokenIslandExpandedBackground())
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(Color.black.opacity(0.08))
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(Color.white.opacity(0.10))
             )
-            .shadow(color: Color.black.opacity(0.18), radius: 28, x: 0, y: 16)
+            .shadow(color: Color.black.opacity(0.34), radius: 28, x: 0, y: 18)
             .onHover { hovering in
                 onHoverChanged(hovering)
             }
-            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
+            .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topLeading)))
             .id(appState.appearanceID)
             .animation(.spring(response: 0.26, dampingFraction: 0.88), value: appState.appearanceID)
     }
@@ -85,5 +87,247 @@ struct TokenIslandRingView: View {
         .background(Color.black)
         .clipShape(Capsule())
         .id("\(theme.id)-\(language.resolved.id)")
+    }
+}
+
+private struct TokenIslandExpandedView: View {
+    @EnvironmentObject private var appState: AppState
+
+    private var lap: TokenStepLapProgress { appState.todayLap }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            header
+
+            HStack(alignment: .center, spacing: 16) {
+                ring
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(lap.lapStatusText)
+                        .font(.system(size: 20, weight: .heavy, design: .rounded))
+                        .foregroundStyle(lap.color)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                    Text(TokenStepFormat.tokens(appState.today.totalTokens))
+                        .font(.system(size: 27, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                    Text(lap.perLapGoalText)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+
+            TokenIslandToolSplitView(tools: appState.today.tools, total: appState.today.totalTokens)
+
+            if appState.settings.showCodexQuota, appState.codexQuota.isAvailable {
+                TokenIslandQuotaMiniView(quota: appState.codexQuota)
+            }
+
+            HStack(spacing: 8) {
+                TokenIslandActionButton(title: L("打开仪表盘"), symbol: "arrow.up.right") {
+                    MainWindowPresenter.shared.show(appState: appState)
+                }
+                TokenIslandActionButton(title: L("刷新"), symbol: "arrow.clockwise") {
+                    appState.refresh()
+                }
+                .disabled(appState.isRefreshing)
+                TokenIslandActionButton(title: L("设置"), symbol: "gearshape") {
+                    SettingsWindowPresenter.shared.show(appState: appState)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            TokenIslandMiniMark()
+            VStack(alignment: .leading, spacing: 1) {
+                Text("TokenStep")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(.white.opacity(0.92))
+                Text(L("每日 Token 消耗追踪"))
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.46))
+            }
+            Spacer()
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(appState.isRefreshing ? .white.opacity(0.46) : Color.tokenGreen)
+                    .frame(width: 6, height: 6)
+                Text(appState.isRefreshing ? L("同步中") : L("已同步"))
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(.white.opacity(0.70))
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(.white.opacity(0.08), in: Capsule())
+        }
+    }
+
+    private var ring: some View {
+        ZStack {
+            ProgressRingView(progress: lap.currentLapProgress, lineWidth: 9, color: lap.color)
+            VStack(spacing: 2) {
+                Text(TokenStepFormat.tokens(appState.today.totalTokens, compact: true))
+                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.62)
+                    .lineLimit(1)
+                Text(lap.lapTitle)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.48))
+            }
+            .frame(width: 66)
+        }
+        .frame(width: 86, height: 86)
+    }
+}
+
+private struct TokenIslandExpandedBackground: View {
+    var body: some View {
+        ZStack {
+            Color.black
+            LinearGradient(
+                colors: [
+                    Color.tokenGreen.opacity(0.23),
+                    Color.black.opacity(0),
+                    Color.tokenGreenDark.opacity(0.16)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+}
+
+private struct TokenIslandMiniMark: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(.white.opacity(0.10))
+            Circle()
+                .stroke(.white.opacity(0.16), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                .frame(width: 21, height: 21)
+            Circle()
+                .trim(from: 0, to: 0.72)
+                .stroke(Color.tokenGreen, style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: 21, height: 21)
+            Image(systemName: "circle.grid.3x3.fill")
+                .font(.system(size: 8, weight: .heavy))
+                .foregroundStyle(Color.tokenGreen.opacity(0.92))
+        }
+        .frame(width: 28, height: 28)
+    }
+}
+
+private struct TokenIslandToolSplitView: View {
+    var tools: [String: Int]
+    var total: Int
+
+    var body: some View {
+        VStack(spacing: 7) {
+            TokenIslandSplitRow(name: "Codex", tokens: tools["Codex"] ?? 0, total: total)
+            TokenIslandSplitRow(name: "Claude Code", tokens: tools["Claude Code"] ?? 0, total: total)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct TokenIslandSplitRow: View {
+    var name: String
+    var tokens: Int
+    var total: Int
+
+    private var percent: Double {
+        guard total > 0 else { return 0 }
+        return min(max(Double(tokens) / Double(total), 0), 1)
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(name)
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(.white.opacity(0.70))
+                .frame(width: 70, alignment: .leading)
+                .lineLimit(1)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.10))
+                    Capsule()
+                        .fill(Color.tokenGreen)
+                        .frame(width: max(tokens > 0 ? 4 : 0, proxy.size.width * percent))
+                }
+            }
+            .frame(height: 5)
+
+            Text(TokenStepFormat.tokens(tokens, compact: true))
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(.white.opacity(0.78))
+                .monospacedDigit()
+                .frame(width: 48, alignment: .trailing)
+        }
+    }
+}
+
+private struct TokenIslandQuotaMiniView: View {
+    var quota: CodexQuotaSnapshot
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "hourglass.circle.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.tokenGreen)
+            quotaText(quota.fiveHour, fallback: L("5 小时"))
+            Divider().frame(height: 12).overlay(.white.opacity(0.18))
+            quotaText(quota.sevenDay, fallback: L("7 天"))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+
+    private func quotaText(_ window: CodexQuotaWindow?, fallback: String) -> some View {
+        HStack(spacing: 5) {
+            Text(window?.title ?? fallback)
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(.white.opacity(0.52))
+            Text(window.map { TokenStepFormat.percent($0.remainingPercent) } ?? "—")
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(Color.tokenGreen)
+                .monospacedDigit()
+        }
+    }
+}
+
+private struct TokenIslandActionButton: View {
+    var title: String
+    var symbol: String
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.caption2.weight(.heavy))
+                .labelStyle(.titleAndIcon)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .foregroundStyle(.white.opacity(0.82))
+                .frame(maxWidth: .infinity)
+                .frame(height: 28)
+                .background(.white.opacity(0.085), in: Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.07)))
+        }
+        .buttonStyle(.plain)
+        .help(title)
     }
 }

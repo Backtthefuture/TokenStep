@@ -46,6 +46,7 @@ enum TokenStepLocalization {
             "自动：刘海旁": "Auto: beside notch",
             "自动：菜单栏": "Auto: menu bar",
             "鼠标移入后展开浮层": "Hover to expand",
+            "鼠标移入后展开 Island": "Hover to expand Island",
             "仅使用右上角菜单栏入口": "Use menu bar only",
             "刷新": "Refresh",
             "打开 TokenStep": "Open TokenStep",

@@ -142,32 +142,46 @@ def render_base_icon() -> Image.Image:
     shadow_draw = ImageDraw.Draw(shadow)
 
     cx = cy = sx(512)
-    base_radius = sx(374)
-    base_rect = (cx - base_radius, cy - base_radius, cx + base_radius, cy + base_radius)
+    base_rect = (sx(86), sx(86), sx(938), sx(938))
+    base_corner = sx(210)
 
-    shadow_draw.ellipse(
-        (base_rect[0], base_rect[1] + sx(30), base_rect[2], base_rect[3] + sx(30)),
-        fill=(18, 24, 38, 42),
+    shadow_draw.rounded_rectangle(
+        (base_rect[0], base_rect[1] + sx(28), base_rect[2], base_rect[3] + sx(28)),
+        radius=base_corner,
+        fill=(18, 24, 38, 46),
     )
-    image.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(sx(28))))
+    image.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(sx(30))))
 
     draw = ImageDraw.Draw(image)
+    base_layer = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    base_draw = ImageDraw.Draw(base_layer)
+    base_mask = Image.new("L", (W, W), 0)
+    mask_draw = ImageDraw.Draw(base_mask)
+    mask_draw.rounded_rectangle(base_rect, radius=base_corner, fill=255)
     for offset in range(base_rect[3] - base_rect[1]):
         t = offset / max(1, base_rect[3] - base_rect[1] - 1)
-        fill = mix("#ffffff", "#eef8f1", t)
+        fill = mix("#ffffff", "#eaf8ef", t)
         y = base_rect[1] + offset
-        span = math.sqrt(max(0, base_radius * base_radius - (y - cy) * (y - cy)))
-        draw.line((round(cx - span), y, round(cx + span), y), fill=fill + (248,), width=1)
+        base_draw.line((base_rect[0], y, base_rect[2], y), fill=fill + (255,), width=1)
+    base_layer.putalpha(base_mask)
+    image.alpha_composite(base_layer)
 
-    draw.ellipse(base_rect, outline=(255, 255, 255, 230), width=sx(7))
-    draw.ellipse(
+    gloss = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    gloss_draw = ImageDraw.Draw(gloss)
+    gloss_draw.ellipse((sx(20), sx(-230), sx(860), sx(610)), fill=(255, 255, 255, 58))
+    gloss.putalpha(Image.composite(gloss.getchannel("A"), Image.new("L", (W, W), 0), base_mask))
+    image.alpha_composite(gloss.filter(ImageFilter.GaussianBlur(sx(2))))
+
+    draw.rounded_rectangle(base_rect, radius=base_corner, outline=(255, 255, 255, 226), width=sx(8))
+    draw.rounded_rectangle(
         (base_rect[0] + sx(18), base_rect[1] + sx(18), base_rect[2] - sx(18), base_rect[3] - sx(18)),
+        radius=base_corner - sx(18),
         outline=(210, 226, 217, 110),
         width=sx(3),
     )
 
-    radius = sx(268)
-    width = sx(62)
+    radius = sx(264)
+    width = sx(58)
 
     ring_shadow = Image.new("RGBA", (W, W), (0, 0, 0, 0))
     ring_shadow_draw = ImageDraw.Draw(ring_shadow)
@@ -187,8 +201,8 @@ def render_base_icon() -> Image.Image:
     image.alpha_composite(inner_highlight.filter(ImageFilter.GaussianBlur(sx(1))).point(lambda p: min(255, p // 2)))
 
     token_shadow = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    token_size = sx(54)
-    gap = sx(50)
+    token_size = sx(58)
+    gap = sx(53)
     token_positions = [
         (cx - gap, cy - gap),
         (cx, cy - gap),
@@ -216,11 +230,6 @@ def render_base_icon() -> Image.Image:
         rect = (tx - token_size // 2, ty - token_size // 2, tx + token_size // 2, ty + token_size // 2)
         draw.rounded_rectangle(rect, radius=radius_token, fill=hex_to_rgb(fill))
         draw.rounded_rectangle(rect, radius=radius_token, outline=(255, 255, 255, 72), width=sx(2))
-
-    draw.ellipse(
-        (cx - sx(14), cy - radius - sx(14), cx + sx(14), cy - radius + sx(14)),
-        fill=hex_to_rgb("#2da44e"),
-    )
 
     return image.resize((SIZE, SIZE), Image.Resampling.LANCZOS)
 

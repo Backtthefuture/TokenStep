@@ -6,8 +6,8 @@ import SwiftUI
 final class TokenIslandWindowPresenter {
     static let shared = TokenIslandWindowPresenter()
 
-    static let collapsedSize = NSSize(width: 96, height: 24)
-    static let expandedSize = NSSize(width: 412, height: 680)
+    static let collapsedSize = NSSize(width: 88, height: 24)
+    static let expandedSize = NSSize(width: 356, height: 238)
 
     private weak var appState: AppState?
     private var ringPanel: TokenIslandPanel?
@@ -185,7 +185,7 @@ final class TokenIslandWindowPresenter {
 
         let panel = TokenIslandPanel(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -196,12 +196,13 @@ final class TokenIslandWindowPresenter {
         panel.backgroundColor = .clear
         panel.hasShadow = hasShadow
         panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.isMovable = false
         panel.ignoresMouseEvents = false
         panel.acceptsMouseMovedEvents = true
+        panel.sharingType = .readOnly
         return panel
     }
 
