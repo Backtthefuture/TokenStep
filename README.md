@@ -13,6 +13,9 @@ TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claud
 当你超过目标，圆环会进入下一圈。用得越多，颜色越深。
 
 它不是为了严肃比较，而是让你直观看到：今天你和 AI 一起走了多远。
+<img width="824" height="1254" alt="image" src="https://github.com/user-attachments/assets/c4196b33-6a60-42a4-b66a-6a4d516b459a" />
+<img width="2240" height="2217" alt="image" src="https://github.com/user-attachments/assets/dbb7d00c-858e-4897-a04c-43ca45366d30" />
+
 
 ## 立即下载
 
