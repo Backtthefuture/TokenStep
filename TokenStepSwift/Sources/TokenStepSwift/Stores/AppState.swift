@@ -8,6 +8,8 @@ final class AppState: ObservableObject {
     @Published private(set) var isRefreshing = false
     @Published private(set) var autostartEnabled = false
     @Published private(set) var isCheckingForUpdates = false
+    @Published private(set) var isRefreshingCodexQuota = false
+    @Published private(set) var codexQuota: CodexQuotaSnapshot = .unavailable
     @Published private(set) var isDownloadingUpdate = false
     @Published private(set) var updateDownloadProgress = 0.0
     @Published private(set) var updateInstallStatus = L("准备更新")
@@ -23,6 +25,7 @@ final class AppState: ObservableObject {
         load()
         applyDefaultAutostartIfNeeded()
         configureTimer()
+        refreshCodexQuota()
         refresh()
         checkForUpdatesIfNeeded()
     }
@@ -112,6 +115,25 @@ final class AppState: ObservableObject {
             }
             load()
             isRefreshing = false
+            refreshCodexQuota()
+        }
+    }
+
+    func refreshCodexQuota() {
+        guard !isRefreshingCodexQuota else { return }
+        isRefreshingCodexQuota = true
+        Task {
+            do {
+                let quota = try await Task.detached(priority: .utility) {
+                    try CodexQuotaService.read()
+                }.value
+                codexQuota = quota
+            } catch {
+                if !codexQuota.isAvailable {
+                    codexQuota = .unavailable
+                }
+            }
+            isRefreshingCodexQuota = false
         }
     }
 

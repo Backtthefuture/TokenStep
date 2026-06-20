@@ -14,6 +14,7 @@ struct PopoverPanelView: View {
                 }
             }
             todayCard
+            codexQuotaCard
             trendCard
             if let update = appState.availableUpdate {
                 UpdateNoticeCard(update: update)
@@ -135,6 +136,56 @@ struct PopoverPanelView: View {
         }
     }
 
+    private var codexQuotaCard: some View {
+        TokenCard {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Self.codexBlue)
+                        .frame(width: 8, height: 8)
+                    Text(L("Codex 剩余额度"))
+                        .font(.callout.weight(.heavy))
+                        .foregroundStyle(Color.tokenInk)
+                    Spacer()
+                    if appState.isRefreshingCodexQuota {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.72)
+                    } else if let fetchedAt = appState.codexQuota.fetchedAt {
+                        Text(quotaFetchedText(fetchedAt))
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if appState.codexQuota.isAvailable {
+                    VStack(spacing: 10) {
+                        quotaRow(appState.codexQuota.fiveHour, fallbackTitle: L("5 小时"))
+                        quotaRow(appState.codexQuota.sevenDay, fallbackTitle: L("7 天"))
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: "terminal")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Self.codexBlue)
+                            .frame(width: 28, height: 28)
+                            .background(Self.codexBlue.opacity(0.10), in: Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("暂未读取到 Codex 额度"))
+                                .font(.caption.weight(.heavy))
+                                .foregroundStyle(Color.tokenInk.opacity(0.76))
+                            Text(L("打开并登录 Codex 后会自动显示额度。"))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(.vertical, -2)
+    }
+
     private var footer: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -181,6 +232,67 @@ struct PopoverPanelView: View {
     private func localizedDays(_ count: Int) -> String {
         TokenStepLocalization.language == .en ? "\(count)d" : "\(count) 天"
     }
+
+    private func quotaRow(_ window: CodexQuotaWindow?, fallbackTitle: String) -> some View {
+        HStack(spacing: 10) {
+            Text(window?.title ?? fallbackTitle)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.tokenInk.opacity(0.72))
+                .frame(width: 44, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Text(window.map { LFormat("剩余 %@", TokenStepFormat.percent($0.remainingPercent)) } ?? L("等待同步"))
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(window == nil ? .secondary : Color.tokenInk.opacity(0.82))
+                    Spacer()
+                    Text(window.map { quotaResetText($0.resetsAt) } ?? L("等待重置"))
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Self.codexBlue.opacity(0.10))
+                        if let window {
+                            Capsule()
+                                .fill(Self.codexBlue)
+                                .frame(width: max(5, proxy.size.width * window.remainingPercent / 100))
+                        }
+                    }
+                }
+                .frame(height: 6)
+            }
+        }
+    }
+
+    private func quotaResetText(_ date: Date?) -> String {
+        guard let date else { return L("等待重置") }
+        let seconds = max(0, Int(date.timeIntervalSinceNow.rounded()))
+        if seconds < 60 {
+            return L("即将重置")
+        }
+        if seconds < 3_600 {
+            return LFormat("%d 分后重置", max(1, seconds / 60))
+        }
+        if seconds < 86_400 {
+            let hours = seconds / 3_600
+            let minutes = (seconds % 3_600) / 60
+            return LFormat("约 %d:%02d 后重置", hours, minutes)
+        }
+        let days = max(1, Int(ceil(Double(seconds) / 86_400)))
+        return LFormat("%d 天后重置", days)
+    }
+
+    private func quotaFetchedText(_ date: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(date).rounded()))
+        if seconds < 60 {
+            return L("刚刚")
+        }
+        return LFormat("%d 分钟前", max(1, seconds / 60))
+    }
+
+    private static let codexBlue = Color(red: 39 / 255, green: 111 / 255, blue: 246 / 255)
 
     private var popoverScreenshot: some View {
         PopoverPanelView()

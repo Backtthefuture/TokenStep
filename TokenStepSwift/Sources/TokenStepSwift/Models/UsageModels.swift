@@ -82,6 +82,47 @@ struct SourceInfo: Codable {
     var records: Int?
 }
 
+struct CodexQuotaSnapshot: Equatable {
+    var fetchedAt: Date?
+    var fiveHour: CodexQuotaWindow?
+    var sevenDay: CodexQuotaWindow?
+
+    var isAvailable: Bool {
+        fiveHour != nil || sevenDay != nil
+    }
+
+    static let unavailable = CodexQuotaSnapshot(fetchedAt: nil, fiveHour: nil, sevenDay: nil)
+}
+
+struct CodexQuotaWindow: Equatable, Identifiable {
+    enum Kind: Equatable {
+        case fiveHour
+        case sevenDay
+    }
+
+    var kind: Kind
+    var usedPercent: Double
+    var resetsAt: Date?
+
+    var id: String {
+        switch kind {
+        case .fiveHour: return "5h"
+        case .sevenDay: return "7d"
+        }
+    }
+
+    var title: String {
+        switch kind {
+        case .fiveHour: return L("5 小时")
+        case .sevenDay: return L("7 天")
+        }
+    }
+
+    var remainingPercent: Double {
+        min(max(100 - usedPercent, 0), 100)
+    }
+}
+
 enum TokenIslandDisplayPlacement: String, CaseIterable, Identifiable, Codable {
     case automatic = "auto"
     case notchLeft = "notch_left"
