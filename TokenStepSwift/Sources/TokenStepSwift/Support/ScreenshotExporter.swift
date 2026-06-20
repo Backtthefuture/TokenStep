@@ -30,6 +30,7 @@ enum ScreenshotExportError: LocalizedError {
 @MainActor
 enum ScreenshotExporter {
     static func copy<V: View>(_ view: V) throws {
+        defer { MemoryPressure.relieveAllocatorPressure() }
         let image = try render(view)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -37,6 +38,7 @@ enum ScreenshotExporter {
     }
 
     static func save<V: View>(_ view: V, suggestedFileName: String) throws {
+        defer { MemoryPressure.relieveAllocatorPressure() }
         let image = try render(view)
         let data = try pngData(from: image)
         let panel = NSSavePanel()

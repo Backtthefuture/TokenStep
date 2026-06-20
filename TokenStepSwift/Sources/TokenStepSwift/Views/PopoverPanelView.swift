@@ -55,12 +55,9 @@ struct PopoverPanelView: View {
             .overlay(Capsule().stroke(Color.black.opacity(0.055)))
 
             if !isScreenshotRendering {
-                ScreenshotMenuButton(
-                    copyTitle: L("复制浮层截图"),
-                    saveTitle: L("保存浮层 PNG"),
-                    help: L("截取浮层"),
-                    copyAction: copyPopoverScreenshot,
-                    saveAction: savePopoverScreenshot
+                ShareCardMenuButton(
+                    todayAction: { copyShareCard(.today) },
+                    yesterdayAction: { copyShareCard(.yesterday) }
                 )
             }
         }
@@ -84,31 +81,83 @@ struct PopoverPanelView: View {
         }
     }
 
-    private var popoverScreenshot: some View {
-        PopoverPanelView()
-            .environmentObject(appState)
-            .environment(\.isScreenshotRendering, true)
-    }
-
-    private func copyPopoverScreenshot() {
-        do {
-            try ScreenshotExporter.copy(popoverScreenshot)
-        } catch {
-            appState.lastError = error.localizedDescription
+    private func copyShareCard(_ mode: ShareCardMode) {
+        guard let day = shareDay(for: mode) else {
+            appState.lastError = mode == .yesterday ? L("还没有昨日数据") : L("等待下一次同步")
+            return
         }
-    }
 
-    private func savePopoverScreenshot() {
         do {
-            try ScreenshotExporter.save(
-                popoverScreenshot,
-                suggestedFileName: ScreenshotExporter.suggestedFileName(prefix: "popover")
+            try ScreenshotExporter.copy(
+                ShareDailyCardView(
+                    mode: mode,
+                    day: day,
+                    previousDay: previousDay(before: day)
+                )
+                .environmentObject(appState)
+                .environment(\.isScreenshotRendering, true)
             )
         } catch {
             appState.lastError = error.localizedDescription
         }
     }
 
+    private func shareDay(for mode: ShareCardMode) -> DailyUsage? {
+        switch mode {
+        case .today:
+            return appState.today.totalTokens > 0 ? appState.today : nil
+        case .yesterday:
+            let calendar = Calendar(identifier: .gregorian)
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: Date()) else {
+                return nil
+            }
+            let key = DateFormatter.tokenStepDay.string(from: yesterday)
+            return appState.snapshot.daily.first(where: { $0.date == key && $0.totalTokens > 0 })
+        }
+    }
+
+    private func previousDay(before day: DailyUsage) -> DailyUsage? {
+        let rows = appState.snapshot.daily.sorted { $0.date < $1.date }
+        guard let index = rows.firstIndex(where: { $0.date == day.date }), index > rows.startIndex else {
+            return nil
+        }
+        return rows[rows.index(before: index)]
+    }
+
+}
+
+private struct ShareCardMenuButton: View {
+    var todayAction: () -> Void
+    var yesterdayAction: () -> Void
+
+    var body: some View {
+        Menu {
+            Button {
+                todayAction()
+            } label: {
+                Label(L("分享今日卡片"), systemImage: "sun.max.fill")
+            }
+
+            Button {
+                yesterdayAction()
+            } label: {
+                Label(L("分享昨日成绩"), systemImage: "calendar.badge.clock")
+            }
+        } label: {
+            Image(systemName: "camera.fill")
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(Color.tokenInk.opacity(0.76))
+                .frame(width: 34, height: 34)
+                .background(Color.tokenSurface, in: Circle())
+                .overlay(Circle().stroke(Color.black.opacity(0.07)))
+                .shadow(color: Color.black.opacity(0.055), radius: 9, x: 0, y: 5)
+                .contentShape(Circle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .help(L("分享战绩卡片"))
+        .accessibilityLabel(L("分享战绩卡片"))
+    }
 }
 
 private struct UpdateNoticeCard: View {

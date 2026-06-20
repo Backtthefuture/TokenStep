@@ -281,6 +281,127 @@ struct ActivityBarsView: View {
     }
 }
 
+struct StackedActivityBarsView: View {
+    var rows: [DailyUsage]
+    var goal: Int
+    var maxCount: Int = 30
+
+    var visibleRows: [DailyUsage] {
+        Array(rows.suffix(maxCount))
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let days = visibleRows
+            let gap: CGFloat = 5
+            let width = max(4, (proxy.size.width - gap * CGFloat(max(days.count - 1, 0))) / CGFloat(max(days.count, 1)))
+            let maxTokens = max(goal, days.map(\.totalTokens).max() ?? 1, 1)
+
+            ZStack(alignment: .bottomLeading) {
+                Rectangle()
+                    .fill(.quaternary)
+                    .frame(height: 1)
+                    .offset(y: -proxy.size.height * CGFloat(goal) / CGFloat(maxTokens))
+
+                HStack(alignment: .bottom, spacing: gap) {
+                    ForEach(days) { day in
+                        StackedActivityBar(
+                            day: day,
+                            goal: goal,
+                            maxTokens: maxTokens,
+                            width: width,
+                            height: proxy.size.height
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct StackedActivityBar: View {
+    var day: DailyUsage
+    var goal: Int
+    var maxTokens: Int
+    var width: CGFloat
+    var height: CGFloat
+
+    private var segments: [(name: String, tokens: Int)] {
+        orderedToolEntries(day.tools)
+    }
+
+    var body: some View {
+        let totalHeight = max(4, height * CGFloat(day.totalTokens) / CGFloat(max(maxTokens, 1)))
+
+        VStack(spacing: 0) {
+            if day.totalTokens > 0, segments.isEmpty {
+                RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous)
+                    .fill(contributionColor(tokens: day.totalTokens, goal: goal))
+                    .frame(width: width, height: totalHeight)
+            } else {
+                ForEach(Array(segments.reversed()), id: \.name) { segment in
+                    RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous)
+                        .fill(tokenToolColor(segment.name))
+                        .frame(
+                            width: width,
+                            height: max(1, totalHeight * CGFloat(segment.tokens) / CGFloat(max(day.totalTokens, 1)))
+                        )
+                }
+            }
+        }
+        .frame(width: width, height: totalHeight, alignment: .bottom)
+        .background {
+            if day.totalTokens <= 0 {
+                RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous)
+                    .fill(Color.tokenTrack)
+                    .frame(width: width, height: 4)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous))
+    }
+}
+
+struct TokenToolLegend: View {
+    var tools: [String]
+    var showsGoalLine = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(uniqueTools, id: \.self) { tool in
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(tokenToolColor(tool))
+                        .frame(width: 8, height: 8)
+                    Text(tool)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            if showsGoalLine {
+                HStack(spacing: 5) {
+                    Rectangle()
+                        .fill(.secondary.opacity(0.45))
+                        .frame(width: 16, height: 1)
+                    Text(L("每日目标"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var uniqueTools: [String] {
+        var seen = Set<String>()
+        return tools.filter { tool in
+            guard !seen.contains(tool) else { return false }
+            seen.insert(tool)
+            return true
+        }
+    }
+}
+
 struct ContributionWallView: View {
     var rows: [DailyUsage]
     var goal: Int
@@ -356,4 +477,45 @@ func contributionColor(tokens: Int, goal: Int) -> Color {
     case 0.12..<0.35: return TokenStepThemeRuntime.palette.activity2.color
     default: return TokenStepThemeRuntime.palette.activity1.color
     }
+}
+
+func tokenToolColor(_ tool: String) -> Color {
+    switch tool {
+    case "Codex":
+        return .tokenGreen
+    case "Claude Code":
+        return Color(red: 0.88, green: 0.42, blue: 0.24)
+    case "Hermes", "Hermes Agent":
+        return Color(red: 0.50, green: 0.28, blue: 0.92)
+    default:
+        return Color.tokenInk.opacity(0.44)
+    }
+}
+
+func orderedToolEntries(_ tools: [String: Int]) -> [(name: String, tokens: Int)] {
+    let preferred = ["Codex", "Claude Code", "Hermes", "Hermes Agent"]
+    var entries: [(name: String, tokens: Int)] = preferred.compactMap { name in
+        guard let value = tools[name], value > 0 else { return nil }
+        return (name, value)
+    }
+    entries.append(contentsOf: tools
+        .filter { key, value in !preferred.contains(key) && value > 0 }
+        .sorted { $0.value > $1.value }
+        .map { ($0.key, $0.value) })
+    return entries
+}
+
+func uniqueToolNames(in rows: [DailyUsage], fallback: [String] = ["Codex", "Claude Code"], limit: Int = 4) -> [String] {
+    var seen = Set<String>()
+    var names: [String] = []
+    for day in rows {
+        for entry in orderedToolEntries(day.tools) where !seen.contains(entry.name) {
+            seen.insert(entry.name)
+            names.append(entry.name)
+            if names.count >= limit {
+                return names
+            }
+        }
+    }
+    return names.isEmpty ? fallback : names
 }

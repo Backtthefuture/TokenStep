@@ -13,7 +13,7 @@ struct HistoryView: View {
                             Text(L("近 8 个月活动墙"))
                                 .font(.title3.weight(.heavy))
                                 .foregroundStyle(Color.tokenInk)
-                            Text(L("颜色越深，越接近或超过每日目标"))
+                            Text(L("颜色越深，用量越高；描边是今天"))
                                 .font(.callout.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
@@ -45,6 +45,7 @@ struct HistoryView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
+                        TokenToolLegend(tools: historyTools)
                     }
 
                     LazyVStack(spacing: 0) {
@@ -69,6 +70,10 @@ struct HistoryView: View {
             return LFormat("最近 %d 天，适合保存为截图", min(historyLimit, historyRows.count))
         }
         return LFormat("%d 条记录，向下滚动查看完整历史", appState.visibleHistoryRows.count)
+    }
+
+    private var historyTools: [String] {
+        uniqueToolNames(in: historyRows)
     }
 
     private var header: some View {
@@ -104,7 +109,7 @@ private struct HistoryRow: View {
                 .foregroundStyle(Color.tokenInk.opacity(0.72))
             HStack(spacing: 8) {
                 Circle()
-                    .fill(contributionColor(tokens: row.totalTokens, goal: goal))
+                    .fill(tokenToolColor(dominantTool))
                     .frame(width: 8, height: 8)
                 Text(dominantTool)
                     .lineLimit(1)

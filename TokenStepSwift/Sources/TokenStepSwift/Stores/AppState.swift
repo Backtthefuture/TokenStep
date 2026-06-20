@@ -98,6 +98,7 @@ final class AppState: ObservableObject {
     }
 
     func load() {
+        defer { MemoryPressure.relieveAllocatorPressure() }
         let loadedSettings = DataService.loadSettings()
         TokenStepLocalization.apply(loadedSettings.language)
         TokenStepThemeRuntime.apply(loadedSettings.theme)
@@ -346,7 +347,6 @@ final class AppState: ObservableObject {
         guard settings.refreshIntervalSeconds > 0 else { return }
         timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(settings.refreshIntervalSeconds), repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.load()
                 self?.refresh()
             }
         }

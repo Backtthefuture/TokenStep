@@ -15,11 +15,12 @@ struct TodayView: View {
                             Text(L("最近 30 天"))
                                 .font(.title3.weight(.heavy))
                                 .foregroundStyle(Color.tokenInk)
-                            Text(L("颜色越深，圈数越高"))
+                            Text(L("柱越高，用量越多；颜色代表客户端"))
                                 .font(.callout.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
+                        TokenToolLegend(tools: recentTools, showsGoalLine: true)
                         Text(LFormat("今天 %@", TokenStepFormat.tokens(appState.today.totalTokens, compact: true)))
                             .font(.callout.weight(.bold))
                             .foregroundStyle(Color.tokenGreenDark)
@@ -27,7 +28,7 @@ struct TodayView: View {
                             .padding(.vertical, 7)
                             .background(Color.tokenMint.opacity(0.28), in: Capsule())
                     }
-                    ActivityBarsView(rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
+                    StackedActivityBarsView(rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
                         .frame(height: 96)
                 }
             }
@@ -114,7 +115,7 @@ struct TodayView: View {
                 name: name,
                 tokens: appState.today.tools[name] ?? 0,
                 percent: Double(appState.today.tools[name] ?? 0) * 100 / Double(total),
-                color: name == "Claude Code" ? .tokenGreenDark : .tokenGreen
+                color: tokenToolColor(name)
             )
         }
         let extraRows = appState.today.tools
@@ -125,7 +126,7 @@ struct TodayView: View {
                     name: name,
                     tokens: tokens,
                     percent: Double(tokens) * 100 / Double(total),
-                    color: nil
+                    color: tokenToolColor(name)
                 )
             }
         return primaryRows + extraRows
@@ -133,6 +134,10 @@ struct TodayView: View {
 
     private var todayModelRows: [TodayBreakdownRow] {
         breakdownRows(from: appState.today.models) { _ in nil }
+    }
+
+    private var recentTools: [String] {
+        uniqueToolNames(in: Array(appState.snapshot.daily.suffix(30)))
     }
 
     private func breakdownRows(from values: [String: Int], color: (String) -> Color?) -> [TodayBreakdownRow] {
