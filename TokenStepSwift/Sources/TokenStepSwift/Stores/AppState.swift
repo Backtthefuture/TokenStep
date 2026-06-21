@@ -472,6 +472,10 @@ final class AppState: ObservableObject {
 
     private func applyDefaultAutostartIfNeeded() {
         guard !FileManager.default.fileExists(atPath: AppPaths.autostartDefaultMarker.path) else { return }
+        guard AutostartService.canEnableForCurrentBundle else {
+            autostartEnabled = AutostartService.isEnabled
+            return
+        }
         do {
             if !AutostartService.isEnabled {
                 try AutostartService.setEnabled(true)

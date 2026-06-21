@@ -13,9 +13,17 @@ enum AutostartService {
         FileManager.default.fileExists(atPath: plistURL.path)
     }
 
+    static var canEnableForCurrentBundle: Bool {
+        isInstalledApplication(Bundle.main.bundleURL)
+    }
+
     static func setEnabled(_ enabled: Bool) throws {
         let domain = "gui/\(getuid())"
         if enabled {
+            guard canEnableForCurrentBundle else {
+                throw TokenStepError.message(L("请先把 TokenStep 拖到 Applications 后再开启开机启动。"))
+            }
+
             try FileManager.default.createDirectory(
                 at: plistURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
@@ -38,6 +46,19 @@ enum AutostartService {
 
         _ = launchctl(["bootout", domain, plistURL.path])
         try? FileManager.default.removeItem(at: plistURL)
+    }
+
+    private static func isInstalledApplication(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        if path.hasPrefix("/Applications/") {
+            return true
+        }
+
+        let userApplicationsPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Applications", isDirectory: true)
+            .standardizedFileURL
+            .path
+        return path.hasPrefix(userApplicationsPath + "/")
     }
 
     private static func launchctl(_ arguments: [String]) -> Int32 {
