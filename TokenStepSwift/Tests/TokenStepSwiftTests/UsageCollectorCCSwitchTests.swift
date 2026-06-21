@@ -63,6 +63,28 @@ final class UsageCollectorCCSwitchTests: XCTestCase {
         XCTAssertTrue(snapshot.models.isEmpty)
     }
 
+    func testLargeCCSwitchResultDoesNotBlockOnSQLiteOutput() throws {
+        let rowCount = 1_500
+        let rows = (0..<rowCount).map { index in
+            "('bulk-\(index)', 'provider-a', 'codex', 'gpt-5.4', 1, 1, 0, 0, '0.001', 200, 1717200000, 'codex_session', 'gpt-5-request', '')"
+        }.joined(separator: ",\n")
+        let database = try makeFixtureDatabase(rowsSQL: """
+        insert into proxy_request_logs (
+            request_id, provider_id, app_type, model,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            total_cost_usd, status_code, created_at, data_source, request_model, pricing_model
+        ) values
+            \(rows);
+        """)
+
+        let snapshot = UsageCollector.collectCCSwitchProxyUsageSnapshot(databaseURL: database)
+
+        XCTAssertEqual(snapshot.sources["CC Switch Proxy"]?.status, "ok")
+        XCTAssertEqual(snapshot.sources["CC Switch Proxy"]?.records, rowCount)
+        XCTAssertEqual(snapshot.totals.tokens, rowCount * 2)
+        XCTAssertEqual(snapshot.daily.first?.tools["Codex via CC Switch"], rowCount * 2)
+    }
+
     private func makeFixtureDatabase(rowsSQL: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TokenStepCCSwitchTests-\(UUID().uuidString)", isDirectory: true)

@@ -1,7 +1,9 @@
+import Darwin
 import Foundation
 
 enum DataService {
     private static let helperName = "TokenStepHelper"
+    private static let helperTimeoutSeconds: TimeInterval = 120
 
     static func loadSnapshot() throws -> UsageSnapshot {
         let data = try Data(contentsOf: AppPaths.usageJSON)
@@ -56,6 +58,26 @@ enum DataService {
         process.standardError = standardError
 
         try process.run()
+        let deadline = Date().addingTimeInterval(helperTimeoutSeconds)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        if process.isRunning {
+            process.terminate()
+            let graceDeadline = Date().addingTimeInterval(2)
+            while process.isRunning && Date() < graceDeadline {
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+            process.waitUntilExit()
+            throw NSError(
+                domain: "TokenStepCollector",
+                code: Int(ETIMEDOUT),
+                userInfo: [NSLocalizedDescriptionKey: L("Token 采集超时，请稍后重试")]
+            )
+        }
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {

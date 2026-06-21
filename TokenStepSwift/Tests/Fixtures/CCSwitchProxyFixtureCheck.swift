@@ -38,6 +38,16 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(emptySnapshot.sources["CC Switch Proxy"]?.status, "missing_valid_rows", "empty source status")
         try assertEqual(emptySnapshot.totals.tokens, 0, "empty total tokens")
 
+        let largeDatabase = try makeFixtureDatabase(rowsSQL: largeRowsSQL)
+        defer {
+            try? FileManager.default.removeItem(at: largeDatabase.deletingLastPathComponent())
+        }
+
+        let largeSnapshot = UsageCollector.collectCCSwitchProxyUsageSnapshot(databaseURL: largeDatabase)
+        try assertEqual(largeSnapshot.sources["CC Switch Proxy"]?.status, "ok", "large source status")
+        try assertEqual(largeSnapshot.sources["CC Switch Proxy"]?.records, 1_500, "large source records")
+        try assertEqual(largeSnapshot.totals.tokens, 3_000, "large total tokens")
+
         print("CC Switch proxy fixture check passed")
     }
 
@@ -80,6 +90,20 @@ struct CCSwitchProxyFixtureCheck {
         ('failed-proxy', 'provider-d', 'gemini', 'ignored-gemini', 1000, 1000, 0, 0, '8.88', 500, 1717207200, 'proxy', 'ignored', 'ignored'),
         ('zero-proxy', 'provider-e', 'codex', 'ignored-zero', 0, 0, 0, 0, '7.77', 200, 1717207200, 'codex_session', 'ignored', 'ignored');
     """
+
+    private static var largeRowsSQL: String {
+        let rows = (0..<1_500).map { index in
+            "('bulk-\(index)', 'provider-a', 'codex', 'gpt-5.4', 1, 1, 0, 0, '0.001', 200, 1717200000, 'codex_session', 'gpt-5-request', '')"
+        }.joined(separator: ",\n")
+        return """
+        insert into proxy_request_logs (
+            request_id, provider_id, app_type, model,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            total_cost_usd, status_code, created_at, data_source, request_model, pricing_model
+        ) values
+            \(rows);
+        """
+    }
 
     private static func runSQLite(database: URL, sql: String) throws {
         let process = Process()
