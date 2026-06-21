@@ -11,6 +11,9 @@ final class AppState: ObservableObject {
     @Published private(set) var isRefreshingCodexQuota = false
     @Published private(set) var codexQuota: CodexQuotaSnapshot = .unavailable
     @Published private(set) var claudeQuota: CodexQuotaSnapshot = .unavailable
+    @Published private(set) var isRefreshingTokenRank = false
+    @Published private(set) var tokenRank: TokenRankLeaderboard?
+    @Published private(set) var tokenRankError: String?
     @Published private(set) var isDownloadingUpdate = false
     @Published private(set) var updateDownloadProgress = 0.0
     @Published private(set) var updateInstallStatus = L("准备更新")
@@ -108,6 +111,9 @@ final class AppState: ObservableObject {
             codexQuota = .unavailable
             claudeQuota = .unavailable
         }
+        if !loadedSettings.showTokenRank {
+            clearTokenRankState()
+        }
         autostartEnabled = AutostartService.isEnabled
     }
 
@@ -127,6 +133,7 @@ final class AppState: ObservableObject {
             load()
             isRefreshing = false
             refreshCodexQuota()
+            refreshTokenRank(force: true)
         }
     }
 
@@ -228,6 +235,75 @@ final class AppState: ObservableObject {
             claudeQuota = .unavailable
             isRefreshingCodexQuota = false
         }
+    }
+
+    func setTokenRankVisible(_ visible: Bool) {
+        settings.showTokenRank = visible
+        saveSettingsAndReload()
+        if settings.showTokenRank {
+            refreshTokenRank(force: true)
+        } else {
+            clearTokenRankState()
+        }
+    }
+
+    func setTokenRankUserID(_ userID: String) {
+        settings.tokenRankUserID = TokenStepSettings.cleanedTokenRankUserID(userID)
+        saveSettingsAndReload()
+        if settings.showTokenRank, tokenRank == nil {
+            refreshTokenRank(force: true)
+        }
+    }
+
+    func refreshTokenRank(force: Bool = false) {
+        guard settings.showTokenRank else {
+            clearTokenRankState()
+            return
+        }
+        guard !isRefreshingTokenRank else { return }
+        if !force,
+           let fetchedAt = tokenRank?.fetchedAt,
+           Date().timeIntervalSince(fetchedAt) < TokenRankService.cacheTTL {
+            return
+        }
+
+        isRefreshingTokenRank = true
+        Task {
+            defer {
+                isRefreshingTokenRank = false
+            }
+            do {
+                let leaderboard = try await TokenRankService.fetchLeaderboard()
+                guard settings.showTokenRank else {
+                    clearTokenRankState()
+                    return
+                }
+                tokenRank = leaderboard
+                tokenRankError = nil
+            } catch {
+                guard settings.showTokenRank else {
+                    clearTokenRankState()
+                    return
+                }
+                if tokenRank == nil {
+                    tokenRankError = L("暂时无法读取榜单")
+                } else {
+                    tokenRankError = L("榜单同步失败，显示上次结果")
+                }
+            }
+        }
+    }
+
+    func openTokenRankLeaderboardPage() {
+        NSWorkspace.shared.open(TokenRankService.leaderboardPageURL)
+    }
+
+    func openTokenRankUserPage() {
+        guard let url = TokenRankService.userPageURL(userID: settings.tokenRankUserID) else {
+            openTokenRankLeaderboardPage()
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 
     func setAutoUpdateEnabled(_ enabled: Bool) {
@@ -339,6 +415,12 @@ final class AppState: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    private func clearTokenRankState() {
+        tokenRank = nil
+        tokenRankError = nil
+        isRefreshingTokenRank = false
     }
 
     private func configureTimer() {

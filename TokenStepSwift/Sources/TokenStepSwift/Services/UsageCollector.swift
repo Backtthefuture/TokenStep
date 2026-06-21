@@ -3,22 +3,39 @@ import Foundation
 enum UsageCollector {
     private static let timezone = TimeZone(identifier: "Asia/Shanghai") ?? .current
     private static let maxRelevantLineBytes = 1_048_576
+    private static let ccSwitchSourceName = "CC Switch Proxy"
 
-    static func collect(historyDays: Int = TokenStepSettings.defaults.historyDays) -> UsageSnapshot {
+    static func collect(
+        historyDays: Int = TokenStepSettings.defaults.historyDays,
+        includeCCSwitchProxyUsage: Bool = true,
+        ccSwitchDatabaseURL: URL? = nil
+    ) -> UsageSnapshot {
         var cache = loadCache()
         compactCacheRecords(&cache)
         var livePaths = Set<String>()
         let sourceCutoff = sourceFileCutoffDate(historyDays: historyDays)
         let codex = collectCodex(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        let ccSwitch = includeCCSwitchProxyUsage
+            ? collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         cache.files = cache.files.filter { livePaths.contains($0.key) }
         saveCache(cache)
         return aggregate(
-            records: codex.records + claude.records,
+            records: codex.records + claude.records + ccSwitch.records,
             sources: [
                 "Codex": codex.source,
-                "Claude Code": claude.source
+                "Claude Code": claude.source,
+                ccSwitchSourceName: ccSwitch.source
             ]
+        )
+    }
+
+    static func collectCCSwitchProxyUsageSnapshot(databaseURL: URL) -> UsageSnapshot {
+        let result = collectCCSwitchProxyUsage(databaseURL: databaseURL)
+        return aggregate(
+            records: result.records,
+            sources: [ccSwitchSourceName: result.source]
         )
     }
 
@@ -237,13 +254,138 @@ enum UsageCollector {
         )
     }
 
+    private static func collectCCSwitchProxyUsage(databaseURL: URL? = nil) -> CollectorResult {
+        let database = databaseURL ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cc-switch/cc-switch.db")
+
+        guard FileManager.default.fileExists(atPath: database.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing_db", files: 0, records: 0)
+            )
+        }
+
+        guard FileManager.default.isReadableFile(atPath: database.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "unreadable_db", files: 1, records: 0)
+            )
+        }
+
+        guard let columns = sqliteJSONRows(
+            database: database,
+            query: "pragma table_info(proxy_request_logs)"
+        ) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "schema_unreadable", files: 1, records: 0)
+            )
+        }
+
+        guard !columns.isEmpty else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing_table", files: 1, records: 0)
+            )
+        }
+
+        let availableColumns = Set(columns.compactMap { $0["name"] as? String })
+        let requiredColumns: Set<String> = [
+            "request_id",
+            "app_type",
+            "provider_id",
+            "model",
+            "request_model",
+            "pricing_model",
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "cache_creation_tokens",
+            "total_cost_usd",
+            "status_code",
+            "created_at",
+            "data_source"
+        ]
+        guard requiredColumns.isSubset(of: availableColumns) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "schema_mismatch", files: 1, records: 0)
+            )
+        }
+
+        let query = """
+        select
+            created_at,
+            app_type,
+            coalesce(nullif(pricing_model, ''), nullif(model, ''), nullif(request_model, ''), 'unknown') as display_model,
+            coalesce(input_tokens, 0) as input_tokens,
+            coalesce(output_tokens, 0) as output_tokens,
+            coalesce(cache_read_tokens, 0) as cache_read_tokens,
+            coalesce(cache_creation_tokens, 0) as cache_creation_tokens,
+            cast(coalesce(nullif(total_cost_usd, ''), '0') as real) as total_cost_usd
+        from proxy_request_logs
+        where coalesce(data_source, 'proxy') = 'proxy'
+            and status_code >= 200
+            and status_code < 300
+            and (
+                coalesce(input_tokens, 0)
+                + coalesce(output_tokens, 0)
+                + coalesce(cache_read_tokens, 0)
+                + coalesce(cache_creation_tokens, 0)
+            ) > 0
+        order by created_at, request_id
+        """
+
+        guard let rows = sqliteJSONRows(database: database, query: query) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "query_failed", files: 1, records: 0)
+            )
+        }
+
+        let records = rows.compactMap { row -> UsageRecord? in
+            guard let day = dayString(fromEpoch: row["created_at"] as Any) else {
+                return nil
+            }
+
+            var usage = TokenUsageCounts()
+            usage.inputTokens = integerValue(row["input_tokens"] as Any)
+            usage.outputTokens = integerValue(row["output_tokens"] as Any)
+            usage.cacheReadInputTokens = integerValue(row["cache_read_tokens"] as Any)
+            usage.cacheCreationInputTokens = integerValue(row["cache_creation_tokens"] as Any)
+            usage.totalTokens = usage.inputTokens
+                + usage.outputTokens
+                + usage.cacheReadInputTokens
+                + usage.cacheCreationInputTokens
+            guard usage.totalTokens > 0 else { return nil }
+
+            return UsageRecord(
+                date: day,
+                timestamp: nil,
+                tool: ccSwitchToolName(appType: row["app_type"] as? String),
+                model: modelKey(row["display_model"] as? String),
+                usage: usage,
+                costUSD: doubleValue(row["total_cost_usd"] as Any)
+            )
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing_proxy_rows" : "ok",
+                files: 1,
+                records: records.count
+            )
+        )
+    }
+
     private static func aggregate(records: [UsageRecord], sources: [String: SourceInfo]) -> UsageSnapshot {
         var daily = [String: DailyAccumulator]()
         var tools = [String: UsageAccumulator]()
         var models = [ModelKey: UsageAccumulator]()
 
         for record in records {
-            let cost = estimateCost(usage: record.usage, tool: record.tool, model: record.model)
+            let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model)
             daily[record.date, default: DailyAccumulator(date: record.date)].add(record: record, cost: cost)
             tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: cost)
             models[ModelKey(tool: record.tool, model: record.model), default: UsageAccumulator()].add(record.usage, cost: cost)
@@ -549,13 +691,20 @@ enum UsageCollector {
         return 0
     }
 
+    private static func doubleValue(_ value: Any) -> Double {
+        if let double = value as? Double { return double }
+        if let int = value as? Int { return Double(int) }
+        if let string = value as? String { return Double(string) ?? 0 }
+        return 0
+    }
+
     private static func dayString(fromISO value: String) -> String? {
         guard let date = parseISO(value) else { return nil }
         return dayFormatter.string(from: date)
     }
 
     private static func dayString(fromEpoch value: Any?) -> String? {
-        let seconds: Double
+        var seconds: Double
         if let int = value as? Int {
             seconds = Double(int)
         } else if let double = value as? Double {
@@ -564,6 +713,9 @@ enum UsageCollector {
             seconds = parsed
         } else {
             return nil
+        }
+        if seconds > 10_000_000_000 {
+            seconds /= 1_000
         }
         return dayFormatter.string(from: Date(timeIntervalSince1970: seconds))
     }
@@ -578,6 +730,43 @@ enum UsageCollector {
     private static func modelKey(_ model: String?) -> String {
         let value = (model ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "unknown" : value
+    }
+
+    private static func ccSwitchToolName(appType: String?) -> String {
+        let value = (appType ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = value.lowercased()
+        switch normalized {
+        case "claude":
+            return "Claude Code via CC Switch"
+        case "codex":
+            return "Codex via CC Switch"
+        case "gemini":
+            return "Gemini via CC Switch"
+        default:
+            return "\(value.isEmpty ? "unknown" : value) via CC Switch (experimental)"
+        }
+    }
+
+    private static func sqliteJSONRows(database: URL, query: String) -> [[String: Any]]? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = ["-readonly", "-json", database.path, query]
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        guard !data.isEmpty else { return [] }
+        return try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
     }
 
     private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String) -> Double {
@@ -684,6 +873,7 @@ private struct UsageRecord: Codable {
     var tool: String
     var model: String
     var usage: TokenUsageCounts
+    var costUSD: Double? = nil
 }
 
 private struct CompactRecordKey: Hashable {

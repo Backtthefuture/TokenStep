@@ -1,0 +1,11 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" color="#111827">
+  <title>TokenStep Menu Compass</title>
+  <rect x="19" y="24" width="62" height="52" rx="18" fill="#F4F7F6"/>
+  <path d="M35 61 A19 19 0 1 1 66 39" fill="none" stroke="#111827" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="66" cy="39" r="5" fill="#2DA44E"/>
+  <g fill="#111827">
+    <rect x="38" y="45" width="7" height="7" rx="2" opacity=".25"/>
+    <rect x="47" y="45" width="7" height="7" rx="2" opacity=".5"/>
+    <rect x="56" y="45" width="7" height="7" rx="2" opacity=".9"/>
+  </g>
+</svg>

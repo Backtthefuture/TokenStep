@@ -1,0 +1,10 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <title>TokenStep Single Token Core</title>
+  <rect x="6" y="6" width="88" height="88" rx="22" fill="#F7FAF8"/>
+  <circle cx="50" cy="50" r="33" fill="none" stroke="#E7EFEA" stroke-width="8" opacity="0.78"/>
+  <circle cx="50" cy="50" r="33" fill="none" stroke="#2DA44E" stroke-width="8" stroke-linecap="round" stroke-dasharray="150 58" transform="rotate(-82 50 50)"/>
+  <circle cx="73" cy="28" r="5.4" fill="#2DA44E"/>
+  <rect x="39" y="39" width="22" height="22" rx="6" fill="#1F2937"/>
+  <rect x="45" y="45" width="10" height="10" rx="2.5" fill="#F7FAF8"/>
+  <circle cx="61.5" cy="39.5" r="3.2" fill="#2DA44E"/>
+</svg>

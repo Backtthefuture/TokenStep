@@ -6,7 +6,7 @@ struct PopoverPanelView: View {
     @Environment(\.isScreenshotRendering) private var isScreenshotRendering
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             header
             if let error = appState.lastError {
                 ErrorBanner(message: error) {
@@ -17,28 +17,30 @@ struct PopoverPanelView: View {
             if appState.settings.showCodexQuota {
                 PopoverQuotaCard()
             }
+            if appState.settings.showTokenRank {
+                PopoverTokenRankCard()
+            }
             trendCard
             if let update = appState.availableUpdate {
                 UpdateNoticeCard(update: update)
             }
             PopoverFooterView()
         }
-        .padding(20)
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .padding(.bottom, 20)
         .frame(width: 412)
         .background(TokenStepBackdrop())
         .id(appState.appearanceID)
     }
 
     private var header: some View {
-        HStack(spacing: 13) {
-            TokenStepMark(size: 42)
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 12) {
+            TokenStepMark(size: 40)
+            VStack(alignment: .leading, spacing: 0) {
                 Text("TokenStep")
                     .font(.system(size: 24, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
-                Text(L("每日 Token 消耗追踪"))
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.secondary)
             }
             Spacer()
             HStack(spacing: 6) {
@@ -58,6 +60,8 @@ struct PopoverPanelView: View {
                 PopoverCaptureMenuButton(
                     shareTodayAction: { copyShareCard(.today) },
                     shareYesterdayAction: { copyShareCard(.yesterday) },
+                    downloadTodayAction: { downloadShareCard(.today) },
+                    downloadYesterdayAction: { downloadShareCard(.yesterday) },
                     copyPopoverAction: copyPopoverScreenshot,
                     savePopoverAction: savePopoverScreenshot
                 )
@@ -91,6 +95,27 @@ struct PopoverPanelView: View {
 
         do {
             try ScreenshotExporter.copy(
+                ShareDailyCardView(
+                    mode: mode,
+                    day: day,
+                    previousDay: previousDay(before: day)
+                )
+                .environmentObject(appState)
+                .environment(\.isScreenshotRendering, true)
+            )
+        } catch {
+            appState.lastError = error.localizedDescription
+        }
+    }
+
+    private func downloadShareCard(_ mode: ShareCardMode) {
+        guard let day = shareDay(for: mode) else {
+            appState.lastError = mode == .yesterday ? L("还没有昨日数据") : L("等待下一次同步")
+            return
+        }
+
+        do {
+            try ScreenshotExporter.saveJPGToDownloads(
                 ShareDailyCardView(
                     mode: mode,
                     day: day,
@@ -156,6 +181,8 @@ struct PopoverPanelView: View {
 private struct PopoverCaptureMenuButton: View {
     var shareTodayAction: () -> Void
     var shareYesterdayAction: () -> Void
+    var downloadTodayAction: () -> Void
+    var downloadYesterdayAction: () -> Void
     var copyPopoverAction: () -> Void
     var savePopoverAction: () -> Void
 
@@ -171,6 +198,18 @@ private struct PopoverCaptureMenuButton: View {
                 shareYesterdayAction()
             } label: {
                 Label(L("分享昨日成绩"), systemImage: "calendar.badge.clock")
+            }
+
+            Button {
+                downloadTodayAction()
+            } label: {
+                Label(L("下载今日卡片"), systemImage: "arrow.down.circle.fill")
+            }
+
+            Button {
+                downloadYesterdayAction()
+            } label: {
+                Label(L("下载昨日成绩"), systemImage: "arrow.down.doc.fill")
             }
 
             Divider()

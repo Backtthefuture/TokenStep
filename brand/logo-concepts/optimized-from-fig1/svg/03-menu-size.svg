@@ -1,0 +1,11 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <title>TokenStep Menu Size</title>
+  <rect x="6" y="6" width="88" height="88" rx="22" fill="#FFFFFF"/>
+  <circle cx="50" cy="50" r="29" fill="none" stroke="#2DA44E" stroke-width="9" stroke-linecap="round" stroke-dasharray="132 52" transform="rotate(-155 50 50)"/>
+  <circle cx="73" cy="31" r="5.5" fill="#2DA44E"/>
+  <g fill="#1F2937">
+    <rect x="38" y="49" width="8.5" height="8.5" rx="2.4"/>
+    <rect x="49.2" y="49" width="8.5" height="8.5" rx="2.4"/>
+    <rect x="60.4" y="49" width="8.5" height="8.5" rx="2.4"/>
+  </g>
+</svg>

@@ -1,0 +1,13 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <title>TokenStep Step Arc Menu Color Icon</title>
+  <desc>Transparent color icon for compact UI contexts, derived from the selected Step Arc direction.</desc>
+  <g id="daily-progress-arc" transform="translate(0 10)">
+    <path d="M 24.5 58.5 A 30 30 0 1 1 78 52.5" fill="none" stroke="#2DA44E" stroke-width="5.8" stroke-linecap="round"/>
+  </g>
+  <g id="token-steps" transform="translate(0 10)">
+    <rect x="25" y="62" width="8.8" height="8.8" rx="2.2" fill="#9BE9A8"/>
+    <rect x="37.3" y="55" width="9" height="15.8" rx="2.2" fill="#40C463"/>
+    <rect x="49.6" y="47.5" width="9" height="23.3" rx="2.2" fill="#30A14E"/>
+    <rect x="61.9" y="38.5" width="9" height="32.3" rx="2.2" fill="#216E39"/>
+  </g>
+</svg>

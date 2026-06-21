@@ -142,6 +142,96 @@ struct CodexQuotaWindow: Equatable, Identifiable, Codable {
     }
 }
 
+struct TokenRankLeaderboard: Equatable {
+    var fetchedAt: Date
+    var board: String
+    var range: String
+    var entries: [TokenRankEntry]
+
+    var topEntry: TokenRankEntry? {
+        entries.first
+    }
+
+    func entry(matching userID: String) -> TokenRankEntry? {
+        let normalizedID = TokenStepSettings.cleanedTokenRankUserID(userID)
+        guard !normalizedID.isEmpty else { return nil }
+        return entries.first { $0.userID == normalizedID }
+    }
+}
+
+struct TokenRankEntry: Decodable, Equatable, Identifiable {
+    var id: String { userID }
+    var rank: Int
+    var userID: String
+    var name: String
+    var avatar: String?
+    var score: Int
+    var cost: Double
+    var byTool: [String: Int]
+
+    enum CodingKeys: String, CodingKey {
+        case rank
+        case userID = "userId"
+        case name
+        case avatar
+        case score
+        case cost
+        case byTool
+    }
+
+    init(
+        rank: Int,
+        userID: String,
+        name: String,
+        avatar: String?,
+        score: Int,
+        cost: Double,
+        byTool: [String: Int]
+    ) {
+        self.rank = rank
+        self.userID = userID
+        self.name = name
+        self.avatar = avatar
+        self.score = score
+        self.cost = cost
+        self.byTool = byTool
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rank = try container.decode(Int.self, forKey: .rank)
+        userID = try Self.decodeFlexibleString(from: container, forKey: .userID)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? L("匿名用户")
+        avatar = try container.decodeIfPresent(String.self, forKey: .avatar)
+        score = try container.decode(Int.self, forKey: .score)
+        cost = try container.decodeIfPresent(Double.self, forKey: .cost) ?? 0
+        byTool = try container.decodeIfPresent([String: Int].self, forKey: .byTool) ?? [:]
+    }
+
+    private static func decodeFlexibleString(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> String {
+        if let value = try? container.decode(String.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decode(Int.self, forKey: key) {
+            return String(value)
+        }
+        if let value = try? container.decode(Int64.self, forKey: key) {
+            return String(value)
+        }
+        return ""
+    }
+}
+
+struct TokenRankLeaderboardResponse: Decodable {
+    var status: Int?
+    var board: String
+    var range: String
+    var entries: [TokenRankEntry]
+}
+
 enum TokenIslandDisplayPlacement: String, CaseIterable, Identifiable, Codable {
     case automatic = "auto"
     case notchLeft = "notch_left"
@@ -237,6 +327,8 @@ struct TokenStepSettings: Codable {
     var tokenIslandEnabled: Bool
     var tokenIslandPlacement: TokenIslandDisplayPlacement
     var showCodexQuota: Bool
+    var showTokenRank: Bool
+    var tokenRankUserID: String
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
 
@@ -251,6 +343,8 @@ struct TokenStepSettings: Codable {
         case tokenIslandEnabled = "token_island_enabled"
         case tokenIslandPlacement = "token_island_placement"
         case showCodexQuota = "show_codex_quota"
+        case showTokenRank = "show_token_rank"
+        case tokenRankUserID = "token_rank_user_id"
         case language
         case skippedUpdateVersion = "skipped_update_version"
     }
@@ -266,6 +360,8 @@ struct TokenStepSettings: Codable {
         tokenIslandEnabled: true,
         tokenIslandPlacement: .automatic,
         showCodexQuota: false,
+        showTokenRank: false,
+        tokenRankUserID: "",
         language: .system,
         skippedUpdateVersion: nil
     )
@@ -281,6 +377,8 @@ struct TokenStepSettings: Codable {
         tokenIslandEnabled: Bool,
         tokenIslandPlacement: TokenIslandDisplayPlacement,
         showCodexQuota: Bool,
+        showTokenRank: Bool,
+        tokenRankUserID: String,
         language: TokenStepLanguage,
         skippedUpdateVersion: String?
     ) {
@@ -294,8 +392,16 @@ struct TokenStepSettings: Codable {
         self.tokenIslandEnabled = tokenIslandEnabled
         self.tokenIslandPlacement = tokenIslandPlacement
         self.showCodexQuota = showCodexQuota
+        self.showTokenRank = showTokenRank
+        self.tokenRankUserID = Self.cleanedTokenRankUserID(tokenRankUserID)
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
+    }
+
+    static func cleanedTokenRankUserID(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .filter(\.isNumber)
     }
 
     init(from decoder: Decoder) throws {
@@ -319,6 +425,9 @@ struct TokenStepSettings: Codable {
             tokenIslandPlacement = defaults.tokenIslandPlacement
         }
         showCodexQuota = try container.decodeIfPresent(Bool.self, forKey: .showCodexQuota) ?? defaults.showCodexQuota
+        showTokenRank = try container.decodeIfPresent(Bool.self, forKey: .showTokenRank) ?? defaults.showTokenRank
+        let decodedTokenRankUserID = try container.decodeIfPresent(String.self, forKey: .tokenRankUserID) ?? defaults.tokenRankUserID
+        tokenRankUserID = Self.cleanedTokenRankUserID(decodedTokenRankUserID)
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
     }

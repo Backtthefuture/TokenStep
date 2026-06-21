@@ -1,0 +1,17 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <title>TokenStep Daily Orbit App Icon</title>
+  <desc>Recommended flat app icon: a green daily progress ring with equal-size token blocks stepping upward.</desc>
+  <g id="app-tile">
+    <rect x="6" y="6" width="88" height="88" rx="22" fill="#F7FAF8" stroke="#DDE8E1" stroke-width="1.4"/>
+  </g>
+  <g id="progress-ring">
+    <circle cx="50" cy="50" r="32" fill="none" stroke="#E6EFE9" stroke-width="8"/>
+    <circle cx="50" cy="50" r="32" fill="none" stroke="#2DA44E" stroke-width="8" stroke-linecap="round" stroke-dasharray="157 44" transform="rotate(-96 50 50)"/>
+    <circle cx="71.5" cy="26.5" r="5.2" fill="#2DA44E"/>
+  </g>
+  <g id="token-steps" fill="#1F2937">
+    <rect x="34.8" y="55.4" width="10.4" height="10.4" rx="2.6"/>
+    <rect x="46.8" y="49.4" width="10.4" height="10.4" rx="2.6"/>
+    <rect x="58.8" y="43.4" width="10.4" height="10.4" rx="2.6"/>
+  </g>
+</svg>

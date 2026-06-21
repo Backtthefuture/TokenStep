@@ -42,40 +42,26 @@ struct ShareDailyCardView: View {
 
             VStack(alignment: .leading, spacing: 14) {
                 header
-
-                if mode == .today {
-                    shareHero
-                } else {
-                    shareHero
-                }
-
-                HStack(spacing: 10) {
-                    ShareMetricTile(title: L("已完成"), value: lap.completedLapsText, detail: lap.perLapGoalText, symbol: "checkmark.circle.fill")
-                    ShareMetricTile(title: L("消耗金额"), value: TokenStepFormat.money(day.cost), detail: L("仅供参考"), symbol: "dollarsign.circle.fill")
-                    ShareMetricTile(title: L("主力工具"), value: dominantTool, detail: dominantModel, symbol: "sparkles")
-                }
-
+                shareHero
                 ShareBreakdownPanel(
                     title: L(mode == .today ? "今日来源" : "昨日来源"),
                     subtitle: L("颜色代表客户端"),
-                    rows: toolRows
+                    rows: toolRows,
+                    compact: true
                 )
-
-                HStack(alignment: .top, spacing: 12) {
-                    ShareBreakdownPanel(
-                        title: L("主力模型"),
-                        subtitle: L("按 Token 消耗排序"),
-                        rows: modelRows,
-                        compact: true
-                    )
-                    ShareTrendPanel(day: day, rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
-                }
+                ShareBreakdownPanel(
+                    title: L("主力模型"),
+                    subtitle: L("按 Token 消耗排序"),
+                    rows: modelRows,
+                    compact: true
+                )
+                ShareTrendPanel(day: day, rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
 
                 footer
             }
             .padding(28)
         }
-        .frame(width: 600, height: 1067)
+        .frame(width: 600, height: 840)
         .fixedSize()
         .id(appState.appearanceID)
     }
@@ -104,18 +90,18 @@ struct ShareDailyCardView: View {
     }
 
     private var shareHero: some View {
-        ShareCardSurface(padding: 22, cornerRadius: 26) {
+        ShareCardSurface(padding: 20, cornerRadius: 26) {
             HStack(alignment: .center, spacing: 18) {
                 ZStack {
                     Circle()
                         .fill(lap.color.opacity(0.09))
-                        .frame(width: 236, height: 236)
+                        .frame(width: 228, height: 228)
                         .blur(radius: 10)
                     ProgressRingView(progress: lap.currentLapProgress, lineWidth: 20, color: lap.color)
-                        .frame(width: 220, height: 220)
+                        .frame(width: 212, height: 212)
                     VStack(spacing: 7) {
                         Text(dayNumber)
-                            .font(.system(size: 56, weight: .heavy, design: .rounded))
+                            .font(.system(size: 64, weight: .black, design: .rounded))
                             .foregroundStyle(Color.tokenInk)
                             .minimumScaleFactor(0.42)
                             .lineLimit(1)
@@ -125,29 +111,37 @@ struct ShareDailyCardView: View {
                     }
                     .frame(width: 182)
                 }
-                .frame(width: 232, height: 232)
+                .frame(width: 224, height: 224)
 
-                VStack(alignment: .leading, spacing: 9) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(mode.subtitle)
                         .font(.callout.weight(.heavy))
                         .foregroundStyle(.secondary)
-                    Text(dayNumber)
-                        .font(.system(size: 58, weight: .black, design: .rounded))
-                        .foregroundStyle(mode == .today ? lap.color : Color.tokenInk)
-                        .minimumScaleFactor(0.48)
-                        .lineLimit(1)
-                    Text(lap.lapStatusText)
-                        .font(.title3.weight(.heavy))
-                        .foregroundStyle(lap.color)
-                        .lineLimit(1)
-                    Text(mode == .yesterday ? comparisonText : L("今日 Token"))
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                    HStack(alignment: .lastTextBaseline, spacing: 8) {
+                        Text(totalCompletionText)
+                            .font(.system(size: 58, weight: .black, design: .rounded))
+                            .foregroundStyle(lap.color)
+                            .lineLimit(1)
+                        Text(L("总完成度"))
+                            .font(.callout.weight(.heavy))
+                            .foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(lap.completedLapsText)
+                            .font(.title3.weight(.heavy))
+                            .foregroundStyle(Color.tokenInk.opacity(0.78))
+                        Text(lap.perLapGoalText)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        Text(mode == .yesterday ? comparisonText : L("今日 Token"))
+                            .font(.subheadline.weight(.heavy))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: 242)
+            .frame(height: 232)
         }
     }
 
@@ -167,12 +161,44 @@ struct ShareDailyCardView: View {
         TokenStepFormat.tokens(day.totalTokens)
     }
 
+    private var totalCompletionText: String {
+        TokenStepFormat.percent(lap.rawProgress * 100)
+    }
+
     private var dominantTool: String {
         orderedToolEntries(day.tools).first?.name ?? L("无")
     }
 
     private var dominantModel: String {
         day.models.sorted { $0.value > $1.value }.first?.key ?? L("无")
+    }
+
+    private var dominantToolTokens: Int {
+        orderedToolEntries(day.tools).first?.tokens ?? 0
+    }
+
+    private var dominantModelTokens: Int {
+        day.models.sorted { $0.value > $1.value }.first?.value ?? 0
+    }
+
+    private var heroRows: [ShareHeroRow] {
+        [
+            ShareHeroRow(
+                title: L("主力工具"),
+                name: dominantTool,
+                value: dominantToolTokens > 0 ? TokenStepFormat.tokens(dominantToolTokens, compact: true) : "0"
+            ),
+            ShareHeroRow(
+                title: L("主力模型"),
+                name: dominantModel,
+                value: dominantModelTokens > 0 ? TokenStepFormat.tokens(dominantModelTokens, compact: true) : "0"
+            ),
+            ShareHeroRow(
+                title: L("消耗金额"),
+                name: TokenStepFormat.money(day.cost),
+                value: L("仅供参考")
+            )
+        ]
     }
 
     private var comparisonText: String {
@@ -254,6 +280,46 @@ private struct ShareBreakdownRow: Identifiable {
     var color: Color
 }
 
+private struct ShareHeroRow {
+    var title: String
+    var name: String
+    var value: String
+}
+
+private struct ShareHeroRankRow: View {
+    var index: Int
+    var row: ShareHeroRow
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text("\(index)")
+                .font(.caption2.weight(.black))
+                .foregroundStyle(Color.tokenGreenDark)
+                .frame(width: 22, height: 22)
+                .background(Color.tokenMint.opacity(0.35), in: Circle())
+            HStack(spacing: 3) {
+                Text(row.title)
+                    .foregroundStyle(.secondary)
+                Text(row.name)
+                    .foregroundStyle(Color.tokenInk)
+            }
+            .font(.caption.weight(.heavy))
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            Spacer(minLength: 8)
+            Text(row.value)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(row.value == L("仅供参考") ? .secondary : Color.tokenInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 34)
+        .background(Color.tokenSurface.opacity(0.72), in: Capsule())
+        .overlay(Capsule().stroke(Color.black.opacity(0.045)))
+    }
+}
+
 private struct ShareBreakdownPanel: View {
     var title: String
     var subtitle: String
@@ -282,10 +348,10 @@ private struct ShareBreakdownPanel: View {
                                 .fill(row.color)
                                 .frame(width: 7, height: 7)
                             Text(row.name)
-                                .font(.caption.weight(.bold))
+                                .font((compact ? Font.subheadline : Font.caption).weight(.bold))
                                 .foregroundStyle(Color.tokenInk.opacity(0.76))
                                 .lineLimit(1)
-                                .frame(width: compact ? 70 : 102, alignment: .leading)
+                                .frame(width: compact ? 104 : 102, alignment: .leading)
                             GeometryReader { proxy in
                                 ZStack(alignment: .leading) {
                                     Capsule().fill(Color.tokenTrack)
@@ -296,16 +362,19 @@ private struct ShareBreakdownPanel: View {
                             }
                             .frame(height: 7)
                             Text(row.value)
-                                .font(.caption.weight(.heavy))
+                                .font((compact ? Font.subheadline : Font.caption).weight(.heavy))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .monospacedDigit()
-                                .frame(width: compact ? 58 : 70, alignment: .trailing)
+                                .frame(width: compact ? 72 : 70, alignment: .trailing)
                         }
-                        .frame(height: compact ? 20 : 23)
+                        .frame(height: compact ? 25 : 23)
                     }
                 }
-                .frame(minHeight: compact ? 90 : 104, alignment: .top)
+                .frame(
+                    minHeight: max(compact ? 25 : 52, CGFloat(rows.count) * (compact ? 25 : 23)),
+                    alignment: .top
+                )
             }
         }
     }
@@ -338,7 +407,7 @@ private struct ShareTrendPanel: View {
                 }
 
                 StackedActivityBarsView(rows: rows, goal: goal)
-                    .frame(height: 92)
+                    .frame(height: 84)
             }
         }
     }

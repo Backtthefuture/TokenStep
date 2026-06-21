@@ -1,0 +1,16 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <title>TokenStep Compact Orbit App Icon</title>
+  <desc>Small-size app icon candidate with fewer interior details and a heavy, readable orbit silhouette.</desc>
+  <g id="app-tile">
+    <rect x="6" y="6" width="88" height="88" rx="22" fill="#FFFFFF" stroke="#DDE8E1" stroke-width="1.4"/>
+  </g>
+  <g id="progress-ring">
+    <circle cx="50" cy="50" r="30" fill="none" stroke="#2DA44E" stroke-width="9" stroke-linecap="round" stroke-dasharray="137 52" transform="rotate(-154 50 50)"/>
+    <circle cx="72.5" cy="30.5" r="5.3" fill="#2DA44E"/>
+  </g>
+  <g id="token-row" fill="#1F2937">
+    <rect x="36.6" y="49.6" width="8.8" height="8.8" rx="2.4"/>
+    <rect x="48" y="49.6" width="8.8" height="8.8" rx="2.4"/>
+    <rect x="59.4" y="49.6" width="8.8" height="8.8" rx="2.4"/>
+  </g>
+</svg>

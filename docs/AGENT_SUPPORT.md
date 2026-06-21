@@ -9,6 +9,29 @@ TokenStep 的原则是：能从本地日志中稳定读到 token 数，才进入
 | Codex | 已支持 | `~/.codex/sessions` / `~/.codex/archived_sessions`，必要时回退 SQLite | 读取本地 token_count 事件，只统计数量；可选读取 5h / 7d 额度。 |
 | Claude Code | 已支持 | `~/.claude/projects` | 读取 assistant message 的 usage 字段，只统计数量；可选通过 Claude Code 本机钥匙串凭证读取 usage 额度。 |
 
+## 实验支持：CC Switch Proxy
+
+TokenStep 对 CC Switch 的支持定位为实验性的高级统计来源，source 名称为 `CC Switch Proxy`。它用于识别 Claude Code / Codex / Gemini 等客户端通过 CC Switch 或类似第三方模型路由工具发起真实代理请求时的 token、上游计费模型和成本。
+
+默认主统计仍以 Codex 与 Claude Code 的本地原生日志为准。CC Switch Proxy 不会把数据写回原生 `Codex` / `Claude Code` 口径，而是使用独立客户端名：
+
+- `claude` -> `Claude Code via CC Switch`
+- `codex` -> `Codex via CC Switch`
+- `gemini` -> `Gemini via CC Switch`
+- 其他 `app_type` 会保留原值并追加 experimental 标记
+
+当前 MVP 只读 `~/.cc-switch/cc-switch.db` 的 `proxy_request_logs` 表，并且只统计：
+
+- `coalesce(data_source, 'proxy') = 'proxy'`
+- `status_code >= 200 and status_code < 300`
+- `input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens > 0`
+
+Token 总量口径为 `input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens`。模型显示优先使用 `pricing_model`，其次是 `model`、`request_model`，都为空时显示 `unknown`。成本使用 CC Switch 写入的 `total_cost_usd`。
+
+为了避免和 TokenStep 已有 Codex / Claude Code 原生日志重复，TokenStep 默认不读取 CC Switch 的 session 导入数据，也不使用 `usage_daily_rollups` 作为 MVP 主数据源。`usage_daily_rollups` 缺少 `data_source` 维度，后续如果要支持历史 rollup，必须先确认去重策略和来源边界。
+
+TokenStep 只使用 SQLite 只读访问，不修改 CC Switch 配置，不开启代理接管。只有用户在 CC Switch 中开启 local routing 并实际产生代理请求后，`proxy_request_logs` 才会出现真实 proxy rows；如果数据库存在但没有真实 proxy rows，source status 会显示为 `missing_proxy_rows`。
+
 ## 已参考的项目
 
 ### CodeIsland
@@ -32,10 +55,10 @@ TokenStep 采用：
 - 对 Claude Code 一类工具，代理层可以看到更完整的请求上下文。
 - 对 OpenAI 兼容接口，流式返回如果没有打开 `stream_options.include_usage`，usage 可能缺失。
 
-TokenStep 暂不采用代理方案：
+TokenStep 不主动接管代理：
 
 - 当前定位是 local-first、低打扰、不开代理。
-- 后续如果做“高级统计模式”，可以考虑可选代理，但必须单独授权。
+- CC Switch Proxy 只作为实验数据来源读取真实代理请求元数据，必须单独和原生统计区分。
 
 ### TokenTracker
 

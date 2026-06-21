@@ -25,6 +25,10 @@ let package = Package(
                 "TokenStepSwift/Services/DataService.swift",
                 "TokenStepHelper/main.swift"
             ]
+        ),
+        .testTarget(
+            name: "TokenStepSwiftTests",
+            dependencies: ["TokenStepSwift"]
         )
     ]
 )

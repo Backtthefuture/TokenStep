@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenStep Figure 1 Optimization</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #111827;
+      --muted: #667085;
+      --line: #e7edf0;
+      --canvas: #f6f8fa;
+      --surface: #ffffff;
+      --green: #2da44e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+      background: var(--canvas);
+      color: var(--ink);
+    }
+    header {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 44px 24px 18px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 34px;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+    .lead {
+      margin: 0;
+      max-width: 760px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 16px 24px 48px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
+      gap: 16px;
+    }
+    article {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .mark {
+      height: 186px;
+      display: grid;
+      place-items: center;
+      background: #ffffff;
+      border: 1px solid #edf2f1;
+      border-radius: 8px;
+    }
+    .mark img {
+      width: 146px;
+      height: 146px;
+      object-fit: contain;
+    }
+    h2 {
+      margin: 14px 0 7px;
+      font-size: 16px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 13px;
+      min-height: 56px;
+    }
+    a {
+      color: var(--green);
+      font-weight: 650;
+      font-size: 13px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TokenStep Figure 1 Optimization</h1>
+    <p class="lead">Five solid-color refinements of the green progress orbit direction. The aim is less visual noise, stronger small-size silhouette, and a more intentional relationship between the ring, endpoint, and token core.</p>
+  </header>
+  <main>
+    <article>
+      <div class="mark"><img src="png/01-balanced-orbit.png" alt="Balanced Orbit"></div>
+      <h2>01 Balanced Orbit</h2>
+      <p>Closest to figure 1, but reduced to a cleaner 2x2 token core.</p>
+      <a href="svg/01-balanced-orbit.svg">SVG</a>
+    </article>
+    <article>
+      <div class="mark"><img src="png/02-integrated-endpoint.png" alt="Integrated Endpoint"></div>
+      <h2>02 Integrated Endpoint</h2>
+      <p>Endpoint reads as part of the progress system, not a loose dot.</p>
+      <a href="svg/02-integrated-endpoint.svg">SVG</a>
+    </article>
+    <article>
+      <div class="mark"><img src="png/03-menu-size.png" alt="Menu Size"></div>
+      <h2>03 Menu Size</h2>
+      <p>Most compact option for tiny menu-bar or favicon contexts.</p>
+      <a href="svg/03-menu-size.svg">SVG</a>
+    </article>
+    <article>
+      <div class="mark"><img src="png/04-single-token-core.png" alt="Single Token Core"></div>
+      <h2>04 Single Token Core</h2>
+      <p>More ownable: one token core instead of a generic grid.</p>
+      <a href="svg/04-single-token-core.svg">SVG</a>
+    </article>
+    <article>
+      <div class="mark"><img src="png/05-token-cluster.png" alt="Token Cluster"></div>
+      <h2>05 Token Cluster</h2>
+      <p>Keeps the grid language, but adds a single green token accent.</p>
+      <a href="svg/05-token-cluster.svg">SVG</a>
+    </article>
+  </main>
+</body>
+</html>

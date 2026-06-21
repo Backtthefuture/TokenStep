@@ -1,0 +1,11 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <title>TokenStep Menu Bar Template Icon</title>
+  <desc>Monochrome template icon using currentColor for macOS menu bar rendering.</desc>
+  <g id="template-mark" fill="currentColor" stroke="currentColor">
+    <circle cx="50" cy="50" r="31" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="141 54" transform="rotate(-154 50 50)"/>
+    <circle cx="73" cy="30" r="5.6" stroke="none"/>
+    <rect x="36.6" y="49.5" width="8.8" height="8.8" rx="2.3" stroke="none"/>
+    <rect x="48" y="49.5" width="8.8" height="8.8" rx="2.3" stroke="none"/>
+    <rect x="59.4" y="49.5" width="8.8" height="8.8" rx="2.3" stroke="none"/>
+  </g>
+</svg>

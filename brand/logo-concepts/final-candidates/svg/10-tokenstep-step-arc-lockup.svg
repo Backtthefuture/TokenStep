@@ -1,0 +1,18 @@
+<svg viewBox="0 0 380 100" xmlns="http://www.w3.org/2000/svg">
+  <title>TokenStep Step Arc Horizontal Lockup</title>
+  <desc>Horizontal lockup using the selected Step Arc mark for README and website display.</desc>
+  <g id="mark">
+    <rect x="11" y="11" width="78" height="78" rx="19.5" fill="#FBFCFB" stroke="#EEF3F1" stroke-width="1.2"/>
+    <g transform="translate(0 8)">
+      <path d="M 28 58 A 26 26 0 1 1 73 53" fill="none" stroke="#2DA44E" stroke-width="5.2" stroke-linecap="round"/>
+      <rect x="30.4" y="61.5" width="7.6" height="7.6" rx="1.9" fill="#9BE9A8"/>
+      <rect x="41" y="55.4" width="7.8" height="13.7" rx="1.9" fill="#40C463"/>
+      <rect x="51.6" y="48.9" width="7.8" height="20.2" rx="1.9" fill="#30A14E"/>
+      <rect x="62.2" y="41.1" width="7.8" height="28" rx="1.9" fill="#216E39"/>
+    </g>
+  </g>
+  <g id="wordmark" fill="#111827" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif">
+    <text x="112" y="47" font-size="31" font-weight="760">TokenStep</text>
+    <text x="114" y="67" font-size="12" font-weight="650" fill="#667085">Daily token progress</text>
+  </g>
+</svg>

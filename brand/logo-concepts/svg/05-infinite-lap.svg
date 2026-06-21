@@ -1,0 +1,10 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" color="#F59E0B">
+  <title>TokenStep Infinite Lap</title>
+  <path d="M24 52 C24 35 42 35 50 50 C58 65 76 65 76 48 C76 35 60 35 50 50 C40 65 24 65 24 52 Z" fill="none" stroke="#F2E7D5" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M24 52 C24 35 42 35 50 50 C58 65 76 65 76 48" fill="none" stroke="#F59E0B" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#F59E0B">
+    <rect x="44" y="44" width="12" height="12" rx="3"/>
+    <circle cx="76" cy="48" r="5"/>
+    <circle cx="24" cy="52" r="3.5" opacity=".45"/>
+  </g>
+</svg>

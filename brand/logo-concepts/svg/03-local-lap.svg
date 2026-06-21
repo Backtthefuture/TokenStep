@@ -1,0 +1,8 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" color="#52525B">
+  <title>TokenStep Local Lap</title>
+  <circle cx="50" cy="50" r="36" fill="none" stroke="#E7E7EB" stroke-width="8"/>
+  <path d="M50 14 A36 36 0 0 1 84 62" fill="none" stroke="#52525B" stroke-width="8" stroke-linecap="round"/>
+  <path d="M32 43 L50 31 L68 43 V63 C68 66.3 65.3 69 62 69 H38 C34.7 69 32 66.3 32 63 Z" fill="#52525B"/>
+  <rect x="42" y="47" width="16" height="16" rx="4" fill="#FFFFFF" opacity=".92"/>
+  <circle cx="80" cy="63" r="5" fill="#52525B"/>
+</svg>

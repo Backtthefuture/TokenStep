@@ -53,43 +53,46 @@ struct TokenStepMark: View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
                 .fill(Color.tokenSurface)
-                .shadow(color: Color.tokenGreenDark.opacity(0.16), radius: size * 0.22, x: 0, y: size * 0.12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                        .stroke(Color.black.opacity(0.05), lineWidth: max(0.8, size * 0.015))
+                )
 
-            Circle()
-                .stroke(Color.tokenTrack, style: StrokeStyle(lineWidth: size * 0.075, lineCap: .round))
-                .frame(width: size * 0.66, height: size * 0.66)
+            StepArcLogoShape()
+                .stroke(
+                    Color(red: 45 / 255, green: 164 / 255, blue: 78 / 255),
+                    style: StrokeStyle(lineWidth: size * 0.058, lineCap: .round)
+                )
+                .frame(width: size, height: size)
 
-            Circle()
-                .trim(from: 0, to: 0.72)
-                .stroke(Color.tokenGreen, style: StrokeStyle(lineWidth: size * 0.075, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .frame(width: size * 0.66, height: size * 0.66)
-
-            VStack(spacing: size * 0.045) {
-                HStack(spacing: size * 0.045) {
-                    roundedDot(opacity: 0.34)
-                    roundedDot(opacity: 0.70)
-                    roundedDot(opacity: 0.34)
-                }
-                HStack(spacing: size * 0.045) {
-                    roundedDot(opacity: 0.70)
-                    roundedDot(opacity: 1.00)
-                    roundedDot(opacity: 0.70)
-                }
-                HStack(spacing: size * 0.045) {
-                    roundedDot(opacity: 0.34)
-                    roundedDot(opacity: 0.70)
-                    roundedDot(opacity: 0.34)
-                }
-            }
+            stepBlock(x: 0.250, y: 0.720, width: 0.088, height: 0.088, color: Color(red: 155 / 255, green: 233 / 255, blue: 168 / 255))
+            stepBlock(x: 0.373, y: 0.650, width: 0.090, height: 0.158, color: Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255))
+            stepBlock(x: 0.496, y: 0.575, width: 0.090, height: 0.233, color: Color(red: 48 / 255, green: 161 / 255, blue: 78 / 255))
+            stepBlock(x: 0.619, y: 0.485, width: 0.090, height: 0.323, color: Color(red: 33 / 255, green: 110 / 255, blue: 57 / 255))
         }
         .frame(width: size, height: size)
     }
 
-    private func roundedDot(opacity: Double) -> some View {
-        RoundedRectangle(cornerRadius: size * 0.035, style: .continuous)
-            .fill(Color.tokenGreen.opacity(opacity))
-            .frame(width: size * 0.095, height: size * 0.095)
+    private func stepBlock(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, color: Color) -> some View {
+        RoundedRectangle(cornerRadius: size * 0.022, style: .continuous)
+            .fill(color)
+            .frame(width: size * width, height: size * height)
+            .position(x: size * (x + width / 2), y: size * (y + height / 2))
+    }
+}
+
+private struct StepArcLogoShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let unit = min(rect.width, rect.height)
+        var path = Path()
+        path.addArc(
+            center: CGPoint(x: rect.minX + unit * 0.505, y: rect.minY + unit * 0.68),
+            radius: unit * 0.31,
+            startAngle: .degrees(180),
+            endAngle: .degrees(350),
+            clockwise: false
+        )
+        return path
     }
 }
 

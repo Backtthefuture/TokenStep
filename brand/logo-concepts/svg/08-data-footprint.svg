@@ -1,0 +1,11 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" color="#216E39">
+  <title>TokenStep Data Footprint</title>
+  <path d="M31 70 A31 31 0 1 1 70 26" fill="none" stroke="#E7EFEA" stroke-width="9" stroke-linecap="round"/>
+  <g fill="#216E39">
+    <rect x="38" y="29" width="14" height="14" rx="4" opacity=".38"/>
+    <rect x="53" y="37" width="14" height="14" rx="4" opacity=".58"/>
+    <rect x="40" y="51" width="16" height="16" rx="4" opacity=".82"/>
+    <rect x="56" y="60" width="18" height="18" rx="5"/>
+  </g>
+  <path d="M31 70 A31 31 0 0 0 58 81" fill="none" stroke="#216E39" stroke-width="7" stroke-linecap="round" opacity=".9"/>
+</svg>
