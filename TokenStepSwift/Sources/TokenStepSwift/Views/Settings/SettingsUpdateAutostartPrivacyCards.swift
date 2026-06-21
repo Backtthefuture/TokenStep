@@ -90,17 +90,34 @@ struct SettingsUpdateCard: View {
                         tint: appState.availableUpdate == nil ? .tokenGreen : .tokenGreenDark
                     )
 
-                    Button {
-                        appState.checkForUpdates(silent: false)
-                    } label: {
-                        Text(appState.isCheckingForUpdates ? L("检查中") : L("检查更新"))
-                            .font(.caption.weight(.heavy))
-                            .frame(width: 76, height: 34)
-                    }
-                    .buttonStyle(SettingsSecondaryButtonStyle())
-                    .disabled(appState.isCheckingForUpdates)
+                    updateActionButton
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var updateActionButton: some View {
+        if appState.availableUpdate != nil {
+            Button {
+                appState.showUpdateDetails()
+            } label: {
+                Text(appState.isDownloadingUpdate ? L("安装中") : L("立即更新"))
+                    .font(.caption.weight(.heavy))
+                    .frame(width: 86, height: 34)
+            }
+            .buttonStyle(SettingsPrimaryButtonStyle())
+            .disabled(appState.isDownloadingUpdate)
+        } else {
+            Button {
+                appState.checkForUpdates(silent: false)
+            } label: {
+                Text(appState.isCheckingForUpdates ? L("检查中") : L("检查更新"))
+                    .font(.caption.weight(.heavy))
+                    .frame(width: 76, height: 34)
+            }
+            .buttonStyle(SettingsSecondaryButtonStyle())
+            .disabled(appState.isCheckingForUpdates)
         }
     }
 

@@ -43,23 +43,30 @@ struct SettingsCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
                 Image(systemName: symbol)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.tokenGreenDark)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 30, height: 30)
                     .background(Color.tokenMint.opacity(0.22), in: Circle())
                 Text(title)
-                    .font(.title3.weight(.heavy))
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
                 Spacer()
             }
+            .frame(height: 32, alignment: .center)
 
             content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            Spacer(minLength: 0)
         }
-        .padding(22)
+        .padding(.horizontal, 22)
+        .padding(.top, 20)
+        .padding(.bottom, 22)
         .frame(height: 238)
         .frame(maxWidth: .infinity)
         .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -186,8 +193,10 @@ struct PresetChip: View {
             Text(title)
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(selected ? Color.white : Color.tokenInk.opacity(0.72))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity)
+                .frame(height: 33)
                 .background(selected ? Color.tokenGreen : Color.tokenTrack.opacity(0.45), in: Capsule())
                 .overlay(Capsule().stroke(selected ? Color.clear : Color.black.opacity(0.045)))
         }

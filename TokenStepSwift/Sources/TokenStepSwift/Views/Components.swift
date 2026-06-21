@@ -50,6 +50,40 @@ struct TokenStepMark: View {
     var size: CGFloat = 48
 
     var body: some View {
+        if let icon = TokenStepAppIconImage.image {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(1, contentMode: .fit)
+                .frame(width: size, height: size)
+        } else {
+            TokenStepVectorMark(size: size)
+        }
+    }
+}
+
+private enum TokenStepAppIconImage {
+    static var image: NSImage? {
+        if let url = Bundle.main.url(forResource: "TokenStepIcon", withExtension: "icns"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+
+        if let image = NSImage(named: "TokenStepIcon") {
+            return image
+        }
+
+        if let fallback = NSApp.applicationIconImage, fallback.isValid {
+            return fallback
+        }
+        return nil
+    }
+}
+
+private struct TokenStepVectorMark: View {
+    var size: CGFloat
+
+    var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
                 .fill(Color.tokenSurface)
