@@ -7,14 +7,14 @@ PRODUCT_NAME="TokenStepSwift"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
 APP_BUNDLE="$SWIFT_DIR/dist/$APP_NAME.app"
 RELEASE_DIR="$ROOT_DIR/release"
-VERSION="${TOKENSTEP_VERSION:-0.1.30}"
+VERSION="${TOKENSTEP_VERSION:-0.1.31}"
 IDENTITY="${CODE_SIGN_IDENTITY:-}"
 NOTARIZE=false
 
 usage() {
   cat <<'USAGE'
 Usage:
-  TOKENSTEP_VERSION=0.1.30 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./script/package_release.sh [--notarize]
+  TOKENSTEP_VERSION=0.1.31 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./script/package_release.sh [--notarize]
 
 Notarization credentials, choose one:
   TOKENSTEP_NOTARY_PROFILE="notarytool-profile"

@@ -39,6 +39,13 @@ enum UsageCollector {
         )
     }
 
+    static func collectClaudeCodeUsageSnapshot(rootURL: URL) -> UsageSnapshot {
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        let result = collectClaudeCode(cache: &cache, livePaths: &livePaths, rootURL: rootURL, modifiedSince: nil)
+        return aggregate(records: result.records, sources: ["Claude Code": result.source])
+    }
+
     private static func collectCodex(cache: inout CollectorCache, livePaths: inout Set<String>, modifiedSince cutoffDate: Date?) -> CollectorResult {
         let jsonlResult = collectCodexFromJSONL(cache: &cache, livePaths: &livePaths, modifiedSince: cutoffDate)
         if jsonlResult.source.status == "ok" {
@@ -188,12 +195,16 @@ enum UsageCollector {
         )
     }
 
-    private static func collectClaudeCode(cache: inout CollectorCache, livePaths: inout Set<String>, modifiedSince cutoffDate: Date?) -> CollectorResult {
-        let root = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/projects", isDirectory: true)
+    private static func collectClaudeCode(
+        cache: inout CollectorCache,
+        livePaths: inout Set<String>,
+        rootURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/projects", isDirectory: true),
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let root = rootURL
         let paths = jsonlFiles(under: root, modifiedSince: cutoffDate)
         var records: [UsageRecord] = []
-        var seen = Set<String>()
 
         for path in paths.sorted(by: { $0.path < $1.path }) {
             livePaths.insert(path.path)
@@ -203,6 +214,7 @@ enum UsageCollector {
             }
 
             var fileRecords: [UsageRecord] = []
+            var responses = [String: ClaudeUsageCandidate]()
             guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
 
             var lineNumber = 0
@@ -225,20 +237,23 @@ enum UsageCollector {
                         return
                     }
 
-                    let unique = (obj["uuid"] as? String) ?? "\(path.path):\(lineNumber)"
-                    guard !seen.contains(unique) else { return }
-                    seen.insert(unique)
-                    fileRecords.append(
-                        UsageRecord(
-                            date: day,
-                            timestamp: timestamp,
-                            tool: "Claude Code",
-                            model: modelKey(message["model"] as? String),
-                            usage: usage
-                        )
+                    let responseKey = claudeResponseKey(obj: obj, message: message, path: path, lineNumber: lineNumber)
+                    let candidate = ClaudeUsageCandidate(
+                        date: day,
+                        timestamp: timestamp,
+                        model: modelKey(message["model"] as? String),
+                        usage: usage,
+                        hasStopReason: hasStopReason(message["stop_reason"]),
+                        lineNumber: lineNumber
                     )
+                    if let existing = responses[responseKey],
+                       !candidate.isPreferred(over: existing) {
+                        return
+                    }
+                    responses[responseKey] = candidate
                 }
             }
+            fileRecords = responses.values.map(\.record)
             let compactedFileRecords = compactRecords(fileRecords)
             records.append(contentsOf: compactedFileRecords)
             updateCache(path: path, tool: "Claude Code", records: compactedFileRecords, cache: &cache)
@@ -312,6 +327,9 @@ enum UsageCollector {
             )
         }
 
+        let dataSourceFilter = availableColumns.contains("data_source")
+            ? "and coalesce(nullif(data_source, ''), 'proxy') = 'proxy'"
+            : ""
         let query = """
         select
             created_at,
@@ -325,6 +343,7 @@ enum UsageCollector {
         from proxy_request_logs
         where status_code >= 200
             and status_code < 300
+            \(dataSourceFilter)
             and (
                 coalesce(input_tokens, 0)
                 + coalesce(output_tokens, 0)
@@ -730,6 +749,33 @@ enum UsageCollector {
         return value.isEmpty ? "unknown" : value
     }
 
+    private static func claudeResponseKey(
+        obj: [String: Any],
+        message: [String: Any],
+        path: URL,
+        lineNumber: Int
+    ) -> String {
+        for value in [
+            message["id"] as? String,
+            obj["requestId"] as? String,
+            obj["request_id"] as? String
+        ] {
+            if let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "response:\(value)"
+            }
+        }
+        if let uuid = obj["uuid"] as? String,
+           !uuid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "uuid:\(uuid)"
+        }
+        return "line:\(path.path):\(lineNumber)"
+    }
+
+    private static func hasStopReason(_ value: Any?) -> Bool {
+        guard let text = value as? String else { return false }
+        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private static func ccSwitchToolName(appType: String?) -> String {
         let value = (appType ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = value.lowercased()
@@ -861,7 +907,7 @@ private struct CollectorResult {
 }
 
 private struct CollectorCache: Codable {
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     var version = currentVersion
     var files: [String: CachedUsageFile] = [:]
@@ -887,6 +933,35 @@ private struct CompactRecordKey: Hashable {
     var date: String
     var tool: String
     var model: String
+}
+
+private struct ClaudeUsageCandidate {
+    var date: String
+    var timestamp: String
+    var model: String
+    var usage: TokenUsageCounts
+    var hasStopReason: Bool
+    var lineNumber: Int
+
+    var record: UsageRecord {
+        UsageRecord(
+            date: date,
+            timestamp: timestamp,
+            tool: "Claude Code",
+            model: model,
+            usage: usage
+        )
+    }
+
+    func isPreferred(over other: ClaudeUsageCandidate) -> Bool {
+        if hasStopReason != other.hasStopReason {
+            return hasStopReason
+        }
+        if timestamp != other.timestamp {
+            return timestamp > other.timestamp
+        }
+        return lineNumber > other.lineNumber
+    }
 }
 
 private struct TokenUsageCounts: Codable {

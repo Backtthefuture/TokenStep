@@ -279,8 +279,7 @@ def collect_codex_from_threads() -> list[dict[str, Any]]:
 
 def collect_claude_code() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     paths = glob.glob(str(Path.home() / ".claude" / "projects" / "**" / "*.jsonl"), recursive=True)
-    records: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    responses: dict[str, tuple[int, str, dict[str, Any]]] = {}
     files_read = 0
 
     for path in sorted(paths):
@@ -303,23 +302,30 @@ def collect_claude_code() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                     day = date_from_iso(obj.get("timestamp"))
                     if not day:
                         continue
-                    unique = obj.get("uuid") or f"{path}:{line_no}"
-                    if unique in seen:
+                    message_id = message.get("id")
+                    if isinstance(message_id, str) and message_id.strip():
+                        unique = f"message:{message_id}"
+                    else:
+                        unique = obj.get("uuid") or f"{path}:{line_no}"
+                        unique = f"uuid:{unique}"
+                    has_stop_reason = bool(str(message.get("stop_reason") or "").strip())
+                    priority = 1 if has_stop_reason else 0
+                    existing = responses.get(unique)
+                    if existing and existing[0] > priority:
                         continue
-                    seen.add(unique)
-                    records.append(
-                        {
-                            "date": day,
-                            "timestamp": obj.get("timestamp"),
-                            "tool": "Claude Code",
-                            "model": model_key(message.get("model")),
-                            "usage": usage,
-                            "source": "claude-jsonl",
-                        }
-                    )
+                    record = {
+                        "date": day,
+                        "timestamp": obj.get("timestamp"),
+                        "tool": "Claude Code",
+                        "model": model_key(message.get("model")),
+                        "usage": usage,
+                        "source": "claude-jsonl",
+                    }
+                    responses[unique] = (priority, str(obj.get("timestamp") or ""), record)
         except Exception:
             continue
 
+    records = [item[2] for item in responses.values()]
     return records, {"status": "ok" if records else "missing", "files": files_read, "records": len(records)}
 
 
