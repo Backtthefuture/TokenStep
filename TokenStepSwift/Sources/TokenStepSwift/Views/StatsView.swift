@@ -11,6 +11,8 @@ struct StatsView: View {
                 StatHeroMetric(label: L("活跃天数"), value: localizedDays(appState.snapshot.totals.activeDays), symbol: "flame")
             }
 
+            recentActivityCard
+
             HStack(alignment: .top, spacing: 22) {
                 usageList(title: L("按客户端"), subtitle: L("累计总量分布"), rows: appState.snapshot.tools.map {
                     UsageStatRow(name: $0.tool, value: $0.tokens, percent: $0.percentValue, color: $0.displayColor)
@@ -18,6 +20,34 @@ struct StatsView: View {
                 usageList(title: L("按模型"), subtitle: "Top \(min(appState.snapshot.models.count, 10)) / \(appState.snapshot.models.count)", rows: appState.snapshot.models.prefix(10).map {
                     UsageStatRow(name: $0.model, value: $0.tokens, percent: $0.percentValue, color: $0.displayColor)
                 })
+            }
+        }
+    }
+
+    private var recentActivityCard: some View {
+        TokenCard {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L("最近 30 天"))
+                            .font(.title3.weight(.heavy))
+                            .foregroundStyle(Color.tokenInk)
+                        Text(L("柱越高，用量越多；颜色代表客户端"))
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    TokenToolLegend(tools: recentTools, showsGoalLine: true)
+                    Text(LFormat("今天 %@", TokenStepFormat.tokens(appState.today.totalTokens, compact: true)))
+                        .font(.callout.weight(.bold))
+                        .foregroundStyle(Color.tokenGreenDark)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Color.tokenMint.opacity(0.28), in: Capsule())
+                }
+
+                StackedActivityBarsView(rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
+                    .frame(height: 96)
             }
         }
     }
@@ -57,6 +87,10 @@ struct StatsView: View {
 
     private func localizedDays(_ count: Int) -> String {
         TokenStepLocalization.language == .en ? "\(count)d" : "\(count) 天"
+    }
+
+    private var recentTools: [String] {
+        uniqueToolNames(in: Array(appState.snapshot.daily.suffix(30)))
     }
 }
 

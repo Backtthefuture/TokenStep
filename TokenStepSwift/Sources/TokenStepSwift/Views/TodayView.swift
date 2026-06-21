@@ -8,30 +8,6 @@ struct TodayView: View {
             hero
             todayBreakdownStrip
             metricStrip
-            TokenCard {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(L("最近 30 天"))
-                                .font(.title3.weight(.heavy))
-                                .foregroundStyle(Color.tokenInk)
-                            Text(L("柱越高，用量越多；颜色代表客户端"))
-                                .font(.callout.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        TokenToolLegend(tools: recentTools, showsGoalLine: true)
-                        Text(LFormat("今天 %@", TokenStepFormat.tokens(appState.today.totalTokens, compact: true)))
-                            .font(.callout.weight(.bold))
-                            .foregroundStyle(Color.tokenGreenDark)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(Color.tokenMint.opacity(0.28), in: Capsule())
-                    }
-                    StackedActivityBarsView(rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
-                        .frame(height: 96)
-                }
-            }
         }
     }
 
@@ -134,10 +110,6 @@ struct TodayView: View {
 
     private var todayModelRows: [TodayBreakdownRow] {
         breakdownRows(from: appState.today.models) { _ in nil }
-    }
-
-    private var recentTools: [String] {
-        uniqueToolNames(in: Array(appState.snapshot.daily.suffix(30)))
     }
 
     private func breakdownRows(from values: [String: Int], color: (String) -> Color?) -> [TodayBreakdownRow] {

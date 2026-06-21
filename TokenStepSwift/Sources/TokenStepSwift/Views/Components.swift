@@ -92,17 +92,22 @@ private struct TokenStepVectorMark: View {
                         .stroke(Color.black.opacity(0.05), lineWidth: max(0.8, size * 0.015))
                 )
 
-            StepArcLogoShape()
+            SelectedAppIconArcShape()
                 .stroke(
-                    Color(red: 45 / 255, green: 164 / 255, blue: 78 / 255),
-                    style: StrokeStyle(lineWidth: size * 0.058, lineCap: .round)
+                    Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255),
+                    style: StrokeStyle(lineWidth: size * 0.074, lineCap: .round, lineJoin: .round)
                 )
                 .frame(width: size, height: size)
 
-            stepBlock(x: 0.250, y: 0.720, width: 0.088, height: 0.088, color: Color(red: 155 / 255, green: 233 / 255, blue: 168 / 255))
-            stepBlock(x: 0.373, y: 0.650, width: 0.090, height: 0.158, color: Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255))
-            stepBlock(x: 0.496, y: 0.575, width: 0.090, height: 0.233, color: Color(red: 48 / 255, green: 161 / 255, blue: 78 / 255))
-            stepBlock(x: 0.619, y: 0.485, width: 0.090, height: 0.323, color: Color(red: 33 / 255, green: 110 / 255, blue: 57 / 255))
+            Circle()
+                .fill(Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255))
+                .frame(width: size * 0.105, height: size * 0.105)
+                .position(x: size * 0.707, y: size * 0.311)
+
+            stepBlock(x: 0.285, y: 0.625, width: 0.074, height: 0.076, color: Color(red: 155 / 255, green: 233 / 255, blue: 168 / 255))
+            stepBlock(x: 0.393, y: 0.533, width: 0.074, height: 0.168, color: Color(red: 64 / 255, green: 196 / 255, blue: 99 / 255))
+            stepBlock(x: 0.500, y: 0.445, width: 0.074, height: 0.256, color: Color(red: 48 / 255, green: 161 / 255, blue: 78 / 255))
+            stepBlock(x: 0.607, y: 0.348, width: 0.074, height: 0.354, color: Color(red: 33 / 255, green: 110 / 255, blue: 57 / 255))
         }
         .frame(width: size, height: size)
     }
@@ -115,16 +120,21 @@ private struct TokenStepVectorMark: View {
     }
 }
 
-private struct StepArcLogoShape: Shape {
+private struct SelectedAppIconArcShape: Shape {
     func path(in rect: CGRect) -> Path {
         let unit = min(rect.width, rect.height)
         var path = Path()
-        path.addArc(
-            center: CGPoint(x: rect.minX + unit * 0.505, y: rect.minY + unit * 0.68),
-            radius: unit * 0.31,
-            startAngle: .degrees(180),
-            endAngle: .degrees(350),
-            clockwise: false
+        path.move(to: CGPoint(x: rect.minX + unit * 0.211, y: rect.minY + unit * 0.645))
+        path.addCurve(
+            to: CGPoint(x: rect.minX + unit * 0.683, y: rect.minY + unit * 0.284),
+            control1: CGPoint(x: rect.minX + unit * 0.215, y: rect.minY + unit * 0.365),
+            control2: CGPoint(x: rect.minX + unit * 0.475, y: rect.minY + unit * 0.176)
+        )
+        path.move(to: CGPoint(x: rect.minX + unit * 0.746, y: rect.minY + unit * 0.358))
+        path.addCurve(
+            to: CGPoint(x: rect.minX + unit * 0.655, y: rect.minY + unit * 0.804),
+            control1: CGPoint(x: rect.minX + unit * 0.858, y: rect.minY + unit * 0.475),
+            control2: CGPoint(x: rect.minX + unit * 0.812, y: rect.minY + unit * 0.690)
         )
         return path
     }

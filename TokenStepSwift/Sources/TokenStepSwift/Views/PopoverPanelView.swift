@@ -20,7 +20,6 @@ struct PopoverPanelView: View {
             if appState.settings.showTokenRank {
                 PopoverTokenRankCard()
             }
-            trendCard
             if let update = appState.availableUpdate {
                 UpdateNoticeCard(update: update)
             }
@@ -65,24 +64,6 @@ struct PopoverPanelView: View {
                     copyPopoverAction: copyPopoverScreenshot,
                     savePopoverAction: savePopoverScreenshot
                 )
-            }
-        }
-    }
-
-    private var trendCard: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text(L("最近 30 天"))
-                        .font(.headline.weight(.heavy))
-                        .foregroundStyle(Color.tokenInk)
-                    Spacer()
-                    Text(L("细线是每日目标"))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                ActivityBarsView(rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
-                    .frame(height: 66)
             }
         }
     }

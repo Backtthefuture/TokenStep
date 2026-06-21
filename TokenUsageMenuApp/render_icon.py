@@ -5,30 +5,26 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from PIL import Image
+
 
 ROOT = Path(__file__).resolve().parent
-REPO_ROOT = ROOT.parent
 ASSETS = ROOT / "assets"
 ICONSET = ASSETS / "TokenStepIcon.iconset"
 PNG = ASSETS / "TokenStepIcon.png"
 ICNS = ASSETS / "TokenStepIcon.icns"
-SOURCE_SVG = REPO_ROOT / "brand/logo-concepts/final-candidates/svg/07-step-arc-app-icon.svg"
+SOURCE_ICON = ASSETS / "TokenStepIconSource.png"
+
+
+def selected_icon_source() -> Image.Image:
+    if not SOURCE_ICON.exists():
+        raise FileNotFoundError(SOURCE_ICON)
+    return Image.open(SOURCE_ICON).convert("RGBA")
 
 
 def render_png(width: int, height: int, output: Path) -> None:
-    subprocess.run(
-        [
-            "rsvg-convert",
-            "-w",
-            str(width),
-            "-h",
-            str(height),
-            str(SOURCE_SVG),
-            "-o",
-            str(output),
-        ],
-        check=True,
-    )
+    icon = selected_icon_source()
+    icon.resize((width, height), Image.Resampling.LANCZOS).save(output)
 
 
 def save_iconset() -> None:
@@ -54,9 +50,6 @@ def save_iconset() -> None:
 
 
 def main() -> None:
-    if not SOURCE_SVG.exists():
-        raise FileNotFoundError(SOURCE_SVG)
-
     ASSETS.mkdir(parents=True, exist_ok=True)
     render_png(1024, 1024, PNG)
     save_iconset()
