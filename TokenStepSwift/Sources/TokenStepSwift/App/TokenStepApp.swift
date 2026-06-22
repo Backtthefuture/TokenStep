@@ -8,6 +8,9 @@ final class TokenStepAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        LifecycleLogger.log(
+            "Application launched pid=\(ProcessInfo.processInfo.processIdentifier), version=\(UpdateService.currentVersion), bundle=\(Bundle.main.bundleURL.path)."
+        )
         if let url = Bundle.main.url(forResource: "TokenStepIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: url) {
             NSApp.applicationIconImage = icon
@@ -42,6 +45,7 @@ struct TokenStepApp: App {
             }
             .id(appState.appearanceID)
             .onAppear {
+                TokenStepReopenObserver.shared.bind(appState: appState)
                 TokenIslandWindowPresenter.shared.bind(appState: appState)
             }
         }

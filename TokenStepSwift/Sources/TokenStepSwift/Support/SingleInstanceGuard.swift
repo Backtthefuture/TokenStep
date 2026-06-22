@@ -31,10 +31,18 @@ enum SingleInstanceGuard {
                 currentVersion: currentVersion,
                 currentInstalled: currentInstalled
             ) {
+                LifecycleLogger.log(
+                    "Duplicate launch exiting; keeping existing pid=\(app.processIdentifier), existingVersion=\(existingVersion.description), currentVersion=\(currentVersion.description)."
+                )
+                TokenStepReopenRequest.post(reason: "duplicate_launch")
+                activateExistingInstance(app)
                 NSApp.terminate(nil)
                 return false
             }
 
+            LifecycleLogger.log(
+                "Terminating older instance pid=\(app.processIdentifier), existingVersion=\(existingVersion.description), currentVersion=\(currentVersion.description)."
+            )
             app.terminate()
         }
 
@@ -59,6 +67,8 @@ enum SingleInstanceGuard {
             if acquireLock() { return true }
             usleep(80_000)
         }
+        LifecycleLogger.log("Duplicate launch exiting; single-instance lock stayed busy.")
+        TokenStepReopenRequest.post(reason: "lock_busy")
         NSApp.terminate(nil)
         return false
     }
@@ -100,6 +110,14 @@ enum SingleInstanceGuard {
         }
         return info["CFBundleShortVersionString"] as? String
     }
+
+    private static func activateExistingInstance(_ app: NSRunningApplication) {
+        if #available(macOS 14.0, *) {
+            app.activate()
+        } else {
+            app.activate(options: [.activateIgnoringOtherApps])
+        }
+    }
 }
 
 private struct AppVersion: Comparable {
@@ -119,5 +137,11 @@ private struct AppVersion: Comparable {
             if left != right { return left < right }
         }
         return false
+    }
+}
+
+extension AppVersion: CustomStringConvertible {
+    var description: String {
+        parts.map(String.init).joined(separator: ".")
     }
 }

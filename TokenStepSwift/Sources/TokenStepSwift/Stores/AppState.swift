@@ -471,6 +471,7 @@ final class AppState: ObservableObject {
     }
 
     private func applyDefaultAutostartIfNeeded() {
+        repairAutostartIfNeeded()
         guard !FileManager.default.fileExists(atPath: AppPaths.autostartDefaultMarker.path) else { return }
         guard AutostartService.canEnableForCurrentBundle else {
             autostartEnabled = AutostartService.isEnabled
@@ -484,6 +485,23 @@ final class AppState: ObservableObject {
             autostartEnabled = AutostartService.isEnabled
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    private func repairAutostartIfNeeded() {
+        guard AutostartService.needsRepairForCurrentBundle else {
+            autostartEnabled = AutostartService.isEnabled
+            return
+        }
+        do {
+            if try AutostartService.repairForCurrentBundleIfNeeded() {
+                try markAutostartDefaultApplied()
+            }
+            autostartEnabled = AutostartService.isEnabled
+        } catch {
+            LifecycleLogger.log("Failed to repair login item target: \(error.localizedDescription)")
+            lastError = error.localizedDescription
+            autostartEnabled = AutostartService.isEnabled
         }
     }
 

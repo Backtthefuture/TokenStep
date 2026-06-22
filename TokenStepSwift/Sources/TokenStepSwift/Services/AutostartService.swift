@@ -13,8 +13,42 @@ enum AutostartService {
         FileManager.default.fileExists(atPath: plistURL.path)
     }
 
+    static var configuredBundleURL: URL? {
+        guard let data = try? Data(contentsOf: plistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
+              let arguments = plist["ProgramArguments"] as? [String],
+              arguments.count >= 2
+        else {
+            return nil
+        }
+        return URL(fileURLWithPath: arguments[1], isDirectory: true)
+    }
+
+    static var isConfiguredForCurrentBundle: Bool {
+        guard isEnabled,
+              let configuredBundleURL
+        else {
+            return false
+        }
+        return standardizedPath(configuredBundleURL) == standardizedPath(Bundle.main.bundleURL)
+    }
+
+    static var needsRepairForCurrentBundle: Bool {
+        isEnabled && canEnableForCurrentBundle && !isConfiguredForCurrentBundle
+    }
+
     static var canEnableForCurrentBundle: Bool {
         isInstalledApplication(Bundle.main.bundleURL)
+    }
+
+    @discardableResult
+    static func repairForCurrentBundleIfNeeded() throws -> Bool {
+        guard needsRepairForCurrentBundle else { return false }
+        let oldTarget = configuredBundleURL?.path ?? "unknown"
+        let newTarget = Bundle.main.bundleURL.path
+        LifecycleLogger.log("Repairing login item target from \(oldTarget) to \(newTarget).")
+        try setEnabled(true)
+        return true
     }
 
     static func setEnabled(_ enabled: Bool) throws {
@@ -46,6 +80,10 @@ enum AutostartService {
 
         _ = launchctl(["bootout", domain, plistURL.path])
         try? FileManager.default.removeItem(at: plistURL)
+    }
+
+    private static func standardizedPath(_ url: URL) -> String {
+        url.standardizedFileURL.path
     }
 
     private static func isInstalledApplication(_ url: URL) -> Bool {

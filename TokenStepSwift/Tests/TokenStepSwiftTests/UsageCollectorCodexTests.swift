@@ -30,23 +30,59 @@ final class UsageCollectorCodexTests: XCTestCase {
         XCTAssertEqual(snapshot.daily.count, 1)
         XCTAssertEqual(snapshot.daily.first?.date, "2026-06-22")
         XCTAssertEqual(snapshot.daily.first?.tools["Codex"], 120)
+        XCTAssertEqual(snapshot.rhythms.first?.bucket(hour: 13).tokens, 120)
     }
 
-    private func codexLines(sessionID: String, totalTokens: Int) -> [String] {
+    func testCodexCollectorBuildsDailyRhythmBuckets() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepCodexRhythmTests-\(UUID().uuidString)", isDirectory: true)
+        let liveRoot = home.appendingPathComponent(".codex/sessions/2026/06/21", isDirectory: true)
+        try FileManager.default.createDirectory(at: liveRoot, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: home)
+        }
+
+        let lines = [
+            codexLines(sessionID: "afternoon-a", totalTokens: 400, timestamp: "2026-06-21T07:00:00Z"),
+            codexLines(sessionID: "afternoon-b", totalTokens: 350, timestamp: "2026-06-21T08:00:00Z"),
+            codexLines(sessionID: "night-c", totalTokens: 100, timestamp: "2026-06-21T14:00:00Z")
+        ].flatMap { $0 }
+        try lines.joined(separator: "\n")
+            .write(to: liveRoot.appendingPathComponent("rhythm.jsonl"), atomically: true, encoding: .utf8)
+
+        let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
+        let rhythm = try XCTUnwrap(snapshot.rhythm(for: "2026-06-21"))
+
+        XCTAssertEqual(rhythm.totalTokens, 850)
+        XCTAssertEqual(rhythm.activeHours, 3)
+        XCTAssertEqual(rhythm.peakHour, 15)
+        XCTAssertEqual(rhythm.peakTokens, 400)
+        XCTAssertEqual(rhythm.bucket(hour: 15).tokens, 400)
+        XCTAssertEqual(rhythm.bucket(hour: 16).tokens, 350)
+        XCTAssertEqual(rhythm.bucket(hour: 22).tokens, 100)
+        XCTAssertEqual(rhythm.primaryTag, .afternoonBurst)
+        XCTAssertEqual(rhythm.companionTag, .morningPlanner)
+    }
+
+    private func codexLines(
+        sessionID: String,
+        totalTokens: Int,
+        timestamp: String = "2026-06-22T05:00:00Z"
+    ) -> [String] {
         [
             jsonLine([
                 "type": "session_meta",
-                "timestamp": "2026-06-22T05:00:00Z",
+                "timestamp": timestamp,
                 "payload": ["id": sessionID]
             ]),
             jsonLine([
                 "type": "turn_context",
-                "timestamp": "2026-06-22T05:00:00Z",
+                "timestamp": timestamp,
                 "payload": ["model": "gpt-5"]
             ]),
             jsonLine([
                 "type": "event_msg",
-                "timestamp": "2026-06-22T05:00:00Z",
+                "timestamp": timestamp,
                 "payload": [
                     "type": "token_count",
                     "info": [

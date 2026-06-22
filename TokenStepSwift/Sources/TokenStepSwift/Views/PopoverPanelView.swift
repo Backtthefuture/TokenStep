@@ -59,8 +59,10 @@ struct PopoverPanelView: View {
                 PopoverCaptureMenuButton(
                     shareTodayAction: { copyShareCard(.today) },
                     shareYesterdayAction: { copyShareCard(.yesterday) },
+                    shareYesterdayRhythmAction: copyYesterdayRhythmCard,
                     downloadTodayAction: { downloadShareCard(.today) },
                     downloadYesterdayAction: { downloadShareCard(.yesterday) },
+                    downloadYesterdayRhythmAction: downloadYesterdayRhythmCard,
                     copyPopoverAction: copyPopoverScreenshot,
                     savePopoverAction: savePopoverScreenshot
                 )
@@ -101,6 +103,42 @@ struct PopoverPanelView: View {
                     mode: mode,
                     day: day,
                     previousDay: previousDay(before: day)
+                )
+                .environmentObject(appState)
+                .environment(\.isScreenshotRendering, true)
+            )
+        } catch {
+            appState.lastError = error.localizedDescription
+        }
+    }
+
+    private func copyYesterdayRhythmCard() {
+        guard let payload = yesterdayRhythmPayload() else { return }
+
+        do {
+            try ScreenshotExporter.copy(
+                ShareRhythmCardView(
+                    day: payload.day,
+                    rhythm: payload.rhythm,
+                    previousDay: payload.previousDay
+                )
+                .environmentObject(appState)
+                .environment(\.isScreenshotRendering, true)
+            )
+        } catch {
+            appState.lastError = error.localizedDescription
+        }
+    }
+
+    private func downloadYesterdayRhythmCard() {
+        guard let payload = yesterdayRhythmPayload() else { return }
+
+        do {
+            try ScreenshotExporter.saveJPGToDownloads(
+                ShareRhythmCardView(
+                    day: payload.day,
+                    rhythm: payload.rhythm,
+                    previousDay: payload.previousDay
                 )
                 .environmentObject(appState)
                 .environment(\.isScreenshotRendering, true)
@@ -157,22 +195,36 @@ struct PopoverPanelView: View {
         return rows[rows.index(before: index)]
     }
 
+    private func yesterdayRhythmPayload() -> (day: DailyUsage, rhythm: DailyRhythm, previousDay: DailyUsage?)? {
+        guard let day = shareDay(for: .yesterday) else {
+            appState.lastError = L("还没有昨日数据")
+            return nil
+        }
+        guard let rhythm = appState.snapshot.rhythm(for: day.date) else {
+            appState.lastError = L("昨日节奏还在等待同步")
+            return nil
+        }
+        return (day, rhythm, previousDay(before: day))
+    }
+
 }
 
 private struct PopoverCaptureMenuButton: View {
     var shareTodayAction: () -> Void
     var shareYesterdayAction: () -> Void
+    var shareYesterdayRhythmAction: () -> Void
     var downloadTodayAction: () -> Void
     var downloadYesterdayAction: () -> Void
+    var downloadYesterdayRhythmAction: () -> Void
     var copyPopoverAction: () -> Void
     var savePopoverAction: () -> Void
 
     var body: some View {
         Menu {
             Button {
-                shareTodayAction()
+                shareYesterdayRhythmAction()
             } label: {
-                Label(L("分享今日卡片"), systemImage: "sun.max.fill")
+                Label(L("分享昨日节奏"), systemImage: "waveform.path.ecg")
             }
 
             Button {
@@ -182,15 +234,29 @@ private struct PopoverCaptureMenuButton: View {
             }
 
             Button {
-                downloadTodayAction()
+                shareTodayAction()
             } label: {
-                Label(L("下载今日卡片"), systemImage: "arrow.down.circle.fill")
+                Label(L("分享今日卡片"), systemImage: "sun.max.fill")
+            }
+
+            Divider()
+
+            Button {
+                downloadYesterdayRhythmAction()
+            } label: {
+                Label(L("下载昨日节奏"), systemImage: "arrow.down.heart.fill")
             }
 
             Button {
                 downloadYesterdayAction()
             } label: {
                 Label(L("下载昨日成绩"), systemImage: "arrow.down.doc.fill")
+            }
+
+            Button {
+                downloadTodayAction()
+            } label: {
+                Label(L("下载今日卡片"), systemImage: "arrow.down.circle.fill")
             }
 
             Divider()

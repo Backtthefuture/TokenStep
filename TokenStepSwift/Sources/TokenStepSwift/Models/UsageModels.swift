@@ -5,6 +5,7 @@ struct UsageSnapshot: Codable {
     var timezone: String?
     var totals: UsageTotals
     var daily: [DailyUsage]
+    var rhythms: [DailyRhythm]
     var tools: [ToolUsage]
     var models: [ModelUsage]
     var sources: [String: SourceInfo]
@@ -14,9 +15,46 @@ struct UsageSnapshot: Codable {
         case timezone
         case totals
         case daily
+        case rhythms
         case tools
         case models
         case sources
+    }
+
+    init(
+        generatedAt: String?,
+        timezone: String?,
+        totals: UsageTotals,
+        daily: [DailyUsage],
+        rhythms: [DailyRhythm] = [],
+        tools: [ToolUsage],
+        models: [ModelUsage],
+        sources: [String: SourceInfo]
+    ) {
+        self.generatedAt = generatedAt
+        self.timezone = timezone
+        self.totals = totals
+        self.daily = daily
+        self.rhythms = rhythms
+        self.tools = tools
+        self.models = models
+        self.sources = sources
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt)
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
+        totals = try container.decode(UsageTotals.self, forKey: .totals)
+        daily = try container.decodeIfPresent([DailyUsage].self, forKey: .daily) ?? []
+        rhythms = try container.decodeIfPresent([DailyRhythm].self, forKey: .rhythms) ?? []
+        tools = try container.decodeIfPresent([ToolUsage].self, forKey: .tools) ?? []
+        models = try container.decodeIfPresent([ModelUsage].self, forKey: .models) ?? []
+        sources = try container.decodeIfPresent([String: SourceInfo].self, forKey: .sources) ?? [:]
+    }
+
+    func rhythm(for date: String) -> DailyRhythm? {
+        rhythms.first { $0.date == date && $0.totalTokens > 0 }
     }
 
     static let empty = UsageSnapshot(
@@ -24,6 +62,7 @@ struct UsageSnapshot: Codable {
         timezone: "Asia/Shanghai",
         totals: UsageTotals(tokens: 0, cost: 0, activeDays: 0),
         daily: [],
+        rhythms: [],
         tools: [],
         models: [],
         sources: [:]
@@ -73,6 +112,160 @@ struct DailyUsage: Codable, Identifiable {
         models = try container.decodeIfPresent([String: Int].self, forKey: .models) ?? [:]
         totalTokens = try container.decode(Int.self, forKey: .totalTokens)
         cost = try container.decode(Double.self, forKey: .cost)
+    }
+}
+
+struct DailyRhythm: Codable, Identifiable {
+    var id: String { date }
+    var date: String
+    var buckets: [HourlyTokenBucket]
+    var totalTokens: Int
+    var peakHour: Int?
+    var peakTokens: Int
+    var activeHours: Int
+    var firstActiveHour: Int?
+    var lastActiveHour: Int?
+    var primaryTag: RhythmTag
+    var companionTag: RhythmTag
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case buckets
+        case totalTokens = "total_tokens"
+        case peakHour = "peak_hour"
+        case peakTokens = "peak_tokens"
+        case activeHours = "active_hours"
+        case firstActiveHour = "first_active_hour"
+        case lastActiveHour = "last_active_hour"
+        case primaryTag = "primary_tag"
+        case companionTag = "companion_tag"
+    }
+
+    init(
+        date: String,
+        buckets: [HourlyTokenBucket],
+        totalTokens: Int,
+        peakHour: Int?,
+        peakTokens: Int,
+        activeHours: Int,
+        firstActiveHour: Int?,
+        lastActiveHour: Int?,
+        primaryTag: RhythmTag,
+        companionTag: RhythmTag
+    ) {
+        self.date = date
+        self.buckets = buckets
+        self.totalTokens = totalTokens
+        self.peakHour = peakHour
+        self.peakTokens = peakTokens
+        self.activeHours = activeHours
+        self.firstActiveHour = firstActiveHour
+        self.lastActiveHour = lastActiveHour
+        self.primaryTag = primaryTag
+        self.companionTag = companionTag
+    }
+
+    var peakHourText: String {
+        guard let peakHour else { return "--" }
+        return String(format: "%02d:00", peakHour)
+    }
+
+    var activeRangeText: String {
+        guard let firstActiveHour, let lastActiveHour else { return "--" }
+        return String(format: "%02d:00-%02d:00", firstActiveHour, min(lastActiveHour + 1, 24))
+    }
+
+    var maxBucketTokens: Int {
+        max(1, buckets.map(\.tokens).max() ?? 0)
+    }
+
+    func tokens(in hours: ClosedRange<Int>) -> Int {
+        buckets
+            .filter { hours.contains($0.hour) }
+            .map(\.tokens)
+            .reduce(0, +)
+    }
+
+    func bucket(hour: Int) -> HourlyTokenBucket {
+        buckets.first { $0.hour == hour } ?? HourlyTokenBucket(hour: hour, tokens: 0)
+    }
+}
+
+struct HourlyTokenBucket: Codable, Identifiable {
+    var id: Int { hour }
+    var hour: Int
+    var tokens: Int
+}
+
+enum RhythmTag: String, Codable {
+    case earlyStarter = "early_starter"
+    case morningPlanner = "morning_planner"
+    case afternoonBurst = "afternoon_burst"
+    case nightAgent = "night_agent"
+    case doublePeak = "double_peak"
+    case fragmented = "fragmented"
+    case oneShot = "one_shot"
+    case steadyCruise = "steady_cruise"
+    case quietDay = "quiet_day"
+
+    var title: String {
+        switch self {
+        case .earlyStarter: return L("清晨启动型")
+        case .morningPlanner: return L("上午规划型")
+        case .afternoonBurst: return L("下午爆发型")
+        case .nightAgent: return L("夜间 Agent 型")
+        case .doublePeak: return L("双峰推进型")
+        case .fragmented: return L("碎片推进型")
+        case .oneShot: return L("一波流型")
+        case .steadyCruise: return L("稳定巡航型")
+        case .quietDay: return L("低频轻触型")
+        }
+    }
+
+    var shareLine: String {
+        switch self {
+        case .earlyStarter:
+            return L("一早就把 AI 拉进工作台")
+        case .morningPlanner:
+            return L("上午定方向，后面稳稳推进")
+        case .afternoonBurst:
+            return L("午后能量拉满，一段时间集中爆发")
+        case .nightAgent:
+            return L("夜里交给 Agent，把任务往前推")
+        case .doublePeak:
+            return L("一天两次拉满，节奏很有层次")
+        case .fragmented:
+            return L("多时段穿插推进，随手就把活干了")
+        case .oneShot:
+            return L("集中一波解决主要战斗")
+        case .steadyCruise:
+            return L("稳定巡航，没有明显掉线")
+        case .quietDay:
+            return L("轻量使用，保留一点 AI 手感")
+        }
+    }
+
+    var companionLine: String {
+        switch self {
+        case .earlyStarter:
+            return L("投缘搭子：夜间 Agent 型")
+        case .morningPlanner:
+            return L("投缘搭子：下午爆发型")
+        case .afternoonBurst:
+            return L("投缘搭子：上午规划型")
+        case .nightAgent:
+            return L("投缘搭子：清晨启动型")
+        case .doublePeak:
+            return L("投缘搭子：稳定巡航型")
+        case .fragmented:
+            return L("投缘搭子：一波流型")
+        case .oneShot:
+            return L("投缘搭子：碎片推进型")
+        case .steadyCruise:
+            return L("投缘搭子：双峰推进型")
+        case .quietDay:
+            return L("投缘搭子：上午规划型")
+        }
     }
 }
 

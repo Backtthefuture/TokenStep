@@ -663,12 +663,17 @@ enum UsageCollector {
 
     private static func aggregate(records: [UsageRecord], sources: [String: SourceInfo]) -> UsageSnapshot {
         var daily = [String: DailyAccumulator]()
+        var rhythms = [String: RhythmAccumulator]()
         var tools = [String: UsageAccumulator]()
         var models = [ModelKey: UsageAccumulator]()
 
         for record in records {
             let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model)
             daily[record.date, default: DailyAccumulator(date: record.date)].add(record: record, cost: cost)
+            if let hour = hour(fromISO: record.timestamp) {
+                rhythms[record.date, default: RhythmAccumulator(date: record.date)]
+                    .add(tokens: record.usage.totalTokens, hour: hour)
+            }
             tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: cost)
             models[ModelKey(tool: record.tool, model: record.model), default: UsageAccumulator()].add(record.usage, cost: cost)
         }
@@ -687,6 +692,11 @@ enum UsageCollector {
                     cost: rounded(item.cost, digits: 4)
                 )
             }
+
+        let rhythmRows = rhythms.values
+            .map(\.dailyRhythm)
+            .filter { $0.totalTokens > 0 }
+            .sorted { $0.date < $1.date }
 
         let toolRows = tools
             .sorted { $0.value.usage.totalTokens > $1.value.usage.totalTokens }
@@ -718,6 +728,7 @@ enum UsageCollector {
                 activeDays: dailyRows.filter { $0.totalTokens > 0 }.count
             ),
             daily: dailyRows,
+            rhythms: rhythmRows,
             tools: toolRows,
             models: modelRows,
             sources: sources
@@ -953,6 +964,11 @@ enum UsageCollector {
         return dayFormatter.string(from: date)
     }
 
+    private static func hour(fromISO value: String?) -> Int? {
+        guard let value, let date = parseISO(value) else { return nil }
+        return calendar.component(.hour, from: date)
+    }
+
     private static func dayString(fromEpoch value: Any?) -> String? {
         guard let seconds = epochSeconds(value) else { return nil }
         return dayFormatter.string(from: Date(timeIntervalSince1970: seconds))
@@ -1147,6 +1163,12 @@ enum UsageCollector {
         return formatter
     }()
 
+    private static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timezone
+        return calendar
+    }()
+
     private static let isoFormatterWithFractional: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -1302,6 +1324,149 @@ private struct DailyAccumulator {
         models[record.model, default: 0] += record.usage.totalTokens
         totalTokens += record.usage.totalTokens
         self.cost += cost
+    }
+}
+
+private struct RhythmAccumulator {
+    var date: String
+    var hourlyTokens = Array(repeating: 0, count: 24)
+
+    mutating func add(tokens: Int, hour: Int) {
+        guard tokens > 0, (0..<hourlyTokens.count).contains(hour) else { return }
+        hourlyTokens[hour] += tokens
+    }
+
+    var dailyRhythm: DailyRhythm {
+        let buckets = hourlyTokens.enumerated().map { hour, tokens in
+            HourlyTokenBucket(hour: hour, tokens: tokens)
+        }
+        let totalTokens = hourlyTokens.reduce(0, +)
+        let activeHours = hourlyTokens.filter { $0 > 0 }.count
+        let firstActiveHour = hourlyTokens.firstIndex { $0 > 0 }
+        let lastActiveHour = hourlyTokens.lastIndex { $0 > 0 }
+        let peak = hourlyTokens.enumerated().max { left, right in
+            if left.element == right.element {
+                return left.offset > right.offset
+            }
+            return left.element < right.element
+        }
+        let peakHour = (peak?.element ?? 0) > 0 ? peak?.offset : nil
+        let peakTokens = peak?.element ?? 0
+        let primaryTag = Self.classify(
+            hourlyTokens: hourlyTokens,
+            totalTokens: totalTokens,
+            peakHour: peakHour,
+            peakTokens: peakTokens,
+            activeHours: activeHours,
+            firstActiveHour: firstActiveHour
+        )
+
+        return DailyRhythm(
+            date: date,
+            buckets: buckets,
+            totalTokens: totalTokens,
+            peakHour: peakHour,
+            peakTokens: peakTokens,
+            activeHours: activeHours,
+            firstActiveHour: firstActiveHour,
+            lastActiveHour: lastActiveHour,
+            primaryTag: primaryTag,
+            companionTag: Self.companionTag(for: primaryTag)
+        )
+    }
+
+    private static func classify(
+        hourlyTokens: [Int],
+        totalTokens: Int,
+        peakHour: Int?,
+        peakTokens: Int,
+        activeHours: Int,
+        firstActiveHour: Int?
+    ) -> RhythmTag {
+        guard totalTokens > 0 else { return .quietDay }
+        let peakShare = share(peakTokens, of: totalTokens)
+        if isDoublePeak(hourlyTokens: hourlyTokens, totalTokens: totalTokens) {
+            return .doublePeak
+        }
+        if peakShare >= 0.50 {
+            return .oneShot
+        }
+
+        let nightShare = share(tokens(in: [21, 22, 23, 0, 1, 2], hourlyTokens: hourlyTokens), of: totalTokens)
+        if nightShare >= 0.35 || (peakHour.map { $0 >= 21 || $0 <= 2 } == true && nightShare >= 0.25) {
+            return .nightAgent
+        }
+
+        let afternoonShare = share(tokens(in: Array(14...18), hourlyTokens: hourlyTokens), of: totalTokens)
+        if afternoonShare >= 0.35 || peakHour.map({ (14...18).contains($0) }) == true && afternoonShare >= 0.25 {
+            return .afternoonBurst
+        }
+
+        let earlyShare = share(tokens(in: Array(5...9), hourlyTokens: hourlyTokens), of: totalTokens)
+        if firstActiveHour.map({ $0 <= 8 }) == true && earlyShare >= 0.25 {
+            return .earlyStarter
+        }
+
+        let morningShare = share(tokens(in: Array(8...12), hourlyTokens: hourlyTokens), of: totalTokens)
+        if morningShare >= 0.35 || peakHour.map({ (8...12).contains($0) }) == true && morningShare >= 0.25 {
+            return .morningPlanner
+        }
+
+        if activeHours >= 6 && peakShare < 0.35 {
+            return .fragmented
+        }
+        if activeHours >= 4 {
+            return .steadyCruise
+        }
+        return .quietDay
+    }
+
+    private static func companionTag(for tag: RhythmTag) -> RhythmTag {
+        switch tag {
+        case .earlyStarter:
+            return .nightAgent
+        case .morningPlanner:
+            return .afternoonBurst
+        case .afternoonBurst:
+            return .morningPlanner
+        case .nightAgent:
+            return .earlyStarter
+        case .doublePeak:
+            return .steadyCruise
+        case .fragmented:
+            return .oneShot
+        case .oneShot:
+            return .fragmented
+        case .steadyCruise:
+            return .doublePeak
+        case .quietDay:
+            return .morningPlanner
+        }
+    }
+
+    private static func isDoublePeak(hourlyTokens: [Int], totalTokens: Int) -> Bool {
+        let peaks = hourlyTokens.enumerated()
+            .filter { share($0.element, of: totalTokens) >= 0.18 }
+            .sorted { $0.element > $1.element }
+            .prefix(4)
+        for left in peaks {
+            for right in peaks where abs(left.offset - right.offset) >= 4 {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func tokens(in hours: [Int], hourlyTokens: [Int]) -> Int {
+        hours.reduce(0) { total, hour in
+            guard hourlyTokens.indices.contains(hour) else { return total }
+            return total + hourlyTokens[hour]
+        }
+    }
+
+    private static func share(_ value: Int, of total: Int) -> Double {
+        guard total > 0 else { return 0 }
+        return Double(value) / Double(total)
     }
 }
 
