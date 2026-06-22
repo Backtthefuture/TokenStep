@@ -278,11 +278,27 @@ private struct RhythmNeonWavePanel: View {
     }
 
     private var values: [Double] {
-        let maxTokens = Double(rhythm.maxBucketTokens)
-        return rhythm.buckets.map { bucket in
-            guard rhythm.isSignificant(bucket) else { return 0.025 }
-            return max(0.10, min(Double(bucket.tokens) / maxTokens, 1))
+        let rawValues = rhythm.buckets.map { Double($0.tokens) }
+        let smoothed = rawValues.indices.map { index in
+            smoothValue(in: rawValues, at: index)
         }
+        let maxTokens = max(smoothed.max() ?? 0, 1)
+        return smoothed.map { value in
+            guard value > 0 else { return 0.04 }
+            let normalized = pow(min(value / maxTokens, 1), 0.68)
+            return max(0.08, min(normalized, 1))
+        }
+    }
+
+    private func smoothValue(in values: [Double], at index: Int) -> Double {
+        func value(_ offset: Int) -> Double {
+            let target = index + offset
+            guard values.indices.contains(target) else { return 0 }
+            return values[target]
+        }
+        return value(0) * 0.78
+            + (value(-1) + value(1)) * 0.09
+            + (value(-2) + value(2)) * 0.02
     }
 }
 
@@ -430,12 +446,24 @@ private func makeRhythmPath(values: [Double], in rect: CGRect, closeToBottom: Bo
         path.move(to: first)
     }
 
-    for index in 1..<points.count {
-        let previous = points[index - 1]
-        let current = points[index]
-        let mid = CGPoint(x: (previous.x + current.x) / 2, y: (previous.y + current.y) / 2)
-        path.addQuadCurve(to: mid, control: previous)
-        path.addQuadCurve(to: current, control: current)
+    guard points.count > 1 else {
+        return path
+    }
+
+    for index in 0..<(points.count - 1) {
+        let p0 = points[max(index - 1, 0)]
+        let p1 = points[index]
+        let p2 = points[index + 1]
+        let p3 = points[min(index + 2, points.count - 1)]
+        let control1 = CGPoint(
+            x: p1.x + (p2.x - p0.x) / 6,
+            y: p1.y + (p2.y - p0.y) / 6
+        )
+        let control2 = CGPoint(
+            x: p2.x - (p3.x - p1.x) / 6,
+            y: p2.y - (p3.y - p1.y) / 6
+        )
+        path.addCurve(to: p2, control1: control1, control2: control2)
     }
 
     if closeToBottom, let last = points.last {

@@ -61,7 +61,6 @@ struct PopoverPanelView: View {
                     shareYesterdayAction: { copyShareCard(.yesterday) },
                     shareYesterdayRhythmAction: copyYesterdayRhythmCard,
                     downloadTodayAction: { downloadShareCard(.today) },
-                    downloadYesterdayAction: { downloadShareCard(.yesterday) },
                     downloadYesterdayRhythmAction: downloadYesterdayRhythmCard,
                     copyPopoverAction: copyPopoverScreenshot,
                     savePopoverAction: savePopoverScreenshot
@@ -214,7 +213,6 @@ private struct PopoverCaptureMenuButton: View {
     var shareYesterdayAction: () -> Void
     var shareYesterdayRhythmAction: () -> Void
     var downloadTodayAction: () -> Void
-    var downloadYesterdayAction: () -> Void
     var downloadYesterdayRhythmAction: () -> Void
     var copyPopoverAction: () -> Void
     var savePopoverAction: () -> Void
@@ -245,12 +243,6 @@ private struct PopoverCaptureMenuButton: View {
                 downloadYesterdayRhythmAction()
             } label: {
                 Label(L("下载昨日节奏"), systemImage: "arrow.down.heart.fill")
-            }
-
-            Button {
-                downloadYesterdayAction()
-            } label: {
-                Label(L("下载昨日成绩"), systemImage: "arrow.down.doc.fill")
             }
 
             Button {
