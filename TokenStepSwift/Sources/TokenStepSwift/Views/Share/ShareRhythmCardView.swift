@@ -33,14 +33,8 @@ struct ShareRhythmCardView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 13) {
-            TokenStepMark(size: 42)
-                .padding(4)
-                .background(
-                    Circle()
-                        .fill(Color.white.opacity(0.08))
-                        .overlay(Circle().stroke(palette.accent.opacity(0.82), lineWidth: 2))
-                )
-                .shadow(color: palette.accent.opacity(0.34), radius: 14, x: 0, y: 0)
+            TokenStepMark(size: 50)
+                .shadow(color: palette.accent.opacity(0.22), radius: 12, x: 0, y: 0)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("TokenStep")
@@ -217,7 +211,7 @@ struct ShareRhythmCardView: View {
         var best = 0
         var current = 0
         for bucket in rhythm.buckets {
-            if bucket.tokens > 0 {
+            if rhythm.isSignificant(bucket) {
                 current += 1
                 best = max(best, current)
             } else {
@@ -286,7 +280,7 @@ private struct RhythmNeonWavePanel: View {
     private var values: [Double] {
         let maxTokens = Double(rhythm.maxBucketTokens)
         return rhythm.buckets.map { bucket in
-            guard bucket.tokens > 0 else { return 0.06 }
+            guard rhythm.isSignificant(bucket) else { return 0.025 }
             return max(0.10, min(Double(bucket.tokens) / maxTokens, 1))
         }
     }

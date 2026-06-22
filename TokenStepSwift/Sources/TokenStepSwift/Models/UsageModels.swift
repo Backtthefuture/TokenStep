@@ -179,6 +179,17 @@ struct DailyRhythm: Codable, Identifiable {
         max(1, buckets.map(\.tokens).max() ?? 0)
     }
 
+    var significantTokenThreshold: Int {
+        guard totalTokens > 0 else { return 1 }
+        let totalBased = Double(totalTokens) * 0.03
+        let peakBased = Double(peakTokens) * 0.30
+        return max(1, Int(max(totalBased, peakBased).rounded()))
+    }
+
+    func isSignificant(_ bucket: HourlyTokenBucket) -> Bool {
+        bucket.tokens >= significantTokenThreshold
+    }
+
     func tokens(in hours: ClosedRange<Int>) -> Int {
         buckets
             .filter { hours.contains($0.hour) }
@@ -201,6 +212,7 @@ enum RhythmTag: String, Codable {
     case earlyStarter = "early_starter"
     case morningPlanner = "morning_planner"
     case afternoonBurst = "afternoon_burst"
+    case eveningSprint = "evening_sprint"
     case nightAgent = "night_agent"
     case doublePeak = "double_peak"
     case fragmented = "fragmented"
@@ -213,6 +225,7 @@ enum RhythmTag: String, Codable {
         case .earlyStarter: return L("清晨启动型")
         case .morningPlanner: return L("上午规划型")
         case .afternoonBurst: return L("下午爆发型")
+        case .eveningSprint: return L("晚间冲刺型")
         case .nightAgent: return L("夜间 Agent 型")
         case .doublePeak: return L("双峰推进型")
         case .fragmented: return L("碎片推进型")
@@ -230,6 +243,8 @@ enum RhythmTag: String, Codable {
             return L("上午定方向，后面稳稳推进")
         case .afternoonBurst:
             return L("午后能量拉满，一段时间集中爆发")
+        case .eveningSprint:
+            return L("晚间突然加速，把任务向前顶了一截")
         case .nightAgent:
             return L("夜里交给 Agent，把任务往前推")
         case .doublePeak:
@@ -253,6 +268,8 @@ enum RhythmTag: String, Codable {
             return L("投缘搭子：下午爆发型")
         case .afternoonBurst:
             return L("投缘搭子：上午规划型")
+        case .eveningSprint:
+            return L("投缘搭子：稳定巡航型")
         case .nightAgent:
             return L("投缘搭子：清晨启动型")
         case .doublePeak:

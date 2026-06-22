@@ -1341,9 +1341,6 @@ private struct RhythmAccumulator {
             HourlyTokenBucket(hour: hour, tokens: tokens)
         }
         let totalTokens = hourlyTokens.reduce(0, +)
-        let activeHours = hourlyTokens.filter { $0 > 0 }.count
-        let firstActiveHour = hourlyTokens.firstIndex { $0 > 0 }
-        let lastActiveHour = hourlyTokens.lastIndex { $0 > 0 }
         let peak = hourlyTokens.enumerated().max { left, right in
             if left.element == right.element {
                 return left.offset > right.offset
@@ -1352,8 +1349,14 @@ private struct RhythmAccumulator {
         }
         let peakHour = (peak?.element ?? 0) > 0 ? peak?.offset : nil
         let peakTokens = peak?.element ?? 0
+        let activeThreshold = Self.significantTokenThreshold(totalTokens: totalTokens, peakTokens: peakTokens)
+        let significantHourlyTokens = hourlyTokens.map { $0 >= activeThreshold ? $0 : 0 }
+        let activeHours = significantHourlyTokens.filter { $0 > 0 }.count
+        let firstActiveHour = significantHourlyTokens.firstIndex { $0 > 0 }
+        let lastActiveHour = significantHourlyTokens.lastIndex { $0 > 0 }
         let primaryTag = Self.classify(
             hourlyTokens: hourlyTokens,
+            significantHourlyTokens: significantHourlyTokens,
             totalTokens: totalTokens,
             peakHour: peakHour,
             peakTokens: peakTokens,
@@ -1377,6 +1380,7 @@ private struct RhythmAccumulator {
 
     private static func classify(
         hourlyTokens: [Int],
+        significantHourlyTokens: [Int],
         totalTokens: Int,
         peakHour: Int?,
         peakTokens: Int,
@@ -1385,29 +1389,34 @@ private struct RhythmAccumulator {
     ) -> RhythmTag {
         guard totalTokens > 0 else { return .quietDay }
         let peakShare = share(peakTokens, of: totalTokens)
-        if isDoublePeak(hourlyTokens: hourlyTokens, totalTokens: totalTokens) {
+        if isDoublePeak(hourlyTokens: significantHourlyTokens, peakTokens: peakTokens) {
             return .doublePeak
         }
         if peakShare >= 0.50 {
             return .oneShot
         }
 
-        let nightShare = share(tokens(in: [21, 22, 23, 0, 1, 2], hourlyTokens: hourlyTokens), of: totalTokens)
+        let nightShare = share(tokens(in: [21, 22, 23, 0, 1, 2], hourlyTokens: significantHourlyTokens), of: totalTokens)
         if nightShare >= 0.35 || (peakHour.map { $0 >= 21 || $0 <= 2 } == true && nightShare >= 0.25) {
             return .nightAgent
         }
 
-        let afternoonShare = share(tokens(in: Array(14...18), hourlyTokens: hourlyTokens), of: totalTokens)
+        let eveningShare = share(tokens(in: [19, 20], hourlyTokens: significantHourlyTokens), of: totalTokens)
+        if peakHour.map({ (19...20).contains($0) }) == true || eveningShare >= 0.30 {
+            return .eveningSprint
+        }
+
+        let afternoonShare = share(tokens(in: Array(14...18), hourlyTokens: significantHourlyTokens), of: totalTokens)
         if afternoonShare >= 0.35 || peakHour.map({ (14...18).contains($0) }) == true && afternoonShare >= 0.25 {
             return .afternoonBurst
         }
 
-        let earlyShare = share(tokens(in: Array(5...9), hourlyTokens: hourlyTokens), of: totalTokens)
+        let earlyShare = share(tokens(in: Array(5...9), hourlyTokens: significantHourlyTokens), of: totalTokens)
         if firstActiveHour.map({ $0 <= 8 }) == true && earlyShare >= 0.25 {
             return .earlyStarter
         }
 
-        let morningShare = share(tokens(in: Array(8...12), hourlyTokens: hourlyTokens), of: totalTokens)
+        let morningShare = share(tokens(in: Array(8...12), hourlyTokens: significantHourlyTokens), of: totalTokens)
         if morningShare >= 0.35 || peakHour.map({ (8...12).contains($0) }) == true && morningShare >= 0.25 {
             return .morningPlanner
         }
@@ -1429,6 +1438,8 @@ private struct RhythmAccumulator {
             return .afternoonBurst
         case .afternoonBurst:
             return .morningPlanner
+        case .eveningSprint:
+            return .steadyCruise
         case .nightAgent:
             return .earlyStarter
         case .doublePeak:
@@ -1444,17 +1455,28 @@ private struct RhythmAccumulator {
         }
     }
 
-    private static func isDoublePeak(hourlyTokens: [Int], totalTokens: Int) -> Bool {
-        let peaks = hourlyTokens.enumerated()
-            .filter { share($0.element, of: totalTokens) >= 0.18 }
-            .sorted { $0.element > $1.element }
-            .prefix(4)
+    private static func isDoublePeak(hourlyTokens: [Int], peakTokens: Int) -> Bool {
+        guard peakTokens > 0 else { return false }
+        let peaks = localPeakCandidates(hourlyTokens: hourlyTokens)
+            .filter { Double($0.tokens) >= Double(peakTokens) * 0.45 }
+            .sorted { $0.tokens > $1.tokens }
+            .prefix(5)
         for left in peaks {
-            for right in peaks where abs(left.offset - right.offset) >= 4 {
+            for right in peaks where abs(left.hour - right.hour) >= 4 {
                 return true
             }
         }
         return false
+    }
+
+    private static func localPeakCandidates(hourlyTokens: [Int]) -> [(hour: Int, tokens: Int)] {
+        hourlyTokens.enumerated().compactMap { hour, tokens in
+            guard tokens > 0 else { return nil }
+            let previous = hour > 0 ? hourlyTokens[hour - 1] : 0
+            let next = hour < hourlyTokens.count - 1 ? hourlyTokens[hour + 1] : 0
+            guard tokens >= previous && tokens >= next else { return nil }
+            return (hour, tokens)
+        }
     }
 
     private static func tokens(in hours: [Int], hourlyTokens: [Int]) -> Int {
@@ -1467,6 +1489,13 @@ private struct RhythmAccumulator {
     private static func share(_ value: Int, of total: Int) -> Double {
         guard total > 0 else { return 0 }
         return Double(value) / Double(total)
+    }
+
+    private static func significantTokenThreshold(totalTokens: Int, peakTokens: Int) -> Int {
+        guard totalTokens > 0 else { return 1 }
+        let totalBased = Double(totalTokens) * 0.03
+        let peakBased = Double(peakTokens) * 0.30
+        return max(1, Int(max(totalBased, peakBased).rounded()))
     }
 }
 

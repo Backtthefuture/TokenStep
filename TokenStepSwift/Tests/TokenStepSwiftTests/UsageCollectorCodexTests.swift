@@ -64,6 +64,34 @@ final class UsageCollectorCodexTests: XCTestCase {
         XCTAssertEqual(rhythm.companionTag, .morningPlanner)
     }
 
+    func testCodexCollectorPrefersDoublePeakOverMorningShare() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepCodexDoublePeakTests-\(UUID().uuidString)", isDirectory: true)
+        let liveRoot = home.appendingPathComponent(".codex/sessions/2026/06/21", isDirectory: true)
+        try FileManager.default.createDirectory(at: liveRoot, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: home)
+        }
+
+        let lines = [
+            codexLines(sessionID: "morning-small", totalTokens: 100, timestamp: "2026-06-21T02:00:00Z"),
+            codexLines(sessionID: "noon-peak", totalTokens: 500, timestamp: "2026-06-21T03:00:00Z"),
+            codexLines(sessionID: "noon-tail", totalTokens: 260, timestamp: "2026-06-21T04:00:00Z"),
+            codexLines(sessionID: "evening-peak", totalTokens: 520, timestamp: "2026-06-21T12:00:00Z"),
+            codexLines(sessionID: "night-trace", totalTokens: 5, timestamp: "2026-06-21T15:00:00Z")
+        ].flatMap { $0 }
+        try lines.joined(separator: "\n")
+            .write(to: liveRoot.appendingPathComponent("double-peak.jsonl"), atomically: true, encoding: .utf8)
+
+        let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
+        let rhythm = try XCTUnwrap(snapshot.rhythm(for: "2026-06-21"))
+
+        XCTAssertEqual(rhythm.peakHour, 20)
+        XCTAssertEqual(rhythm.primaryTag, .doublePeak)
+        XCTAssertLessThan(rhythm.activeHours, 5)
+        XCTAssertEqual(rhythm.bucket(hour: 23).tokens, 5)
+    }
+
     private func codexLines(
         sessionID: String,
         totalTokens: Int,
