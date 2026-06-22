@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct ShareRhythmCardView: View {
-    @EnvironmentObject private var appState: AppState
     var day: DailyUsage
     var rhythm: DailyRhythm
     var previousDay: DailyUsage?
@@ -14,335 +13,484 @@ struct ShareRhythmCardView: View {
         ZStack {
             RhythmCardBackdrop(palette: palette)
 
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(spacing: 14) {
                 header
                 hero
-                RhythmWaveformPanel(rhythm: rhythm, palette: palette)
-                metrics
-                pairingPanel
+                RhythmNeonWavePanel(rhythm: rhythm, palette: palette)
+                peakCapsule
+                tokenConsole
+                bottomMetrics
                 footer
             }
-            .padding(30)
+            .padding(.horizontal, 30)
+            .padding(.vertical, 26)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(width: 600, height: 840)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .fixedSize()
-        .id(appState.appearanceID)
     }
 
     private var header: some View {
-        HStack(spacing: 13) {
+        HStack(alignment: .top, spacing: 13) {
             TokenStepMark(size: 42)
-                .padding(5)
-                .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(Color.white.opacity(0.12)))
-            VStack(alignment: .leading, spacing: 2) {
+                .padding(4)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.08))
+                        .overlay(Circle().stroke(palette.accent.opacity(0.82), lineWidth: 2))
+                )
+                .shadow(color: palette.accent.opacity(0.34), radius: 14, x: 0, y: 0)
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text("TokenStep")
-                    .font(.system(size: 25, weight: .black, design: .rounded))
+                    .font(.system(size: 23, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
-                Text(L("本地 AI 使用节奏"))
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(Color.white.opacity(0.58))
+                Text(L("AI Token 使用追踪"))
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.55))
             }
+
             Spacer()
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(L("昨日 AI 节奏"))
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                Text(day.date)
-                    .font(.caption.weight(.bold))
+
+            VStack(alignment: .trailing, spacing: 5) {
+                Text(displayDate)
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(palette.accent)
+                Text(weekdayText)
+                    .font(.callout.weight(.bold))
                     .foregroundStyle(Color.white.opacity(0.56))
             }
         }
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text(rhythm.primaryTag.title)
-                        .font(.system(size: 54, weight: .black, design: .rounded))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [palette.accent, palette.secondary],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+        VStack(spacing: 8) {
+            Text(L("昨日 AI 节奏"))
+                .font(.system(size: 31, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+
+            HStack(alignment: .center, spacing: 12) {
+                LaurelBranch(mirrored: false)
+                    .stroke(palette.accent.opacity(0.78), lineWidth: 2)
+                    .frame(width: 38, height: 56)
+                Text(rhythm.primaryTag.title)
+                    .font(.system(size: 43, weight: .black, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [palette.accent, palette.secondary],
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.62)
-                        .shadow(color: palette.accent.opacity(0.32), radius: 18, x: 0, y: 7)
-                    Text(rhythm.primaryTag.shareLine)
-                        .font(.title3.weight(.heavy))
-                        .foregroundStyle(Color.white.opacity(0.72))
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 16)
-                RhythmBadge(text: L("完整 24h"), palette: palette)
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.58)
+                    .shadow(color: palette.accent.opacity(0.34), radius: 16, x: 0, y: 4)
+                LaurelBranch(mirrored: true)
+                    .stroke(palette.accent.opacity(0.78), lineWidth: 2)
+                    .frame(width: 38, height: 56)
             }
 
-            Text(comparisonText)
+            Text(rhythm.primaryTag.shareLine)
+                .font(.callout.weight(.bold))
+                .foregroundStyle(Color.white.opacity(0.66))
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var peakCapsule: some View {
+        HStack(spacing: 13) {
+            Image(systemName: "scope")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(palette.accent)
+                .frame(width: 36, height: 36)
+                .background(palette.accent.opacity(0.12), in: Circle())
+            Text(LFormat("峰值 %@", peakWindowText))
+                .font(.headline.weight(.black))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            Spacer()
+            Text(LFormat("峰值 %@", TokenStepFormat.tokens(rhythm.peakTokens, compact: true)))
                 .font(.callout.weight(.heavy))
-                .foregroundStyle(Color.white.opacity(0.54))
+                .foregroundStyle(Color.white.opacity(0.72))
                 .lineLimit(1)
         }
+        .padding(.horizontal, 18)
+        .frame(height: 56)
+        .background(
+            LinearGradient(
+                colors: [palette.panel.opacity(0.96), palette.panel.opacity(0.62)],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(palette.secondary.opacity(0.35)))
+        .shadow(color: palette.secondary.opacity(0.16), radius: 18, x: 0, y: 10)
     }
 
-    private var metrics: some View {
-        HStack(spacing: 12) {
-            RhythmMetricTile(title: L("峰值"), value: rhythm.peakHourText, detail: TokenStepFormat.tokens(rhythm.peakTokens, compact: true), palette: palette)
-            RhythmMetricTile(title: L("活跃时段"), value: LFormat("%d 个时段", rhythm.activeHours), detail: rhythm.activeRangeText, palette: palette)
-            RhythmMetricTile(title: L("昨日 Token"), value: TokenStepFormat.tokens(day.totalTokens, compact: true), detail: L("全天总量"), palette: palette)
-        }
-    }
-
-    private var pairingPanel: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(palette.accent.opacity(0.16))
-                    .frame(width: 70, height: 70)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 30, weight: .black))
+    private var tokenConsole: some View {
+        HStack(spacing: 14) {
+            RhythmChevronCluster(mirrored: false, palette: palette)
+                .frame(width: 86)
+            VStack(spacing: 3) {
+                Text(L("昨日 Token"))
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(Color.white.opacity(0.70))
+                Text(TokenStepFormat.tokens(day.totalTokens, compact: true))
+                    .font(.system(size: 49, weight: .black, design: .rounded))
                     .foregroundStyle(
-                        LinearGradient(colors: [palette.secondary, palette.accent], startPoint: .top, endPoint: .bottom)
+                        LinearGradient(colors: [palette.accent, Color.white], startPoint: .top, endPoint: .bottom)
                     )
-            }
-            VStack(alignment: .leading, spacing: 7) {
-                Text(rhythm.primaryTag.companionLine)
-                    .font(.title3.weight(.black))
-                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.62)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                Text(pairingDetail)
-                    .font(.callout.weight(.bold))
-                    .foregroundStyle(Color.white.opacity(0.58))
-                    .lineLimit(2)
+                    .shadow(color: palette.accent.opacity(0.30), radius: 16, x: 0, y: 4)
             }
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity)
+            RhythmChevronCluster(mirrored: true, palette: palette)
+                .frame(width: 86)
         }
-        .padding(18)
-        .background(Color.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.white.opacity(0.11)))
+        .padding(.horizontal, 20)
+        .frame(height: 90)
+        .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(palette.secondary.opacity(0.24)))
+    }
+
+    private var bottomMetrics: some View {
+        HStack(spacing: 0) {
+            RhythmBottomMetric(symbol: "clock.fill", title: L("活跃时段"), value: LFormat("%d 个时段", rhythm.activeHours), color: palette.accent)
+            RhythmMetricDivider()
+            RhythmBottomMetric(symbol: "moon.stars.fill", title: L("夜间占比"), value: TokenStepFormat.percent(nightShare * 100), color: palette.night)
+            RhythmMetricDivider()
+            RhythmBottomMetric(symbol: "timer", title: L("最长连续"), value: LFormat("%d 小时", longestActiveStreak), color: palette.accent)
+        }
+        .frame(height: 70)
     }
 
     private var footer: some View {
-        HStack {
-            Label(L("本地统计"), systemImage: "shield.checkered")
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+            Text(L("本地统计"))
             Text("·")
-            Text(L("不上传代码或对话"))
-            Spacer()
-            Text("tokenstep.app")
+            Text(L("不上传对话"))
         }
         .font(.caption.weight(.heavy))
-        .foregroundStyle(Color.white.opacity(0.48))
+        .foregroundStyle(Color.white.opacity(0.54))
+        .frame(maxWidth: .infinity)
+        .frame(height: 38)
+        .background(Color.black.opacity(0.20), in: Capsule())
     }
 
-    private var comparisonText: String {
-        guard let previousDay, previousDay.totalTokens > 0 else {
-            return L("昨天的完整 AI 协作节拍")
-        }
-        let delta = Double(day.totalTokens - previousDay.totalTokens) / Double(previousDay.totalTokens) * 100
-        if abs(delta) < 1 {
-            return L("和前一天基本持平")
-        }
-        if delta > 0 {
-            return LFormat("比前一天多 %@", TokenStepFormat.percent(delta))
-        }
-        return LFormat("比前一天少 %@", TokenStepFormat.percent(abs(delta)))
+    private var displayDate: String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy.MM.dd"
+        guard let date = DateFormatter.tokenStepDay.date(from: day.date) else { return day.date }
+        return formatter.string(from: date)
     }
 
-    private var pairingDetail: String {
-        switch rhythm.primaryTag {
-        case .earlyStarter:
-            return L("你负责清晨开局，TA 负责夜里收尾。")
-        case .morningPlanner:
-            return L("你负责上午定盘，TA 负责下午冲刺。")
-        case .afternoonBurst:
-            return L("你负责午后爆发，TA 负责上午定盘。")
-        case .nightAgent:
-            return L("你负责深夜推进，TA 负责清晨接棒。")
-        case .doublePeak:
-            return L("你负责两次拉满，TA 负责稳定托底。")
-        case .fragmented:
-            return L("你负责随手推进，TA 负责集中攻坚。")
-        case .oneShot:
-            return L("你负责一波攻坚，TA 负责穿插补位。")
-        case .steadyCruise:
-            return L("你负责稳定巡航，TA 负责制造峰值。")
-        case .quietDay:
-            return L("你负责保持手感，TA 负责拉开节奏。")
+    private var weekdayText: String {
+        guard let date = DateFormatter.tokenStepDay.date(from: day.date) else { return "" }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = TokenStepLocalization.locale
+        formatter.dateFormat = TokenStepLocalization.language == .en ? "EEE" : "EEEE"
+        return formatter.string(from: date)
+    }
+
+    private var peakWindowText: String {
+        guard let peakHour = rhythm.peakHour else { return "--" }
+        return String(format: "%02d:00-%02d:00", peakHour, (peakHour + 1) % 24)
+    }
+
+    private var nightShare: Double {
+        guard rhythm.totalTokens > 0 else { return 0 }
+        let nightTokens = rhythm.tokens(in: 21...23) + rhythm.tokens(in: 0...2)
+        return Double(nightTokens) / Double(rhythm.totalTokens)
+    }
+
+    private var longestActiveStreak: Int {
+        var best = 0
+        var current = 0
+        for bucket in rhythm.buckets {
+            if bucket.tokens > 0 {
+                current += 1
+                best = max(best, current)
+            } else {
+                current = 0
+            }
         }
+        return max(best, rhythm.activeHours > 0 ? 1 : 0)
     }
 }
 
-private struct RhythmWaveformPanel: View {
+private struct RhythmNeonWavePanel: View {
     var rhythm: DailyRhythm
     var palette: RhythmCardPalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(L("24 小时波形"))
-                        .font(.headline.weight(.black))
-                        .foregroundStyle(.white)
-                    Text(L("颜色随时段变化，最高柱是峰值"))
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.white.opacity(0.50))
-                }
-                Spacer()
-                RhythmBadge(text: LFormat("峰值 %@", rhythm.peakHourText), palette: palette)
-            }
-
-            ZStack(alignment: .bottom) {
+        VStack(spacing: 7) {
+            ZStack {
                 RhythmGridShape(columns: 12, rows: 4)
-                    .stroke(Color.white.opacity(0.055), lineWidth: 1)
+                    .stroke(palette.accent.opacity(0.10), lineWidth: 1)
 
-                HStack(alignment: .bottom, spacing: 6) {
-                    ForEach(rhythm.buckets) { bucket in
-                        RhythmHourBar(
-                            bucket: bucket,
-                            maxTokens: rhythm.maxBucketTokens,
-                            isPeak: bucket.hour == rhythm.peakHour,
-                            palette: palette
+                RhythmAreaShape(values: values)
+                    .fill(
+                        LinearGradient(
+                            colors: [palette.accent.opacity(0.48), palette.secondary.opacity(0.22), .clear],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
-                    }
-                }
-                .padding(.horizontal, 6)
-                .padding(.bottom, 4)
+                    )
+                    .blur(radius: 0.3)
+
+                RhythmLineShape(values: values)
+                    .stroke(palette.secondary.opacity(0.38), style: StrokeStyle(lineWidth: 14, lineCap: .round, lineJoin: .round))
+                    .blur(radius: 10)
+
+                RhythmLineShape(values: values)
+                    .stroke(
+                        LinearGradient(
+                            colors: [palette.accent, palette.secondary, palette.night],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
+                    )
+
+                RhythmPeakMarker(values: values, peakHour: rhythm.peakHour, color: palette.secondary)
             }
-            .frame(height: 220)
+            .frame(height: 205)
+            .padding(.horizontal, 4)
 
             HStack {
-                ForEach([0, 6, 12, 18, 24], id: \.self) { hour in
-                    Text(String(format: "%02d", hour))
-                        .font(.caption2.weight(.black))
-                        .foregroundStyle(Color.white.opacity(0.38))
-                    if hour != 24 {
-                        Spacer()
-                    }
-                }
+                RhythmAxisLabel(hour: 0, symbol: "moon.stars.fill", color: palette.night)
+                Spacer()
+                RhythmAxisLabel(hour: 6, symbol: nil, color: .white.opacity(0.48))
+                Spacer()
+                RhythmAxisLabel(hour: 12, symbol: "sun.max.fill", color: Color(red: 255 / 255, green: 184 / 255, blue: 32 / 255))
+                Spacer()
+                RhythmAxisLabel(hour: 18, symbol: nil, color: .white.opacity(0.48))
+                Spacer()
+                RhythmAxisLabel(hour: 24, symbol: "moon.fill", color: palette.night)
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
         }
-        .padding(20)
-        .background(Color.black.opacity(0.23), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.white.opacity(0.12)))
-        .shadow(color: palette.accent.opacity(0.18), radius: 30, x: 0, y: 16)
+        .frame(height: 238)
+    }
+
+    private var values: [Double] {
+        let maxTokens = Double(rhythm.maxBucketTokens)
+        return rhythm.buckets.map { bucket in
+            guard bucket.tokens > 0 else { return 0.06 }
+            return max(0.10, min(Double(bucket.tokens) / maxTokens, 1))
+        }
     }
 }
 
-private struct RhythmHourBar: View {
-    var bucket: HourlyTokenBucket
-    var maxTokens: Int
-    var isPeak: Bool
-    var palette: RhythmCardPalette
-
-    private var normalized: Double {
-        guard maxTokens > 0 else { return 0 }
-        return min(max(Double(bucket.tokens) / Double(maxTokens), 0), 1)
-    }
-
-    private var height: CGFloat {
-        if bucket.tokens <= 0 { return 8 }
-        return 16 + CGFloat(pow(normalized, 0.72)) * 170
-    }
+private struct RhythmAxisLabel: View {
+    var hour: Int
+    var symbol: String?
+    var color: Color
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: palette.barColors(for: bucket.hour, isPeak: isPeak),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
-            .opacity(bucket.tokens > 0 ? 1 : 0.28)
-            .shadow(color: isPeak ? palette.secondary.opacity(0.72) : palette.accent.opacity(0.20), radius: isPeak ? 18 : 5, x: 0, y: isPeak ? 0 : 4)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color.white.opacity(isPeak ? 0.36 : 0.07), lineWidth: 1)
-            )
+        VStack(spacing: 4) {
+            Text(hour == 24 ? "24时" : "\(hour)时")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.white.opacity(0.48))
+            if let symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(color)
+            } else {
+                Color.clear.frame(width: 16, height: 16)
+            }
+        }
     }
 }
 
-private struct RhythmMetricTile: View {
+private struct RhythmBottomMetric: View {
+    var symbol: String
     var title: String
     var value: String
-    var detail: String
-    var palette: RhythmCardPalette
+    var color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title)
-                .font(.caption.weight(.black))
-                .foregroundStyle(Color.white.opacity(0.48))
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.caption.weight(.black))
+                Text(title)
+                    .font(.caption.weight(.heavy))
+            }
+            .foregroundStyle(color)
+
             Text(value)
-                .font(.system(size: 25, weight: .black, design: .rounded))
+                .font(.system(size: 24, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
+                .minimumScaleFactor(0.68)
                 .lineLimit(1)
-                .minimumScaleFactor(0.58)
-            Text(detail)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(palette.secondary.opacity(0.82))
-                .lineLimit(1)
-                .minimumScaleFactor(0.70)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(15)
-        .frame(height: 112)
-        .background(Color.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(0.10)))
+        .frame(maxWidth: .infinity)
     }
 }
 
-private struct RhythmBadge: View {
-    var text: String
-    var palette: RhythmCardPalette
-
+private struct RhythmMetricDivider: View {
     var body: some View {
-        Text(text)
-            .font(.caption.weight(.black))
-            .foregroundStyle(.white)
-            .lineLimit(1)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
-            .background(
-                LinearGradient(colors: [palette.accent.opacity(0.38), palette.secondary.opacity(0.28)], startPoint: .leading, endPoint: .trailing),
-                in: Capsule()
-            )
-            .overlay(Capsule().stroke(Color.white.opacity(0.14)))
+        Rectangle()
+            .fill(Color.white.opacity(0.20))
+            .frame(width: 1, height: 54)
     }
 }
 
-private struct RhythmCardBackdrop: View {
+private struct RhythmChevronCluster: View {
+    var mirrored: Bool
     var palette: RhythmCardPalette
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: palette.background,
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            RadialGradient(
-                colors: [palette.accent.opacity(0.32), .clear],
-                center: .topTrailing,
-                startRadius: 20,
-                endRadius: 430
-            )
-            RadialGradient(
-                colors: [palette.secondary.opacity(0.25), .clear],
-                center: .bottomLeading,
-                startRadius: 10,
-                endRadius: 460
-            )
-            RhythmGridShape(columns: 8, rows: 12)
-                .stroke(Color.white.opacity(0.035), lineWidth: 1)
+        HStack(spacing: -3) {
+            ForEach(0..<4, id: \.self) { index in
+                Image(systemName: mirrored ? "chevron.right" : "chevron.left")
+                    .font(.system(size: 27, weight: .black))
+                    .foregroundStyle(index == 1 ? palette.secondary : palette.accent.opacity(index == 2 ? 0.54 : 0.25))
+            }
         }
-        .ignoresSafeArea()
+        .shadow(color: palette.accent.opacity(0.34), radius: 9, x: 0, y: 0)
+    }
+}
+
+private struct RhythmPeakMarker: View {
+    var values: [Double]
+    var peakHour: Int?
+    var color: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let peakHour, values.indices.contains(peakHour) {
+                let point = point(in: proxy.size, hour: peakHour)
+                Path { path in
+                    path.move(to: CGPoint(x: point.x, y: point.y))
+                    path.addLine(to: CGPoint(x: point.x, y: proxy.size.height - 8))
+                }
+                .stroke(color.opacity(0.36), style: StrokeStyle(lineWidth: 1.5, dash: [5, 7]))
+
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 11, height: 11)
+                    .overlay(Circle().stroke(color, lineWidth: 3))
+                    .shadow(color: color.opacity(0.8), radius: 14, x: 0, y: 0)
+                    .position(point)
+            }
+        }
+    }
+
+    private func point(in size: CGSize, hour: Int) -> CGPoint {
+        let x = size.width * CGFloat(hour) / CGFloat(max(values.count - 1, 1))
+        let value = values[hour]
+        let y = size.height - 20 - CGFloat(value) * (size.height - 42)
+        return CGPoint(x: x, y: y)
+    }
+}
+
+private struct RhythmLineShape: Shape {
+    var values: [Double]
+
+    func path(in rect: CGRect) -> Path {
+        rhythmPath(in: rect, closeToBottom: false)
+    }
+}
+
+private struct RhythmAreaShape: Shape {
+    var values: [Double]
+
+    func path(in rect: CGRect) -> Path {
+        rhythmPath(in: rect, closeToBottom: true)
+    }
+}
+
+private extension RhythmLineShape {
+    func rhythmPath(in rect: CGRect, closeToBottom: Bool) -> Path {
+        makeRhythmPath(values: values, in: rect, closeToBottom: closeToBottom)
+    }
+}
+
+private extension RhythmAreaShape {
+    func rhythmPath(in rect: CGRect, closeToBottom: Bool) -> Path {
+        makeRhythmPath(values: values, in: rect, closeToBottom: closeToBottom)
+    }
+}
+
+private func makeRhythmPath(values: [Double], in rect: CGRect, closeToBottom: Bool) -> Path {
+    let points = rhythmPoints(values: values, in: rect)
+    var path = Path()
+    guard let first = points.first else { return path }
+
+    if closeToBottom {
+        path.move(to: CGPoint(x: first.x, y: rect.maxY - 8))
+        path.addLine(to: first)
+    } else {
+        path.move(to: first)
+    }
+
+    for index in 1..<points.count {
+        let previous = points[index - 1]
+        let current = points[index]
+        let mid = CGPoint(x: (previous.x + current.x) / 2, y: (previous.y + current.y) / 2)
+        path.addQuadCurve(to: mid, control: previous)
+        path.addQuadCurve(to: current, control: current)
+    }
+
+    if closeToBottom, let last = points.last {
+        path.addLine(to: CGPoint(x: last.x, y: rect.maxY - 8))
+        path.closeSubpath()
+    }
+    return path
+}
+
+private func rhythmPoints(values: [Double], in rect: CGRect) -> [CGPoint] {
+    guard !values.isEmpty else { return [] }
+    let denominator = CGFloat(max(values.count - 1, 1))
+    return values.enumerated().map { index, value in
+        let x = rect.minX + rect.width * CGFloat(index) / denominator
+        let clamped = min(max(value, 0), 1)
+        let y = rect.maxY - 20 - CGFloat(clamped) * (rect.height - 42)
+        return CGPoint(x: x, y: y)
+    }
+}
+
+private struct LaurelBranch: Shape {
+    var mirrored: Bool
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let xBase = mirrored ? rect.maxX * 0.36 : rect.maxX * 0.64
+        let xTip = mirrored ? rect.minX + 3 : rect.maxX - 3
+        path.move(to: CGPoint(x: xBase, y: rect.maxY - 4))
+        path.addQuadCurve(
+            to: CGPoint(x: xTip, y: rect.minY + 8),
+            control: CGPoint(x: mirrored ? rect.minX + 7 : rect.maxX - 7, y: rect.midY)
+        )
+        for index in 0..<5 {
+            let y = rect.maxY - 13 - CGFloat(index) * rect.height * 0.15
+            let x = mirrored ? rect.midX - CGFloat(index) * 2.4 : rect.midX + CGFloat(index) * 2.4
+            let leafWidth: CGFloat = 12
+            let leafHeight: CGFloat = 6
+            let direction: CGFloat = mirrored ? -1 : 1
+            path.move(to: CGPoint(x: x, y: y))
+            path.addQuadCurve(
+                to: CGPoint(x: x + direction * leafWidth, y: y - leafHeight),
+                control: CGPoint(x: x + direction * leafWidth * 0.72, y: y - leafHeight * 1.25)
+            )
+            path.addQuadCurve(
+                to: CGPoint(x: x, y: y),
+                control: CGPoint(x: x + direction * leafWidth * 0.34, y: y - leafHeight * 0.16)
+            )
+        }
+        return path
     }
 }
 
@@ -367,79 +515,92 @@ private struct RhythmGridShape: Shape {
     }
 }
 
+private struct RhythmCardBackdrop: View {
+    var palette: RhythmCardPalette
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: palette.background, startPoint: .topLeading, endPoint: .bottomTrailing)
+            RadialGradient(
+                colors: [palette.accent.opacity(0.26), .clear],
+                center: .bottomLeading,
+                startRadius: 20,
+                endRadius: 440
+            )
+            RadialGradient(
+                colors: [palette.secondary.opacity(0.16), .clear],
+                center: .topTrailing,
+                startRadius: 40,
+                endRadius: 380
+            )
+            UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 420, bottomTrailingRadius: 0, topTrailingRadius: 22, style: .continuous)
+                .fill(palette.accent.opacity(0.10))
+                .frame(width: 360, height: 380)
+                .rotationEffect(.degrees(-23))
+                .offset(x: 250, y: -48)
+            RhythmGridShape(columns: 11, rows: 14)
+                .stroke(Color.white.opacity(0.026), lineWidth: 1)
+        }
+    }
+}
+
 private struct RhythmCardPalette {
     var background: [Color]
     var accent: Color
     var secondary: Color
     var night: Color
-    var morning: Color
+    var panel: Color
 
     static func palette(for rhythm: DailyRhythm) -> RhythmCardPalette {
         switch rhythm.primaryTag {
         case .nightAgent:
             return RhythmCardPalette(
                 background: [
-                    Color(red: 4 / 255, green: 7 / 255, blue: 18 / 255),
-                    Color(red: 9 / 255, green: 14 / 255, blue: 36 / 255),
-                    Color(red: 16 / 255, green: 9 / 255, blue: 42 / 255)
+                    Color(red: 2 / 255, green: 6 / 255, blue: 17 / 255),
+                    Color(red: 3 / 255, green: 14 / 255, blue: 25 / 255),
+                    Color(red: 8 / 255, green: 12 / 255, blue: 35 / 255)
                 ],
-                accent: Color(red: 41 / 255, green: 218 / 255, blue: 255 / 255),
-                secondary: Color(red: 145 / 255, green: 92 / 255, blue: 255 / 255),
-                night: Color(red: 93 / 255, green: 126 / 255, blue: 255 / 255),
-                morning: Color(red: 96 / 255, green: 239 / 255, blue: 189 / 255)
+                accent: Color(red: 74 / 255, green: 247 / 255, blue: 139 / 255),
+                secondary: Color(red: 62 / 255, green: 192 / 255, blue: 255 / 255),
+                night: Color(red: 45 / 255, green: 108 / 255, blue: 255 / 255),
+                panel: Color(red: 4 / 255, green: 38 / 255, blue: 43 / 255)
             )
         case .morningPlanner, .earlyStarter:
             return RhythmCardPalette(
                 background: [
-                    Color(red: 7 / 255, green: 24 / 255, blue: 22 / 255),
-                    Color(red: 9 / 255, green: 40 / 255, blue: 35 / 255),
-                    Color(red: 54 / 255, green: 40 / 255, blue: 12 / 255)
+                    Color(red: 3 / 255, green: 15 / 255, blue: 12 / 255),
+                    Color(red: 4 / 255, green: 35 / 255, blue: 27 / 255),
+                    Color(red: 31 / 255, green: 30 / 255, blue: 13 / 255)
                 ],
-                accent: Color(red: 75 / 255, green: 232 / 255, blue: 159 / 255),
-                secondary: Color(red: 255 / 255, green: 207 / 255, blue: 87 / 255),
-                night: Color(red: 75 / 255, green: 156 / 255, blue: 232 / 255),
-                morning: Color(red: 255 / 255, green: 219 / 255, blue: 123 / 255)
+                accent: Color(red: 85 / 255, green: 246 / 255, blue: 151 / 255),
+                secondary: Color(red: 255 / 255, green: 190 / 255, blue: 44 / 255),
+                night: Color(red: 47 / 255, green: 152 / 255, blue: 255 / 255),
+                panel: Color(red: 4 / 255, green: 41 / 255, blue: 34 / 255)
             )
         case .fragmented, .doublePeak:
             return RhythmCardPalette(
                 background: [
-                    Color(red: 8 / 255, green: 9 / 255, blue: 17 / 255),
-                    Color(red: 20 / 255, green: 16 / 255, blue: 40 / 255),
-                    Color(red: 4 / 255, green: 34 / 255, blue: 35 / 255)
+                    Color(red: 5 / 255, green: 8 / 255, blue: 18 / 255),
+                    Color(red: 4 / 255, green: 28 / 255, blue: 27 / 255),
+                    Color(red: 20 / 255, green: 12 / 255, blue: 42 / 255)
                 ],
-                accent: Color(red: 80 / 255, green: 238 / 255, blue: 167 / 255),
-                secondary: Color(red: 255 / 255, green: 88 / 255, blue: 164 / 255),
-                night: Color(red: 83 / 255, green: 172 / 255, blue: 255 / 255),
-                morning: Color(red: 255 / 255, green: 202 / 255, blue: 94 / 255)
+                accent: Color(red: 80 / 255, green: 246 / 255, blue: 144 / 255),
+                secondary: Color(red: 46 / 255, green: 214 / 255, blue: 255 / 255),
+                night: Color(red: 105 / 255, green: 92 / 255, blue: 255 / 255),
+                panel: Color(red: 5 / 255, green: 37 / 255, blue: 42 / 255)
             )
         default:
             return RhythmCardPalette(
                 background: [
-                    Color(red: 2 / 255, green: 12 / 255, blue: 9 / 255),
-                    Color(red: 4 / 255, green: 23 / 255, blue: 18 / 255),
-                    Color(red: 2 / 255, green: 16 / 255, blue: 29 / 255)
+                    Color(red: 1 / 255, green: 10 / 255, blue: 7 / 255),
+                    Color(red: 3 / 255, green: 22 / 255, blue: 17 / 255),
+                    Color(red: 2 / 255, green: 19 / 255, blue: 31 / 255)
                 ],
-                accent: Color(red: 63 / 255, green: 238 / 255, blue: 143 / 255),
-                secondary: Color(red: 52 / 255, green: 198 / 255, blue: 255 / 255),
-                night: Color(red: 87 / 255, green: 128 / 255, blue: 255 / 255),
-                morning: Color(red: 255 / 255, green: 213 / 255, blue: 105 / 255)
+                accent: Color(red: 79 / 255, green: 244 / 255, blue: 138 / 255),
+                secondary: Color(red: 49 / 255, green: 205 / 255, blue: 255 / 255),
+                night: Color(red: 41 / 255, green: 104 / 255, blue: 255 / 255),
+                panel: Color(red: 3 / 255, green: 38 / 255, blue: 41 / 255)
             )
         }
-    }
-
-    func barColors(for hour: Int, isPeak: Bool) -> [Color] {
-        if isPeak {
-            return [Color.white, secondary, accent]
-        }
-        if hour <= 2 || hour >= 21 {
-            return [night, secondary.opacity(0.62)]
-        }
-        if (5...11).contains(hour) {
-            return [morning, accent.opacity(0.78)]
-        }
-        if (14...18).contains(hour) {
-            return [accent, secondary.opacity(0.80)]
-        }
-        return [accent.opacity(0.78), accent.opacity(0.34)]
     }
 }
