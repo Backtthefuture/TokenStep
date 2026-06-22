@@ -18,7 +18,7 @@ final class UsageCollectorClaudeCodeTests: XCTestCase {
         let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root)
 
         XCTAssertEqual(snapshot.sources["Claude Code"]?.status, "ok")
-        XCTAssertEqual(snapshot.sources["Claude Code"]?.records, 2)
+        XCTAssertEqual(snapshot.sources["Claude Code"]?.records, 3)
         XCTAssertEqual(snapshot.totals.tokens, 324)
         XCTAssertEqual(snapshot.daily.count, 1)
         XCTAssertEqual(snapshot.daily.first?.date, "2026-06-21")

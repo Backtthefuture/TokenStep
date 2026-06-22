@@ -5,6 +5,7 @@ struct CCSwitchProxyFixtureCheck {
     static func main() throws {
         try runCCSwitchChecks()
         try runClaudeCodeChecks()
+        try runCrossSourceDedupeChecks()
         print("Usage collector fixture checks passed")
     }
 
@@ -44,6 +45,19 @@ struct CCSwitchProxyFixtureCheck {
         let emptySnapshot = UsageCollector.collectCCSwitchProxyUsageSnapshot(databaseURL: emptyDatabase)
         try assertEqual(emptySnapshot.sources["CC Switch Proxy"]?.status, "missing_valid_rows", "empty source status")
         try assertEqual(emptySnapshot.totals.tokens, 0, "empty total tokens")
+
+        let legacyDatabase = try makeLegacyDatabaseWithoutDataSource()
+        defer {
+            try? FileManager.default.removeItem(at: legacyDatabase.deletingLastPathComponent())
+        }
+
+        let legacySnapshot = UsageCollector.collectCCSwitchProxyUsageSnapshot(databaseURL: legacyDatabase)
+        try assertEqual(
+            legacySnapshot.sources["CC Switch Proxy"]?.status,
+            "schema_missing_data_source",
+            "legacy source status"
+        )
+        try assertEqual(legacySnapshot.totals.tokens, 0, "legacy total tokens")
 
         let largeDatabase = try makeFixtureDatabase(rowsSQL: largeRowsSQL)
         defer {
@@ -132,12 +146,140 @@ struct CCSwitchProxyFixtureCheck {
 
         let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root)
         try assertEqual(snapshot.sources["Claude Code"]?.status, "ok", "claude source status")
-        try assertEqual(snapshot.sources["Claude Code"]?.records, 2, "claude source records")
+        try assertEqual(snapshot.sources["Claude Code"]?.records, 3, "claude source records")
         try assertEqual(snapshot.totals.tokens, 324, "claude total tokens")
         try assertEqual(snapshot.daily.first?.date, "2026-06-21", "claude daily date")
         try assertEqual(snapshot.daily.first?.tools["Claude Code"], 324, "claude tool tokens")
         try assertEqual(snapshot.daily.first?.models["claude-opus-4-20250514"], 322, "claude model tokens")
         try assertEqual(snapshot.daily.first?.models["unknown"], 2, "claude fallback model tokens")
+    }
+
+    private static func runCrossSourceDedupeChecks() throws {
+        try runClaudeProxyDedupeChecks()
+        try runCodexProxyDedupeChecks()
+    }
+
+    private static func runClaudeProxyDedupeChecks() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepClaudeDedupeFixture-\(UUID().uuidString)", isDirectory: true)
+        let project = root.appendingPathComponent("project", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let log = project.appendingPathComponent("session.jsonl")
+        let lines = [
+            claudeAssistantLine(
+                uuid: "dedupe-claude-1",
+                messageID: "msg-dedupe-claude-1",
+                timestamp: "2026-06-21T08:00:00Z",
+                model: "claude-opus-4-20250514",
+                stopReason: "end_turn",
+                input: 10,
+                output: 3,
+                cacheRead: 100,
+                requestID: "req-claude-1",
+                sessionID: "session-claude-1"
+            )
+        ]
+        try lines.joined(separator: "\n").write(to: log, atomically: true, encoding: .utf8)
+
+        let database = try makeFixtureDatabase(rowsSQL: """
+        insert into proxy_request_logs (
+            request_id, provider_id, app_type, model,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            total_cost_usd, status_code, created_at, data_source, request_model, pricing_model
+        ) values
+            ('req-claude-1', 'provider-a', 'claude', 'claude-opus-4-20250514', 10, 3, 100, 0, '0.12', 200, 1782028800, 'proxy', 'claude-opus-4-20250514', 'claude-opus-4-20250514'),
+            ('req-claude-2', 'provider-a', 'claude', 'claude-opus-4-20250514', 20, 4, 0, 0, '0.24', 200, 1782028860, 'proxy', 'claude-opus-4-20250514', 'claude-opus-4-20250514'),
+            ('req-gemini-1', 'provider-b', 'gemini', 'gemini-2.5-pro', 5, 1, 0, 0, '0.06', 200, 1782028920, 'proxy', 'gemini-2.5-pro', 'gemini-2.5-pro');
+        """)
+        defer {
+            try? FileManager.default.removeItem(at: database.deletingLastPathComponent())
+        }
+
+        let snapshot = UsageCollector.collectUsageSnapshotForTests(
+            claudeRootURL: root,
+            ccSwitchDatabaseURL: database
+        )
+
+        let source = snapshot.sources["CC Switch Proxy"]
+        try assertEqual(source?.status, "ok", "claude dedupe source status")
+        try assertEqual(source?.rawRecords, 3, "claude dedupe raw proxy records")
+        try assertEqual(source?.records, 2, "claude dedupe kept proxy records")
+        try assertEqual(source?.dedupedRecords, 1, "claude dedupe skipped duplicate proxy records")
+        try assertEqual(source?.strategy, "request_level_dedupe", "claude dedupe strategy")
+        try assertEqual(snapshot.totals.tokens, 143, "claude dedupe total tokens")
+        try assertEqual(snapshot.totals.cost, 0.42, "claude dedupe total cost")
+        try assertEqual(snapshot.daily.first?.tools["Claude Code"], 113, "claude native tokens")
+        try assertEqual(snapshot.daily.first?.tools["Claude Code via CC Switch"], 24, "claude proxy residual tokens")
+        try assertEqual(snapshot.daily.first?.tools["Gemini via CC Switch"], 6, "gemini proxy residual tokens")
+    }
+
+    private static func runCodexProxyDedupeChecks() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepCodexDedupeFixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let log = root.appendingPathComponent("session.jsonl")
+        let lines = [
+            jsonLine([
+                "type": "session_meta",
+                "timestamp": "2026-06-21T09:00:00Z",
+                "payload": ["id": "codex-session-1"]
+            ]),
+            jsonLine([
+                "type": "turn_context",
+                "timestamp": "2026-06-21T09:00:00Z",
+                "payload": ["model": "gpt-5.4"]
+            ]),
+            jsonLine([
+                "type": "event_msg",
+                "timestamp": "2026-06-21T09:00:00Z",
+                "payload": [
+                    "type": "token_count",
+                    "info": [
+                        "last_token_usage": [
+                            "input_tokens": 30,
+                            "output_tokens": 5,
+                            "cache_read_input_tokens": 10
+                        ]
+                    ]
+                ]
+            ])
+        ]
+        try lines.joined(separator: "\n").write(to: log, atomically: true, encoding: .utf8)
+
+        let database = try makeFixtureDatabase(rowsSQL: """
+        insert into proxy_request_logs (
+            request_id, provider_id, app_type, model,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            total_cost_usd, status_code, created_at, data_source, request_model, pricing_model
+        ) values
+            ('proxy-codex-strong-match', 'provider-a', 'codex', 'gpt-5.4', 30, 5, 10, 0, '0.45', 200, 1782032400, 'proxy', 'gpt-5.4', '');
+        """)
+        defer {
+            try? FileManager.default.removeItem(at: database.deletingLastPathComponent())
+        }
+
+        let snapshot = UsageCollector.collectUsageSnapshotForTests(
+            codexRoots: [root],
+            ccSwitchDatabaseURL: database
+        )
+
+        let source = snapshot.sources["CC Switch Proxy"]
+        try assertEqual(source?.status, "all_deduped", "codex dedupe source status")
+        try assertEqual(source?.rawRecords, 1, "codex dedupe raw proxy records")
+        try assertEqual(source?.records, 0, "codex dedupe kept proxy records")
+        try assertEqual(source?.dedupedRecords, 1, "codex dedupe duplicate proxy records")
+        try assertEqual(snapshot.totals.tokens, 45, "codex dedupe total tokens")
+        try assertEqual(snapshot.totals.cost, 0.45, "codex dedupe total cost")
+        try assertEqual(snapshot.daily.first?.tools["Codex"], 45, "codex native tokens")
+        try assertNil(snapshot.daily.first?.tools["Codex via CC Switch"], "codex proxy duplicate tokens")
     }
 
     private static func makeFixtureDatabase(rowsSQL: String = defaultRowsSQL) throws -> URL {
@@ -163,6 +305,37 @@ struct CCSwitchProxyFixtureCheck {
             pricing_model text
         );
         \(rowsSQL)
+        """)
+        return database
+    }
+
+    private static func makeLegacyDatabaseWithoutDataSource() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepCCSwitchLegacyFixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let database = directory.appendingPathComponent("cc-switch.db")
+        try runSQLite(database: database, sql: """
+        create table proxy_request_logs (
+            request_id text primary key,
+            provider_id text not null,
+            app_type text not null,
+            model text not null,
+            input_tokens integer not null default 0,
+            output_tokens integer not null default 0,
+            cache_read_tokens integer not null default 0,
+            cache_creation_tokens integer not null default 0,
+            total_cost_usd text not null default '0',
+            status_code integer not null,
+            created_at integer not null,
+            request_model text,
+            pricing_model text
+        );
+        insert into proxy_request_logs (
+            request_id, provider_id, app_type, model,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            total_cost_usd, status_code, created_at, request_model, pricing_model
+        ) values
+            ('legacy-proxy-1', 'provider-a', 'claude', 'claude-raw', 100, 20, 30, 5, '0.12', 200, 1717200000, 'claude-request', 'claude-priced');
         """)
         return database
     }
@@ -221,7 +394,9 @@ struct CCSwitchProxyFixtureCheck {
         stopReason: String?,
         input: Int,
         output: Int,
-        cacheRead: Int
+        cacheRead: Int,
+        requestID: String? = nil,
+        sessionID: String? = nil
     ) -> String {
         var message: [String: Any] = [
             "usage": [
@@ -240,12 +415,22 @@ struct CCSwitchProxyFixtureCheck {
             message["stop_reason"] = stopReason
         }
 
-        let object: [String: Any] = [
+        var object: [String: Any] = [
             "type": "assistant",
             "uuid": uuid,
             "timestamp": timestamp,
             "message": message
         ]
+        if let requestID {
+            object["requestId"] = requestID
+        }
+        if let sessionID {
+            object["sessionId"] = sessionID
+        }
+        return jsonLine(object)
+    }
+
+    private static func jsonLine(_ object: [String: Any]) -> String {
         let data = try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return String(data: data, encoding: .utf8)!
     }

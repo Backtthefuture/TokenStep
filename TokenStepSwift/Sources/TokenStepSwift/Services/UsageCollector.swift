@@ -11,18 +11,26 @@ enum UsageCollector {
         ccSwitchDatabaseURL: URL? = nil
     ) -> UsageSnapshot {
         var cache = loadCache()
-        compactCacheRecords(&cache)
         var livePaths = Set<String>()
         let sourceCutoff = sourceFileCutoffDate(historyDays: historyDays)
         let codex = collectCodex(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
-        let ccSwitch = includeCCSwitchProxyUsage
+        var ccSwitch = includeCCSwitchProxyUsage
             ? collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         cache.files = cache.files.filter { livePaths.contains($0.key) }
         saveCache(cache)
+
+        let nativeRecords = codex.records + claude.records
+        let deduped = deduplicateCrossSource(
+            nativeRecords: nativeRecords,
+            proxyRecords: ccSwitch.records
+        )
+        if includeCCSwitchProxyUsage {
+            ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
+        }
         return aggregate(
-            records: codex.records + claude.records + ccSwitch.records,
+            records: deduped.records,
             sources: [
                 "Codex": codex.source,
                 "Claude Code": claude.source,
@@ -44,6 +52,42 @@ enum UsageCollector {
         var livePaths = Set<String>()
         let result = collectClaudeCode(cache: &cache, livePaths: &livePaths, rootURL: rootURL, modifiedSince: nil)
         return aggregate(records: result.records, sources: ["Claude Code": result.source])
+    }
+
+    static func collectUsageSnapshotForTests(
+        codexRoots: [URL] = [],
+        claudeRootURL: URL? = nil,
+        ccSwitchDatabaseURL: URL? = nil
+    ) -> UsageSnapshot {
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        let codex = codexRoots.isEmpty
+            ? CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+            : collectCodexFromJSONL(
+                cache: &cache,
+                livePaths: &livePaths,
+                modifiedSince: nil,
+                roots: codexRoots
+            )
+        let claude = claudeRootURL.map {
+            collectClaudeCode(cache: &cache, livePaths: &livePaths, rootURL: $0, modifiedSince: nil)
+        } ?? CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        var ccSwitch = ccSwitchDatabaseURL.map {
+            collectCCSwitchProxyUsage(databaseURL: $0)
+        } ?? CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let deduped = deduplicateCrossSource(
+            nativeRecords: codex.records + claude.records,
+            proxyRecords: ccSwitch.records
+        )
+        ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
+        return aggregate(
+            records: deduped.records,
+            sources: [
+                "Codex": codex.source,
+                "Claude Code": claude.source,
+                ccSwitchSourceName: ccSwitch.source
+            ]
+        )
     }
 
     private static func collectCodex(cache: inout CollectorCache, livePaths: inout Set<String>, modifiedSince cutoffDate: Date?) -> CollectorResult {
@@ -100,7 +144,8 @@ enum UsageCollector {
                 timestamp: nil,
                 tool: "Codex",
                 model: modelKey(row["model"] as? String),
-                usage: usage
+                usage: usage,
+                source: .nativeCodexSQLite
             )
         }
 
@@ -115,9 +160,14 @@ enum UsageCollector {
         )
     }
 
-    private static func collectCodexFromJSONL(cache: inout CollectorCache, livePaths: inout Set<String>, modifiedSince cutoffDate: Date?) -> CollectorResult {
+    private static func collectCodexFromJSONL(
+        cache: inout CollectorCache,
+        livePaths: inout Set<String>,
+        modifiedSince cutoffDate: Date?,
+        roots: [URL]? = nil
+    ) -> CollectorResult {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let roots = [
+        let roots = roots ?? [
             home.appendingPathComponent(".codex/sessions", isDirectory: true),
             home.appendingPathComponent(".codex/archived_sessions", isDirectory: true)
         ]
@@ -136,10 +186,12 @@ enum UsageCollector {
             var sessionID = path.deletingPathExtension().lastPathComponent
             var currentModel = "unknown"
             var eventIndex = 0
+            var lineNumber = 0
             guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
 
             try? forEachLine(in: path, matchingAny: ["session_meta", "turn_context", "token_count"]) { line in
                 autoreleasepool {
+                    lineNumber += 1
                     guard let obj = jsonObject(line) else { return }
                     let type = obj["type"] as? String
                     let payload = obj["payload"] as? [String: Any]
@@ -175,14 +227,18 @@ enum UsageCollector {
                             timestamp: timestamp,
                             tool: "Codex",
                             model: currentModel,
-                            usage: usage
+                            usage: usage,
+                            source: .nativeCodex,
+                            requestID: key,
+                            sessionID: sessionID,
+                            sourcePath: path.path,
+                            lineNumber: lineNumber
                         )
                     )
                 }
             }
-            let compactedFileRecords = compactRecords(fileRecords)
-            records.append(contentsOf: compactedFileRecords)
-            updateCache(path: path, tool: "Codex", records: compactedFileRecords, cache: &cache)
+            records.append(contentsOf: fileRecords)
+            updateCache(path: path, tool: "Codex", records: fileRecords, cache: &cache)
         }
 
         return CollectorResult(
@@ -237,26 +293,29 @@ enum UsageCollector {
                         return
                     }
 
-                    let responseKey = claudeResponseKey(obj: obj, message: message, path: path, lineNumber: lineNumber)
+                    let identity = claudeIdentity(obj: obj, message: message, path: path, lineNumber: lineNumber)
                     let candidate = ClaudeUsageCandidate(
                         date: day,
                         timestamp: timestamp,
                         model: modelKey(message["model"] as? String),
                         usage: usage,
                         hasStopReason: hasStopReason(message["stop_reason"]),
-                        lineNumber: lineNumber
+                        lineNumber: lineNumber,
+                        requestID: identity.requestID,
+                        responseID: identity.responseID,
+                        sessionID: identity.sessionID,
+                        sourcePath: path.path
                     )
-                    if let existing = responses[responseKey],
+                    if let existing = responses[identity.deduplicationKey],
                        !candidate.isPreferred(over: existing) {
                         return
                     }
-                    responses[responseKey] = candidate
+                    responses[identity.deduplicationKey] = candidate
                 }
             }
             fileRecords = responses.values.map(\.record)
-            let compactedFileRecords = compactRecords(fileRecords)
-            records.append(contentsOf: compactedFileRecords)
-            updateCache(path: path, tool: "Claude Code", records: compactedFileRecords, cache: &cache)
+            records.append(contentsOf: fileRecords)
+            updateCache(path: path, tool: "Claude Code", records: fileRecords, cache: &cache)
         }
 
         return CollectorResult(
@@ -326,12 +385,19 @@ enum UsageCollector {
                 source: SourceInfo(status: "schema_mismatch", files: 1, records: 0)
             )
         }
+        guard availableColumns.contains("data_source") else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "schema_missing_data_source", files: 1, records: 0)
+            )
+        }
 
-        let dataSourceFilter = availableColumns.contains("data_source")
-            ? "and coalesce(nullif(data_source, ''), 'proxy') = 'proxy'"
-            : ""
+        let sessionColumn = availableColumns.contains("session_id") ? "session_id" : "null"
         let query = """
         select
+            request_id,
+            \(sessionColumn) as session_id,
+            data_source,
             created_at,
             app_type,
             coalesce(nullif(pricing_model, ''), nullif(model, ''), nullif(request_model, ''), 'unknown') as display_model,
@@ -343,7 +409,7 @@ enum UsageCollector {
         from proxy_request_logs
         where status_code >= 200
             and status_code < 300
-            \(dataSourceFilter)
+            and lower(data_source) = 'proxy'
             and (
                 coalesce(input_tokens, 0)
                 + coalesce(output_tokens, 0)
@@ -378,11 +444,15 @@ enum UsageCollector {
 
             return UsageRecord(
                 date: day,
-                timestamp: nil,
+                timestamp: isoString(fromEpoch: row["created_at"] as Any),
                 tool: ccSwitchToolName(appType: row["app_type"] as? String),
                 model: modelKey(row["display_model"] as? String),
                 usage: usage,
-                costUSD: doubleValue(row["total_cost_usd"] as Any)
+                costUSD: doubleValue(row["total_cost_usd"] as Any),
+                source: .ccSwitchProxy,
+                requestID: nonEmptyString(row["request_id"] as? String),
+                sessionID: nonEmptyString(row["session_id"] as? String),
+                dataSource: nonEmptyString(row["data_source"] as? String)
             )
         }
 
@@ -394,6 +464,184 @@ enum UsageCollector {
                 records: records.count
             )
         )
+    }
+
+    private static func deduplicateCrossSource(
+        nativeRecords: [UsageRecord],
+        proxyRecords: [UsageRecord]
+    ) -> CrossSourceDedupeResult {
+        var enrichedNativeRecords = nativeRecords
+        var keptProxyRecords: [UsageRecord] = []
+        var dedupedProxyRecords = 0
+        let skippedProxyRecords = 0
+
+        for proxyRecord in proxyRecords {
+            guard isDeduplicableProxyRecord(proxyRecord) else {
+                keptProxyRecords.append(proxyRecord)
+                continue
+            }
+
+            if let nativeIndex = nativeRecords.firstIndex(where: { isDuplicate(proxyRecord: proxyRecord, nativeRecord: $0) }) {
+                enrichedNativeRecords[nativeIndex] = enrichedRecord(
+                    enrichedNativeRecords[nativeIndex],
+                    withProxyCostFrom: proxyRecord
+                )
+                dedupedProxyRecords += 1
+            } else {
+                keptProxyRecords.append(proxyRecord)
+            }
+        }
+
+        return CrossSourceDedupeResult(
+            records: enrichedNativeRecords + keptProxyRecords,
+            rawProxyRecords: proxyRecords.count,
+            keptProxyRecords: keptProxyRecords.count,
+            dedupedProxyRecords: dedupedProxyRecords,
+            skippedProxyRecords: skippedProxyRecords
+        )
+    }
+
+    private static func sourceInfo(
+        _ source: SourceInfo,
+        annotatedWith result: CrossSourceDedupeResult
+    ) -> SourceInfo {
+        var annotated = source
+        annotated.rawRecords = result.rawProxyRecords
+        annotated.dedupedRecords = result.dedupedProxyRecords
+        annotated.skippedRecords = result.skippedProxyRecords
+        annotated.strategy = "request_level_dedupe"
+        annotated.records = result.keptProxyRecords
+        if source.status == "ok",
+           result.rawProxyRecords > 0,
+           result.keptProxyRecords == 0,
+           result.dedupedProxyRecords > 0 {
+            annotated.status = "all_deduped"
+        }
+        return annotated
+    }
+
+    private static func isDeduplicableProxyRecord(_ record: UsageRecord) -> Bool {
+        guard record.source == .ccSwitchProxy else { return false }
+        guard let family = toolFamily(for: record.tool) else { return false }
+        return family == "claude" || family == "codex"
+    }
+
+    private static func isDuplicate(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
+        guard proxyRecord.date == nativeRecord.date,
+              let proxyFamily = toolFamily(for: proxyRecord.tool),
+              let nativeFamily = toolFamily(for: nativeRecord.tool),
+              proxyFamily == nativeFamily,
+              nativeRecord.source != .ccSwitchProxy
+        else {
+            return false
+        }
+
+        if hasExactIdentityMatch(proxyRecord: proxyRecord, nativeRecord: nativeRecord) {
+            return true
+        }
+
+        return hasStrongUsageMatch(proxyRecord: proxyRecord, nativeRecord: nativeRecord)
+    }
+
+    private static func hasExactIdentityMatch(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
+        let proxyIDs = Set([proxyRecord.requestID, proxyRecord.responseID].compactMap(nonEmptyString))
+        let nativeIDs = Set([nativeRecord.requestID, nativeRecord.responseID].compactMap(nonEmptyString))
+        if !proxyIDs.isDisjoint(with: nativeIDs) {
+            return true
+        }
+
+        guard let proxySessionID = nonEmptyString(proxyRecord.sessionID),
+              let nativeSessionID = nonEmptyString(nativeRecord.sessionID),
+              proxySessionID == nativeSessionID,
+              areTimestampsClose(proxyRecord.timestamp, nativeRecord.timestamp, seconds: 10),
+              modelsCompatible(proxyRecord.model, nativeRecord.model),
+              usageVectorsClose(proxyRecord.usage, nativeRecord.usage)
+        else {
+            return false
+        }
+        return true
+    }
+
+    private static func hasStrongUsageMatch(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
+        areTimestampsClose(proxyRecord.timestamp, nativeRecord.timestamp, seconds: 30)
+            && modelsCompatible(proxyRecord.model, nativeRecord.model)
+            && usageVectorsClose(proxyRecord.usage, nativeRecord.usage)
+    }
+
+    private static func enrichedRecord(
+        _ nativeRecord: UsageRecord,
+        withProxyCostFrom proxyRecord: UsageRecord
+    ) -> UsageRecord {
+        var record = nativeRecord
+        if record.costUSD == nil,
+           let proxyCost = proxyRecord.costUSD,
+           proxyCost > 0 {
+            record.costUSD = proxyCost
+        }
+        return record
+    }
+
+    private static func toolFamily(for tool: String) -> String? {
+        let value = tool.lowercased()
+        if value.contains("claude") { return "claude" }
+        if value.contains("codex") { return "codex" }
+        if value.contains("gemini") { return "gemini" }
+        return nil
+    }
+
+    private static func areTimestampsClose(_ lhs: String?, _ rhs: String?, seconds: TimeInterval) -> Bool {
+        guard let lhs,
+              let rhs,
+              let lhsDate = parseISO(lhs),
+              let rhsDate = parseISO(rhs)
+        else {
+            return false
+        }
+        return abs(lhsDate.timeIntervalSince(rhsDate)) <= seconds
+    }
+
+    private static func modelsCompatible(_ lhs: String, _ rhs: String) -> Bool {
+        let left = canonicalModel(lhs)
+        let right = canonicalModel(rhs)
+        if left == right { return true }
+        guard left != "unknown",
+              right != "unknown",
+              min(left.count, right.count) >= 8
+        else {
+            return false
+        }
+        return left.contains(right) || right.contains(left)
+    }
+
+    private static func canonicalModel(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+    }
+
+    private static func usageVectorsClose(_ lhs: TokenUsageCounts, _ rhs: TokenUsageCounts) -> Bool {
+        guard tokenValuesClose(lhs.totalTokens, rhs.totalTokens) else { return false }
+        let pairs = [
+            (lhs.inputTokens, rhs.inputTokens),
+            (lhs.outputTokens, rhs.outputTokens),
+            (lhs.cacheCreationInputTokens, rhs.cacheCreationInputTokens),
+            (lhs.cacheReadInputTokens, rhs.cacheReadInputTokens),
+            (lhs.reasoningOutputTokens, rhs.reasoningOutputTokens)
+        ]
+        return pairs.allSatisfy { pair in
+            let left = pair.0
+            let right = pair.1
+            return left == 0 && right == 0 || tokenValuesClose(left, right)
+        }
+    }
+
+    private static func tokenValuesClose(_ lhs: Int, _ rhs: Int) -> Bool {
+        if lhs == rhs { return true }
+        let baseline = max(lhs, rhs)
+        guard baseline > 0 else { return true }
+        let tolerance = max(4, Int((Double(baseline) * 0.01).rounded(.up)))
+        return abs(lhs - rhs) <= tolerance
     }
 
     private static func aggregate(records: [UsageRecord], sources: [String: SourceInfo]) -> UsageSnapshot {
@@ -507,44 +755,6 @@ enum UsageCollector {
             modificationTime: metadata.modificationTime,
             records: records
         )
-    }
-
-    private static func compactCacheRecords(_ cache: inout CollectorCache) {
-        for key in cache.files.keys {
-            guard let cached = cache.files[key] else { continue }
-            let compacted = compactRecords(cached.records)
-            guard compacted.count != cached.records.count else { continue }
-            cache.files[key] = CachedUsageFile(
-                tool: cached.tool,
-                size: cached.size,
-                modificationTime: cached.modificationTime,
-                records: compacted
-            )
-        }
-    }
-
-    private static func compactRecords(_ records: [UsageRecord]) -> [UsageRecord] {
-        var grouped = [CompactRecordKey: TokenUsageCounts]()
-        for record in records {
-            let key = CompactRecordKey(date: record.date, tool: record.tool, model: record.model)
-            grouped[key, default: TokenUsageCounts()].add(record.usage)
-        }
-
-        return grouped
-            .map { key, usage in
-                UsageRecord(
-                    date: key.date,
-                    timestamp: nil,
-                    tool: key.tool,
-                    model: key.model,
-                    usage: usage
-                )
-            }
-            .sorted {
-                if $0.date != $1.date { return $0.date < $1.date }
-                if $0.tool != $1.tool { return $0.tool < $1.tool }
-                return $0.model < $1.model
-            }
     }
 
     private static func fileMetadata(for url: URL) -> (size: UInt64, modificationTime: TimeInterval)? {
@@ -715,12 +925,28 @@ enum UsageCollector {
         return 0
     }
 
+    private static func nonEmptyString(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private static func dayString(fromISO value: String) -> String? {
         guard let date = parseISO(value) else { return nil }
         return dayFormatter.string(from: date)
     }
 
     private static func dayString(fromEpoch value: Any?) -> String? {
+        guard let seconds = epochSeconds(value) else { return nil }
+        return dayFormatter.string(from: Date(timeIntervalSince1970: seconds))
+    }
+
+    private static func isoString(fromEpoch value: Any?) -> String? {
+        guard let seconds = epochSeconds(value) else { return nil }
+        return isoFormatter.string(from: Date(timeIntervalSince1970: seconds))
+    }
+
+    private static func epochSeconds(_ value: Any?) -> Double? {
         var seconds: Double
         if let int = value as? Int {
             seconds = Double(int)
@@ -734,7 +960,7 @@ enum UsageCollector {
         if seconds > 10_000_000_000 {
             seconds /= 1_000
         }
-        return dayFormatter.string(from: Date(timeIntervalSince1970: seconds))
+        return seconds
     }
 
     private static func parseISO(_ value: String) -> Date? {
@@ -749,26 +975,42 @@ enum UsageCollector {
         return value.isEmpty ? "unknown" : value
     }
 
-    private static func claudeResponseKey(
+    private static func claudeIdentity(
         obj: [String: Any],
         message: [String: Any],
         path: URL,
         lineNumber: Int
-    ) -> String {
-        for value in [
-            message["id"] as? String,
+    ) -> ClaudeIdentity {
+        let responseID = nonEmptyString(message["id"] as? String)
+        let requestID = [
             obj["requestId"] as? String,
-            obj["request_id"] as? String
-        ] {
-            if let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return "response:\(value)"
-            }
+            obj["request_id"] as? String,
+            message["requestId"] as? String,
+            message["request_id"] as? String
+        ].compactMap(nonEmptyString).first
+        let sessionID = [
+            obj["sessionId"] as? String,
+            obj["session_id"] as? String,
+            obj["sessionID"] as? String
+        ].compactMap(nonEmptyString).first
+        let uuid = nonEmptyString(obj["uuid"] as? String)
+
+        let deduplicationKey: String
+        if let responseID {
+            deduplicationKey = "response:\(responseID)"
+        } else if let requestID {
+            deduplicationKey = "request:\(requestID)"
+        } else if let uuid {
+            deduplicationKey = "uuid:\(uuid)"
+        } else {
+            deduplicationKey = "line:\(path.path):\(lineNumber)"
         }
-        if let uuid = obj["uuid"] as? String,
-           !uuid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "uuid:\(uuid)"
-        }
-        return "line:\(path.path):\(lineNumber)"
+        return ClaudeIdentity(
+            deduplicationKey: deduplicationKey,
+            requestID: requestID,
+            responseID: responseID,
+            sessionID: sessionID
+        )
     }
 
     private static func hasStopReason(_ value: Any?) -> Bool {
@@ -907,7 +1149,7 @@ private struct CollectorResult {
 }
 
 private struct CollectorCache: Codable {
-    static let currentVersion = 3
+    static let currentVersion = 4
 
     var version = currentVersion
     var files: [String: CachedUsageFile] = [:]
@@ -927,12 +1169,36 @@ private struct UsageRecord: Codable {
     var model: String
     var usage: TokenUsageCounts
     var costUSD: Double? = nil
+    var source: UsageRecordSource = .unknown
+    var requestID: String? = nil
+    var sessionID: String? = nil
+    var responseID: String? = nil
+    var sourcePath: String? = nil
+    var lineNumber: Int? = nil
+    var dataSource: String? = nil
 }
 
-private struct CompactRecordKey: Hashable {
-    var date: String
-    var tool: String
-    var model: String
+private enum UsageRecordSource: String, Codable {
+    case nativeCodex
+    case nativeCodexSQLite
+    case nativeClaudeCode
+    case ccSwitchProxy
+    case unknown
+}
+
+private struct CrossSourceDedupeResult {
+    var records: [UsageRecord]
+    var rawProxyRecords: Int
+    var keptProxyRecords: Int
+    var dedupedProxyRecords: Int
+    var skippedProxyRecords: Int
+}
+
+private struct ClaudeIdentity {
+    var deduplicationKey: String
+    var requestID: String?
+    var responseID: String?
+    var sessionID: String?
 }
 
 private struct ClaudeUsageCandidate {
@@ -942,6 +1208,10 @@ private struct ClaudeUsageCandidate {
     var usage: TokenUsageCounts
     var hasStopReason: Bool
     var lineNumber: Int
+    var requestID: String?
+    var responseID: String?
+    var sessionID: String?
+    var sourcePath: String
 
     var record: UsageRecord {
         UsageRecord(
@@ -949,7 +1219,13 @@ private struct ClaudeUsageCandidate {
             timestamp: timestamp,
             tool: "Claude Code",
             model: model,
-            usage: usage
+            usage: usage,
+            source: .nativeClaudeCode,
+            requestID: requestID,
+            sessionID: sessionID,
+            responseID: responseID,
+            sourcePath: sourcePath,
+            lineNumber: lineNumber
         )
     }
 
