@@ -157,7 +157,7 @@ private struct TokenIslandExpandedView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            TokenIslandMiniMark()
+            TokenStepMark(size: 28)
             VStack(alignment: .leading, spacing: 1) {
                 Text("TokenStep")
                     .font(.caption.weight(.heavy))
@@ -240,27 +240,6 @@ private struct TokenIslandExpandedBackground: View {
                 endPoint: .bottomTrailing
             )
         }
-    }
-}
-
-private struct TokenIslandMiniMark: View {
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color.tokenGreen.opacity(0.12))
-            Circle()
-                .stroke(Color.tokenGreen.opacity(0.18), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
-                .frame(width: 21, height: 21)
-            Circle()
-                .trim(from: 0, to: 0.72)
-                .stroke(Color.tokenGreen, style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .frame(width: 21, height: 21)
-            Image(systemName: "circle.grid.3x3.fill")
-                .font(.system(size: 8, weight: .heavy))
-                .foregroundStyle(Color.tokenGreen.opacity(0.92))
-        }
-        .frame(width: 28, height: 28)
     }
 }
 
