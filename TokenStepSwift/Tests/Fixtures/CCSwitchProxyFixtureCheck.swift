@@ -28,7 +28,7 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(snapshot.daily.first?.models["claude-priced"], 155, "priced model tokens")
         try assertNil(snapshot.daily.first?.models["claude-session-priced"], "session model tokens")
         try assertNil(snapshot.daily.first?.models["codex-session-priced"], "codex session model tokens")
-        try assertEqual(snapshot.daily.first?.models["gpt-5.4"], 13, "model fallback tokens")
+        try assertEqual(snapshot.daily.first?.models["GPT-5.4"], 13, "model fallback tokens")
 
         let emptyDatabase = try makeFixtureDatabase(rowsSQL: """
         insert into proxy_request_logs (

@@ -31,6 +31,11 @@ LOCAL_TZ = ZoneInfo(TZ_NAME) if ZoneInfo else dt.timezone(dt.timedelta(hours=8))
 TOOL_COLORS = {
     "Codex": "#2563eb",
     "Claude Code": "#df7656",
+    "Kimi Code": "#7c3aed",
+    "Kimi Code CLI": "#9959f2",
+    "ZCode": "#10b981",
+    "Pi": "#f59e0b",
+    "Reasonix": "#ec4899",
 }
 
 
@@ -94,10 +99,19 @@ def normalize_usage(raw: dict[str, Any] | None) -> dict[str, int]:
         return usage
     aliases = {
         "input": "input_tokens",
+        "inputOther": "input_tokens",
         "output": "output_tokens",
         "cached": "cache_read_input_tokens",
+        "cacheRead": "cache_read_input_tokens",
+        "inputCacheRead": "cache_read_input_tokens",
+        "prompt_cache_hit_tokens": "cache_read_input_tokens",
+        "cacheWrite": "cache_creation_input_tokens",
+        "inputCacheCreation": "cache_creation_input_tokens",
+        "prompt_cache_miss_tokens": "cache_creation_input_tokens",
         "thoughts": "reasoning_output_tokens",
+        "reasoning_tokens": "reasoning_output_tokens",
         "total": "total_tokens",
+        "totalTokens": "total_tokens",
         "input_tokens": "input_tokens",
         "output_tokens": "output_tokens",
         "cache_creation_input_tokens": "cache_creation_input_tokens",
@@ -177,7 +191,6 @@ def collect_codex() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     home = Path.home()
     for pattern in [
         str(home / ".codex" / "sessions" / "**" / "*.jsonl"),
-        str(home / ".codex" / "archived_sessions" / "*.jsonl"),
     ]:
         paths.extend(glob.glob(pattern, recursive=True))
 
@@ -329,6 +342,309 @@ def collect_claude_code() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return records, {"status": "ok" if records else "missing", "files": files_read, "records": len(records)}
 
 
+def collect_kimi_code() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Read Kimi Code wire logs from both the Desktop agent and the CLI."""
+    home = Path.home()
+    roots = [
+        (
+            "Kimi Code",
+            str(
+                home
+                / "Library"
+                / "Application Support"
+                / "kimi-desktop"
+                / "daimon-share"
+                / "daimon"
+                / "runtime"
+                / "kimi-code"
+                / "home"
+                / "sessions"
+                / "**"
+                / "agents"
+                / "main"
+                / "wire.jsonl"
+            ),
+        ),
+        (
+            "Kimi Code CLI",
+            str(home / ".kimi-code" / "sessions" / "**" / "agents" / "main" / "wire.jsonl"),
+        ),
+    ]
+
+    model_aliases = {
+        "daimon-kimi-code": "Kimi 2.6",
+        "kimi-code/kimi-for-coding": "Kimi for coding",
+        "kimi-for-coding": "Kimi for coding",
+    }
+
+    records: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+    files_read = 0
+
+    for tool, pattern in roots:
+        for path in sorted(glob.glob(pattern, recursive=True)):
+            session_id = Path(path).parent.parent.parent.name
+            files_read += 1
+            try:
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    for line_no, line in enumerate(f, 1):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            obj = json.loads(line)
+                        except Exception:
+                            continue
+                        if obj.get("type") != "usage.record":
+                            continue
+                        usage_raw = obj.get("usage")
+                        if not isinstance(usage_raw, dict):
+                            continue
+                        usage = normalize_usage(usage_raw)
+                        if usage["total_tokens"] <= 0:
+                            continue
+                        ts_ms = obj.get("time")
+                        day = date_from_epoch(int(ts_ms) / 1000 if isinstance(ts_ms, (int, float)) else None)
+                        if not day:
+                            continue
+                        raw_model = model_key(obj.get("model") or "daimon-kimi-code")
+                        model = model_aliases.get(raw_model, raw_model)
+                        dedupe_key = (tool, session_id, str(ts_ms), line_no, usage["total_tokens"])
+                        if dedupe_key in seen:
+                            continue
+                        seen.add(dedupe_key)
+                        records.append(
+                            {
+                                "date": day,
+                                "timestamp": ts_ms,
+                                "tool": tool,
+                                "model": model,
+                                "usage": usage,
+                                "source": "kimi-wire-jsonl",
+                            }
+                        )
+            except Exception:
+                continue
+
+    return records, {"status": "ok" if records else "missing", "files": files_read, "records": len(records)}
+
+
+def collect_zcode() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Read ZCode (GLM) local SQLite usage statistics.
+
+    Database path: ~/.zcode/cli/db/db.sqlite
+    """
+    db_path = Path.home() / ".zcode" / "cli" / "db" / "db.sqlite"
+    if not db_path.exists():
+        return [], {"status": "missing", "files": 0, "records": 0}
+
+    records: list[dict[str, Any]] = []
+    rows_read = 0
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        cur = con.cursor()
+        for row in cur.execute(
+            """
+            SELECT
+                id,
+                session_id,
+                turn_id,
+                model_id,
+                provider_id,
+                started_at,
+                completed_at,
+                input_tokens,
+                output_tokens,
+                reasoning_tokens,
+                cache_creation_input_tokens,
+                cache_read_input_tokens,
+                computed_total_tokens
+            FROM model_usage
+            WHERE status = 'completed'
+              AND computed_total_tokens > 0
+            """
+        ):
+            (
+                req_id,
+                session_id,
+                turn_id,
+                model_id,
+                provider_id,
+                started_at,
+                completed_at,
+                input_tokens,
+                output_tokens,
+                reasoning_tokens,
+                cache_creation_input_tokens,
+                cache_read_input_tokens,
+                computed_total_tokens,
+            ) = row
+            rows_read += 1
+
+            ts_ms = completed_at or started_at
+            day = date_from_epoch(int(ts_ms) / 1000 if ts_ms else None)
+            if not day:
+                continue
+
+            usage = empty_usage()
+            usage["input_tokens"] = int(input_tokens or 0)
+            usage["output_tokens"] = int(output_tokens or 0)
+            usage["reasoning_output_tokens"] = int(reasoning_tokens or 0)
+            usage["cache_creation_input_tokens"] = int(cache_creation_input_tokens or 0)
+            usage["cache_read_input_tokens"] = int(cache_read_input_tokens or 0)
+            usage["total_tokens"] = int(computed_total_tokens or 0)
+
+            model = model_key(model_id or "unknown")
+            records.append(
+                {
+                    "date": day,
+                    "timestamp": ts_ms,
+                    "tool": "ZCode",
+                    "model": model,
+                    "usage": usage,
+                    "source": "zcode-model-usage",
+                }
+            )
+    except Exception:
+        return [], {"status": "error", "files": 1, "records": 0}
+
+    return records, {"status": "ok" if records else "missing", "files": 1, "records": len(records)}
+
+
+def collect_pi() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Read Pi (SPI) session JSONL logs.
+
+    Path pattern: ~/.pi/agent/sessions/**/*.jsonl
+    """
+    home = Path.home()
+    pattern = str(home / ".pi" / "agent" / "sessions" / "**" / "*.jsonl")
+    paths = glob.glob(pattern, recursive=True)
+
+    records: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+    files_read = 0
+
+    for path in sorted(paths):
+        files_read += 1
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                for line_no, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if obj.get("type") != "message":
+                        continue
+                    message = obj.get("message", {})
+                    if message.get("role") != "assistant":
+                        continue
+                    usage_raw = message.get("usage")
+                    if not isinstance(usage_raw, dict):
+                        continue
+                    usage = normalize_usage(usage_raw)
+                    if usage["total_tokens"] <= 0:
+                        continue
+                    day = date_from_iso(obj.get("timestamp"))
+                    if not day:
+                        continue
+                    model = model_key(message.get("model") or "unknown")
+                    dedupe_key = (path, line_no, usage["total_tokens"])
+                    if dedupe_key in seen:
+                        continue
+                    seen.add(dedupe_key)
+                    records.append(
+                        {
+                            "date": day,
+                            "timestamp": obj.get("timestamp"),
+                            "tool": "Pi",
+                            "model": model,
+                            "usage": usage,
+                            "source": "pi-session-jsonl",
+                        }
+                    )
+        except Exception:
+            continue
+
+    return records, {"status": "ok" if records else "missing", "files": files_read, "records": len(records)}
+
+
+def collect_reasonix() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Read Reasonix events JSONL logs.
+
+    Path patterns:
+      ~/.reasonix/sessions/*.events.jsonl
+      ~/.reasonix/projects/**/*.events.jsonl
+    """
+    home = Path.home()
+    patterns = [
+        str(home / ".reasonix" / "sessions" / "*.events.jsonl"),
+        str(home / ".reasonix" / "projects" / "**" / "*.events.jsonl"),
+    ]
+    paths: list[str] = []
+    for pattern in patterns:
+        paths.extend(glob.glob(pattern, recursive=True))
+
+    records: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+    files_read = 0
+
+    for path in sorted(set(paths)):
+        files_read += 1
+        turn_model: dict[Any, str] = {}
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                for line_no, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+
+                    if obj.get("type") == "model.turn.started":
+                        turn = obj.get("turn")
+                        model = obj.get("model")
+                        if turn is not None and model:
+                            turn_model[turn] = model
+
+                    if obj.get("type") != "model.final":
+                        continue
+                    usage_raw = obj.get("usage")
+                    if not isinstance(usage_raw, dict):
+                        continue
+                    usage = normalize_usage(usage_raw)
+                    if usage["total_tokens"] <= 0:
+                        continue
+                    ts = obj.get("ts")
+                    day = date_from_iso(ts)
+                    if not day:
+                        continue
+                    turn = obj.get("turn")
+                    model = model_key(turn_model.get(turn, obj.get("model", "unknown")))
+                    dedupe_key = (path, str(turn), str(ts), usage["total_tokens"])
+                    if dedupe_key in seen:
+                        continue
+                    seen.add(dedupe_key)
+                    records.append(
+                        {
+                            "date": day,
+                            "timestamp": ts,
+                            "tool": "Reasonix",
+                            "model": model,
+                            "usage": usage,
+                            "source": "reasonix-events-jsonl",
+                        }
+                    )
+        except Exception:
+            continue
+
+    return records, {"status": "ok" if records else "missing", "files": files_read, "records": len(records)}
+
+
 def aggregate(records: list[dict[str, Any]], pricing: dict[str, Any]) -> dict[str, Any]:
     daily_map: dict[str, dict[str, Any]] = defaultdict(lambda: {"date": "", "tools": {}, "total_tokens": 0, "cost": 0.0})
     tool_map: dict[str, dict[str, Any]] = defaultdict(lambda: {"usage": empty_usage(), "cost": 0.0})
@@ -415,11 +731,19 @@ def collect_all() -> dict[str, Any]:
     pricing = load_pricing()
     codex_records, codex_meta = collect_codex()
     claude_records, claude_meta = collect_claude_code()
-    records = codex_records + claude_records
+    kimi_records, kimi_meta = collect_kimi_code()
+    zcode_records, zcode_meta = collect_zcode()
+    pi_records, pi_meta = collect_pi()
+    reasonix_records, reasonix_meta = collect_reasonix()
+    records = codex_records + claude_records + kimi_records + zcode_records + pi_records + reasonix_records
     result = aggregate(records, pricing)
     result["sources"] = {
         "Codex": codex_meta,
         "Claude Code": claude_meta,
+        "Kimi Code": kimi_meta,
+        "ZCode": zcode_meta,
+        "Pi": pi_meta,
+        "Reasonix": reasonix_meta,
     }
     return result
 
@@ -441,6 +765,18 @@ def json_for_html(data: dict[str, Any]) -> str:
 def render_dashboard(data: dict[str, Any]) -> str:
     inline_data = json_for_html(data)
     generated_at = html.escape(data.get("generated_at", ""))
+    tools = data.get("tools", [])
+    css_vars = "\n".join(
+        f"      --{row['tool'].lower().replace(' ', '-')}:{html.escape(row['color'])};"
+        for row in tools
+    )
+    legend_html = "\n".join(
+        f"        <span><i class=\"dot\" style=\"background:var(--{row['tool'].lower().replace(' ', '-')})\"></i>{html.escape(row['tool'])}</span>"
+        for row in tools
+    )
+    daily_headers = "\n".join(f"              <th>{html.escape(row['tool'])}</th>" for row in tools)
+    js_colors = json.dumps({row["tool"]: row["color"] for row in tools}, ensure_ascii=False)
+    js_tools = json.dumps([row["tool"] for row in tools], ensure_ascii=False)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -454,8 +790,7 @@ def render_dashboard(data: dict[str, Any]) -> str:
       --soft: #f3f4f6;
       --line: #e5e7eb;
       --panel: rgba(255, 255, 255, 0.96);
-      --codex: #2563eb;
-      --claude: #df7656;
+{css_vars}
     }}
     * {{ box-sizing: border-box; }}
     html, body {{ max-width: 100%; overflow-x: hidden; }}
@@ -727,8 +1062,7 @@ def render_dashboard(data: dict[str, Any]) -> str:
     <section class="panel">
       <h2>每天用量</h2>
       <div class="legend">
-        <span><i class="dot" style="background:var(--codex)"></i>Codex</span>
-        <span><i class="dot" style="background:var(--claude)"></i>Claude Code</span>
+{legend_html}
       </div>
       <div class="chart-wrap">
         <div class="chart" id="chart"></div>
@@ -752,7 +1086,9 @@ def render_dashboard(data: dict[str, Any]) -> str:
         <table>
           <thead>
             <tr>
-              <th>日期</th><th>Codex</th><th>Claude Code</th><th>合计</th><th>预估成本</th>
+              <th>日期</th>
+{daily_headers}
+              <th>合计</th><th>预估成本</th>
             </tr>
           </thead>
           <tbody id="dailyRows"></tbody>
@@ -769,8 +1105,8 @@ def render_dashboard(data: dict[str, Any]) -> str:
   <script>
     window.USAGE_DATA = {inline_data};
     const data = window.USAGE_DATA;
-    const colors = {{ "Codex": "#2563eb", "Claude Code": "#df7656" }};
-    const tools = ["Codex", "Claude Code"];
+    const colors = {js_colors};
+    const tools = {js_tools};
 
     function fmtTokens(n) {{
       n = Number(n || 0);
@@ -825,15 +1161,17 @@ def render_dashboard(data: dict[str, Any]) -> str:
     renderRows("models", data.models, row => row.model);
 
     const dailyRows = document.getElementById("dailyRows");
-    dailyRows.innerHTML = data.daily.slice().reverse().slice(0, 45).map(day => `
+    dailyRows.innerHTML = data.daily.slice().reverse().slice(0, 45).map(day => {{
+      const toolCells = tools.map(tool => `<td>${{day.tools[tool] ? fmtTokens(day.tools[tool]) : "—"}}</td>`).join("");
+      return `
       <tr>
         <td>${{shortDate(day.date)}}</td>
-        <td>${{day.tools.Codex ? fmtTokens(day.tools.Codex) : "—"}}</td>
-        <td>${{day.tools["Claude Code"] ? fmtTokens(day.tools["Claude Code"]) : "—"}}</td>
+        ${{toolCells}}
         <td class="total">${{fmtTokens(day.total_tokens)}}</td>
         <td>${{fmtMoney(day.cost)}}</td>
       </tr>
-    `).join("");
+      `;
+    }}).join("");
 
     const sources = document.getElementById("sources");
     sources.innerHTML = Object.entries(data.sources || {{}}).map(([name, meta]) => `

@@ -627,6 +627,16 @@ func tokenToolColor(_ tool: String) -> Color {
         return .tokenGreen
     case "Claude Code":
         return Color(red: 0.88, green: 0.42, blue: 0.24)
+    case "Kimi Code":
+        return Color(red: 0.49, green: 0.23, blue: 0.93)
+    case "Kimi Code CLI":
+        return Color(red: 0.60, green: 0.35, blue: 0.95)
+    case "ZCode":
+        return Color(red: 0.06, green: 0.73, blue: 0.51)
+    case "Pi":
+        return Color(red: 0.96, green: 0.62, blue: 0.04)
+    case "Reasonix":
+        return Color(red: 0.93, green: 0.29, blue: 0.60)
     case "Hermes", "Hermes Agent":
         return Color(red: 0.50, green: 0.28, blue: 0.92)
     default:
@@ -635,7 +645,7 @@ func tokenToolColor(_ tool: String) -> Color {
 }
 
 func orderedToolEntries(_ tools: [String: Int]) -> [(name: String, tokens: Int)] {
-    let preferred = ["Codex", "Claude Code", "Hermes", "Hermes Agent"]
+    let preferred = ["Codex", "Claude Code", "Kimi Code", "Kimi Code CLI", "ZCode", "Pi", "Reasonix", "Hermes", "Hermes Agent"]
     var entries: [(name: String, tokens: Int)] = preferred.compactMap { name in
         guard let value = tools[name], value > 0 else { return nil }
         return (name, value)

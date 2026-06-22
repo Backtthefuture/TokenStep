@@ -17,11 +17,27 @@ struct StatsView: View {
                 usageList(title: L("按客户端"), subtitle: L("累计总量分布"), rows: appState.snapshot.tools.map {
                     UsageStatRow(name: $0.tool, value: $0.tokens, percent: $0.percentValue, color: $0.displayColor)
                 })
-                usageList(title: L("按模型"), subtitle: "Top \(min(appState.snapshot.models.count, 10)) / \(appState.snapshot.models.count)", rows: appState.snapshot.models.prefix(10).map {
-                    UsageStatRow(name: $0.model, value: $0.tokens, percent: $0.percentValue, color: $0.displayColor)
-                })
+                usageList(title: L("按模型"), subtitle: "Top \(min(modelRows.count, 10)) / \(modelRows.count)", rows: modelRows)
             }
         }
+    }
+
+    private var modelRows: [UsageStatRow] {
+        let merged = appState.snapshot.models.reduce(into: [:]) { counts, usage in
+            counts[usage.model, default: 0] += usage.tokens
+        }
+        let total = max(appState.snapshot.totals.tokens, 1)
+        return merged
+            .sorted { $0.value > $1.value }
+            .prefix(10)
+            .map { name, tokens in
+                UsageStatRow(
+                    name: name,
+                    value: tokens,
+                    percent: Double(tokens) * 100.0 / Double(total),
+                    color: .tokenGreen
+                )
+            }
     }
 
     private var recentActivityCard: some View {

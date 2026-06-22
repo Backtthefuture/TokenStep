@@ -47,6 +47,7 @@ struct DailyUsage: Codable, Identifiable {
     var date: String
     var tools: [String: Int]
     var models: [String: Int]
+    var toolModels: [String: [String: Int]]?
     var totalTokens: Int
     var cost: Double
 
@@ -54,14 +55,16 @@ struct DailyUsage: Codable, Identifiable {
         case date
         case tools
         case models
+        case toolModels = "tool_models"
         case totalTokens = "total_tokens"
         case cost
     }
 
-    init(date: String, tools: [String: Int], models: [String: Int] = [:], totalTokens: Int, cost: Double) {
+    init(date: String, tools: [String: Int], models: [String: Int] = [:], toolModels: [String: [String: Int]]? = nil, totalTokens: Int, cost: Double) {
         self.date = date
         self.tools = tools
         self.models = models
+        self.toolModels = toolModels
         self.totalTokens = totalTokens
         self.cost = cost
     }
@@ -71,6 +74,7 @@ struct DailyUsage: Codable, Identifiable {
         date = try container.decode(String.self, forKey: .date)
         tools = try container.decodeIfPresent([String: Int].self, forKey: .tools) ?? [:]
         models = try container.decodeIfPresent([String: Int].self, forKey: .models) ?? [:]
+        toolModels = try container.decodeIfPresent([String: [String: Int]].self, forKey: .toolModels)
         totalTokens = try container.decode(Int.self, forKey: .totalTokens)
         cost = try container.decode(Double.self, forKey: .cost)
     }

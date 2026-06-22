@@ -7,6 +7,18 @@
     },
     "Claude Code": {
       "total_usd_per_1m": 3.0
+    },
+    "Kimi Code": {
+      "total_usd_per_1m": 0.8
+    },
+    "ZCode": {
+      "total_usd_per_1m": 0.5
+    },
+    "Pi": {
+      "total_usd_per_1m": 0.5
+    },
+    "Reasonix": {
+      "total_usd_per_1m": 0.5
     }
   },
   "models": {
@@ -39,6 +51,18 @@
     },
     "minimax": {
       "total_usd_per_1m": 0.2
+    },
+    "GLM-5.2": {
+      "total_usd_per_1m": 0.5
+    },
+    "deepseek-v4-pro": {
+      "total_usd_per_1m": 0.5
+    },
+    "deepseek-v4-flash": {
+      "total_usd_per_1m": 0.1
+    },
+    "daimon-kimi-code": {
+      "total_usd_per_1m": 0.8
     }
   }
 }
