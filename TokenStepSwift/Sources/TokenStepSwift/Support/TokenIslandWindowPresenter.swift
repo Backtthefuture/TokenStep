@@ -7,7 +7,7 @@ final class TokenIslandWindowPresenter {
     static let shared = TokenIslandWindowPresenter()
 
     static let collapsedSize = NSSize(width: 88, height: 24)
-    static let expandedSize = NSSize(width: 356, height: 238)
+    static let expandedSize = TokenIslandMetrics.expandedWindowSize
 
     private weak var appState: AppState?
     private var ringPanel: TokenIslandPanel?
@@ -167,7 +167,7 @@ final class TokenIslandWindowPresenter {
             identifier: "token-island-popover",
             size: Self.expandedSize,
             rootView: rootView,
-            hasShadow: true
+            hasShadow: false
         )
     }
 
@@ -182,6 +182,7 @@ final class TokenIslandWindowPresenter {
         let controller = NSHostingController(rootView: rootView)
         controller.view.wantsLayer = true
         controller.view.layer?.backgroundColor = NSColor.clear.cgColor
+        controller.view.layer?.masksToBounds = false
 
         let panel = TokenIslandPanel(
             contentRect: NSRect(origin: .zero, size: size),
@@ -203,6 +204,9 @@ final class TokenIslandWindowPresenter {
         panel.ignoresMouseEvents = false
         panel.acceptsMouseMovedEvents = true
         panel.sharingType = .readOnly
+        panel.contentView?.wantsLayer = true
+        panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
+        panel.contentView?.layer?.masksToBounds = false
         return panel
     }
 
@@ -218,24 +222,25 @@ final class TokenIslandWindowPresenter {
     }
 
     private func positionPopoverPanel(_ panel: TokenIslandPanel, on screen: NSScreen) {
-        let maxHeight = max(Self.collapsedSize.height, screen.visibleFrame.height - 24)
-        let size = NSSize(width: Self.expandedSize.width, height: min(Self.expandedSize.height, maxHeight))
+        let margin = TokenIslandMetrics.expandedShadowMargin
+        let cardSize = TokenIslandMetrics.expandedCardSize
+        let size = Self.expandedSize
         let ringFrame = ringPanel?.frame
             ?? TokenIslandDisplayDetector.collapsedFrame(
                 on: screen,
                 size: Self.collapsedSize,
                 placement: appState?.settings.tokenIslandPlacement ?? .automatic
-            )
+        )
         let notchBottomY = TokenIslandDisplayDetector.cameraHousingBottomY(on: screen) ?? screen.visibleFrame.maxY
         let topY = min(screen.visibleFrame.maxY - 6, notchBottomY - 6)
-        let anchorX = ringFrame.map { $0.minX } ?? (screen.frame.midX - size.width / 2)
-        let clampedX = min(
+        let anchorX = ringFrame.map { $0.minX } ?? (screen.frame.midX - cardSize.width / 2)
+        let cardX = min(
             max(anchorX, screen.visibleFrame.minX + 8),
-            screen.visibleFrame.maxX - size.width - 8
+            screen.visibleFrame.maxX - cardSize.width - 8
         )
         let frame = NSRect(
-            x: clampedX,
-            y: topY - size.height,
+            x: cardX - margin,
+            y: topY - cardSize.height - margin,
             width: size.width,
             height: size.height
         )

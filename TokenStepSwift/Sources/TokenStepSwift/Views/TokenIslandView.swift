@@ -1,6 +1,19 @@
 import AppKit
 import SwiftUI
 
+enum TokenIslandMetrics {
+    static let expandedCardSize = NSSize(width: 356, height: 238)
+    static let expandedCornerRadius: CGFloat = 28
+    static let expandedShadowMargin: CGFloat = 26
+
+    static var expandedWindowSize: NSSize {
+        NSSize(
+            width: expandedCardSize.width + expandedShadowMargin * 2,
+            height: expandedCardSize.height + expandedShadowMargin * 2
+        )
+    }
+}
+
 struct TokenIslandWindowView: View {
     @EnvironmentObject private var appState: AppState
 
@@ -31,16 +44,15 @@ struct TokenIslandPopoverWindowView: View {
     var onHoverChanged: (Bool) -> Void
 
     var body: some View {
-        TokenIslandExpandedView()
-            .environmentObject(appState)
-            .frame(width: TokenIslandWindowPresenter.expandedSize.width, height: TokenIslandWindowPresenter.expandedSize.height)
-            .background(TokenIslandExpandedBackground())
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(Color.white.opacity(0.10))
+        TokenIslandExpandedSurface {
+            TokenIslandExpandedView()
+                .environmentObject(appState)
+        }
+            .padding(TokenIslandMetrics.expandedShadowMargin)
+            .frame(
+                width: TokenIslandMetrics.expandedWindowSize.width,
+                height: TokenIslandMetrics.expandedWindowSize.height
             )
-            .shadow(color: Color.black.opacity(0.34), radius: 28, x: 0, y: 18)
             .onHover { hovering in
                 onHoverChanged(hovering)
             }
@@ -109,12 +121,12 @@ private struct TokenIslandExpandedView: View {
                         .lineLimit(1)
                     Text(TokenStepFormat.tokens(appState.today.totalTokens))
                         .font(.system(size: 27, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.tokenInk)
                         .monospacedDigit()
                         .lineLimit(1)
                     Text(lap.perLapGoalText)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(Color.tokenInk.opacity(0.55))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -149,23 +161,24 @@ private struct TokenIslandExpandedView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("TokenStep")
                     .font(.caption.weight(.heavy))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(Color.tokenInk.opacity(0.92))
                 Text(L("每日 Token 消耗追踪"))
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.46))
+                    .foregroundStyle(Color.tokenInk.opacity(0.48))
             }
             Spacer()
             HStack(spacing: 5) {
                 Circle()
-                    .fill(appState.isRefreshing ? .white.opacity(0.46) : Color.tokenGreen)
+                    .fill(appState.isRefreshing ? Color.secondary.opacity(0.66) : Color.tokenGreen)
                     .frame(width: 6, height: 6)
                 Text(appState.isRefreshing ? L("同步中") : L("已同步"))
                     .font(.caption2.weight(.heavy))
-                    .foregroundStyle(.white.opacity(0.70))
+                    .foregroundStyle(Color.tokenInk.opacity(0.70))
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
-            .background(.white.opacity(0.08), in: Capsule())
+            .background(Color.tokenSurface, in: Capsule())
+            .overlay(Capsule().stroke(Color.black.opacity(0.055)))
         }
     }
 
@@ -175,12 +188,12 @@ private struct TokenIslandExpandedView: View {
             VStack(spacing: 2) {
                 Text(TokenStepFormat.tokens(appState.today.totalTokens, compact: true))
                     .font(.system(size: 17, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.tokenInk)
                     .minimumScaleFactor(0.62)
                     .lineLimit(1)
                 Text(lap.lapTitle)
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.48))
+                    .foregroundStyle(Color.tokenInk.opacity(0.48))
             }
             .frame(width: 66)
         }
@@ -188,15 +201,40 @@ private struct TokenIslandExpandedView: View {
     }
 }
 
+private struct TokenIslandExpandedSurface<Content: View>: View {
+    var content: Content
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: TokenIslandMetrics.expandedCornerRadius, style: .continuous)
+    }
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(
+                width: TokenIslandMetrics.expandedCardSize.width,
+                height: TokenIslandMetrics.expandedCardSize.height
+            )
+            .background(TokenIslandExpandedBackground().clipShape(shape))
+            .clipShape(shape)
+            .overlay(shape.stroke(Color.black.opacity(0.065)))
+            .contentShape(shape)
+            .shadow(color: Color.black.opacity(0.18), radius: 22, x: 0, y: 12)
+    }
+}
+
 private struct TokenIslandExpandedBackground: View {
     var body: some View {
         ZStack {
-            Color.black
+            Color.tokenSurface
             LinearGradient(
                 colors: [
-                    Color.tokenGreen.opacity(0.23),
-                    Color.black.opacity(0),
-                    Color.tokenGreenDark.opacity(0.16)
+                    Color.tokenGreen.opacity(0.11),
+                    Color.tokenCanvas.opacity(0.35),
+                    Color.tokenGreenDark.opacity(0.045)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -209,9 +247,9 @@ private struct TokenIslandMiniMark: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(.white.opacity(0.10))
+                .fill(Color.tokenGreen.opacity(0.12))
             Circle()
-                .stroke(.white.opacity(0.16), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                .stroke(Color.tokenGreen.opacity(0.18), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
                 .frame(width: 21, height: 21)
             Circle()
                 .trim(from: 0, to: 0.72)
@@ -237,7 +275,7 @@ private struct TokenIslandToolSplitView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.tokenTrack.opacity(0.42), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -255,13 +293,13 @@ private struct TokenIslandSplitRow: View {
         HStack(spacing: 8) {
             Text(name)
                 .font(.caption2.weight(.heavy))
-                .foregroundStyle(.white.opacity(0.70))
+                .foregroundStyle(Color.tokenInk.opacity(0.70))
                 .frame(width: 70, alignment: .leading)
                 .lineLimit(1)
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.10))
+                    Capsule().fill(Color.black.opacity(0.08))
                     Capsule()
                         .fill(Color.tokenGreen)
                         .frame(width: max(tokens > 0 ? 4 : 0, proxy.size.width * percent))
@@ -271,7 +309,7 @@ private struct TokenIslandSplitRow: View {
 
             Text(TokenStepFormat.tokens(tokens, compact: true))
                 .font(.caption2.weight(.heavy))
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(Color.tokenInk.opacity(0.78))
                 .monospacedDigit()
                 .frame(width: 48, alignment: .trailing)
         }
@@ -291,7 +329,7 @@ private struct TokenIslandQuotaMiniView: View {
                 quotaBlock(title: "Codex", quota: codexQuota)
             }
             if codexQuota.isAvailable, claudeQuota.isAvailable {
-                Divider().frame(height: 15).overlay(.white.opacity(0.18))
+                Divider().frame(height: 15).overlay(Color.black.opacity(0.10))
             }
             if claudeQuota.isAvailable {
                 quotaBlock(title: "Claude", quota: claudeQuota)
@@ -300,14 +338,14 @@ private struct TokenIslandQuotaMiniView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Color.tokenTrack.opacity(0.38), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     private func quotaBlock(title: String, quota: CodexQuotaSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 9, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white.opacity(0.48))
+                .foregroundStyle(Color.tokenInk.opacity(0.48))
                 .lineLimit(1)
             HStack(spacing: 6) {
                 quotaText(quota.fiveHour, fallback: L("5 小时"))
@@ -322,7 +360,7 @@ private struct TokenIslandQuotaMiniView: View {
         HStack(spacing: 3) {
             Text((window?.title ?? fallback).replacingOccurrences(of: " ", with: ""))
                 .font(.system(size: 9, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white.opacity(0.50))
+                .foregroundStyle(Color.tokenInk.opacity(0.50))
             Text(window.map { TokenStepFormat.percent($0.remainingPercent) } ?? "—")
                 .font(.system(size: 9, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.tokenGreen)
@@ -343,11 +381,11 @@ private struct TokenIslandActionButton: View {
                 .labelStyle(.titleAndIcon)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
-                .foregroundStyle(.white.opacity(0.82))
+                .foregroundStyle(Color.tokenInk.opacity(0.82))
                 .frame(maxWidth: .infinity)
                 .frame(height: 28)
-                .background(.white.opacity(0.085), in: Capsule())
-                .overlay(Capsule().stroke(.white.opacity(0.07)))
+                .background(Color.tokenSurface, in: Capsule())
+                .overlay(Capsule().stroke(Color.black.opacity(0.07)))
         }
         .buttonStyle(.plain)
         .help(title)
