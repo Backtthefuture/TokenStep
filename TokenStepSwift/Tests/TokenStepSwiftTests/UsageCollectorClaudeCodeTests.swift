@@ -27,6 +27,36 @@ final class UsageCollectorClaudeCodeTests: XCTestCase {
         XCTAssertEqual(snapshot.daily.first?.models["unknown"], 2)
     }
 
+    func testClaudeOpusUsesCurrentOpusPricing() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepClaudeCostTests-\(UUID().uuidString)", isDirectory: true)
+        let project = root.appendingPathComponent("project", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let log = project.appendingPathComponent("session.jsonl")
+        let line = assistantLine(
+            uuid: "opus-cost",
+            messageID: "msg_opus_cost",
+            timestamp: "2026-06-21T08:00:00Z",
+            model: "claude-opus-4-8",
+            stopReason: "end_turn",
+            input: 1_000_000,
+            output: 1_000_000,
+            cacheCreation: 1_000_000,
+            cacheRead: 1_000_000
+        )
+        try line.write(to: log, atomically: true, encoding: .utf8)
+
+        let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root)
+
+        XCTAssertEqual(snapshot.totals.tokens, 4_000_000)
+        XCTAssertEqual(snapshot.totals.cost, 36.75)
+        XCTAssertEqual(snapshot.daily.first?.cost, 36.75)
+    }
+
     private var fixtureLines: [String] {
         [
             assistantLine(
@@ -100,12 +130,14 @@ final class UsageCollectorClaudeCodeTests: XCTestCase {
         stopReason: String?,
         input: Int,
         output: Int,
+        cacheCreation: Int = 0,
         cacheRead: Int
     ) -> String {
         var message: [String: Any] = [
             "usage": [
                 "input_tokens": input,
                 "output_tokens": output,
+                "cache_creation_input_tokens": cacheCreation,
                 "cache_read_input_tokens": cacheRead
             ]
         ]

@@ -5,6 +5,7 @@ struct CCSwitchProxyFixtureCheck {
     static func main() throws {
         try runCCSwitchChecks()
         try runClaudeCodeChecks()
+        try runClaudeOpusCostCheck()
         try runCodexArchivedSessionChecks()
         try runCrossSourceDedupeChecks()
         print("Usage collector fixture checks passed")
@@ -153,6 +154,34 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(snapshot.daily.first?.tools["Claude Code"], 324, "claude tool tokens")
         try assertEqual(snapshot.daily.first?.models["claude-opus-4-20250514"], 322, "claude model tokens")
         try assertEqual(snapshot.daily.first?.models["unknown"], 2, "claude fallback model tokens")
+    }
+
+    private static func runClaudeOpusCostCheck() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepClaudeCostFixture-\(UUID().uuidString)", isDirectory: true)
+        let project = root.appendingPathComponent("project", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let log = project.appendingPathComponent("session.jsonl")
+        try claudeAssistantLine(
+            uuid: "opus-cost",
+            messageID: "msg-opus-cost",
+            timestamp: "2026-06-21T08:00:00Z",
+            model: "claude-opus-4-8",
+            stopReason: "end_turn",
+            input: 1_000_000,
+            output: 1_000_000,
+            cacheCreation: 1_000_000,
+            cacheRead: 1_000_000
+        ).write(to: log, atomically: true, encoding: .utf8)
+
+        let snapshot = UsageCollector.collectClaudeCodeUsageSnapshot(rootURL: root)
+        try assertEqual(snapshot.totals.tokens, 4_000_000, "claude opus cost tokens")
+        try assertEqual(snapshot.totals.cost, 36.75, "claude opus current cost")
+        try assertEqual(snapshot.daily.first?.cost, 36.75, "claude opus current daily cost")
     }
 
     private static func runCrossSourceDedupeChecks() throws {
@@ -449,6 +478,7 @@ struct CCSwitchProxyFixtureCheck {
         stopReason: String?,
         input: Int,
         output: Int,
+        cacheCreation: Int = 0,
         cacheRead: Int,
         requestID: String? = nil,
         sessionID: String? = nil
@@ -457,6 +487,7 @@ struct CCSwitchProxyFixtureCheck {
             "usage": [
                 "input_tokens": input,
                 "output_tokens": output,
+                "cache_creation_input_tokens": cacheCreation,
                 "cache_read_input_tokens": cacheRead
             ]
         ]

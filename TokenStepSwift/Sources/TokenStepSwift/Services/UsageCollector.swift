@@ -1106,7 +1106,7 @@ enum UsageCollector {
             return openAICostByParts(usage: usage, input: 2.5, cachedInput: 0.25, output: 15)
         }
         if lower.contains("opus") {
-            return costByParts(usage: usage, input: 15, output: 75, cacheCreation: 18.75, cacheRead: 1.5)
+            return costByParts(usage: usage, input: 5, output: 25, cacheCreation: 6.25, cacheRead: 0.5)
         }
         if lower.contains("sonnet") {
             return costByParts(usage: usage, input: 3, output: 15, cacheCreation: 3.75, cacheRead: 0.3)
