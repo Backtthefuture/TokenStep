@@ -85,9 +85,22 @@ enum CodexQuotaService {
             errorOutput.append(data)
             errorLock.unlock()
         }
+        defer {
+            outputPipe.fileHandleForReading.readabilityHandler = nil
+            errorPipe.fileHandleForReading.readabilityHandler = nil
+            try? inputPipe.fileHandleForWriting.close()
+            if process.isRunning {
+                process.terminate()
+            }
+        }
 
         try process.run()
-        try writeRequests(to: inputPipe.fileHandleForWriting)
+        do {
+            try writeRequests(to: inputPipe.fileHandleForWriting)
+        } catch {
+            process.terminate()
+            throw error
+        }
 
         let _ = responseSemaphore.wait(timeout: .now() + 4)
         process.terminate()
@@ -100,8 +113,6 @@ enum CodexQuotaService {
 
         _ = exitSemaphore.wait(timeout: .now() + 1)
 
-        outputPipe.fileHandleForReading.readabilityHandler = nil
-        errorPipe.fileHandleForReading.readabilityHandler = nil
         outputLock.lock()
         let outputData = output
         outputLock.unlock()
@@ -141,8 +152,16 @@ enum CodexQuotaService {
 
         for request in [initialize, quota] {
             let data = try JSONSerialization.data(withJSONObject: request)
-            handle.write(data)
-            handle.write(Data("\n".utf8))
+            try write(data, to: handle)
+            try write(Data("\n".utf8), to: handle)
+        }
+    }
+
+    private static func write(_ data: Data, to handle: FileHandle) throws {
+        do {
+            try handle.write(contentsOf: data)
+        } catch {
+            throw TokenStepError.message(L("暂未读取到 Codex 额度"))
         }
     }
 

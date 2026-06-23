@@ -4,6 +4,7 @@ import Foundation
 @main
 enum TokenStepHelper {
     static func main() {
+        _ = signal(SIGPIPE, SIG_IGN)
         var arguments = Array(CommandLine.arguments.dropFirst())
         guard let command = arguments.first else {
             fail("Missing helper command.")

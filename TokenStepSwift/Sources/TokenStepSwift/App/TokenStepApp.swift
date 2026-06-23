@@ -1,8 +1,10 @@
 import AppKit
+import Darwin
 import SwiftUI
 
 final class TokenStepAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
+        _ = signal(SIGPIPE, SIG_IGN)
         guard SingleInstanceGuard.claimOrTerminateDuplicate() else { return }
     }
 
