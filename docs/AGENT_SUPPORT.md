@@ -8,6 +8,10 @@ TokenStep 的原则是：能从本地日志中稳定读到 token 数，才进入
 | --- | --- | --- | --- |
 | Codex | 已支持 | `~/.codex/sessions` / `~/.codex/archived_sessions`，必要时回退 SQLite | 读取本地 token_count 事件，只统计数量；可选读取 5h / 7d 额度。 |
 | Claude Code | 已支持 | `~/.claude/projects` | 读取 assistant message 的 usage 字段，按 `message.id` 去重，避免 thinking / text / tool_use 多行重复累计；可选通过 Claude Code 本机钥匙串凭证读取 usage 额度。 |
+| Kimi Code | 已支持 | `~/Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions/**/agents/main/wire.jsonl` | 读取 `usage.record` 事件，字段映射为 `inputOther`/`output`/`inputCacheRead`/`inputCacheCreation`。 |
+| ZCode / GLM | 已支持 | `~/.zcode/cli/db/db.sqlite` → `model_usage` | 只读 SQLite `model_usage` 表的 token 数值列，不读 `message`/`part` 正文。 |
+| Pi / SPI | 已支持 | `~/.pi/agent/sessions/**/*.jsonl` | 读取 `message` 事件中 assistant 角色的 `usage` 字段。 |
+| Reasonix / DeepSeek | 已支持 | `~/.reasonix/sessions/*.events.jsonl` / `~/.reasonix/projects/**/*.events.jsonl` | 读取 `model.final` 事件的 `usage` 字段，并与 `model.turn.started` 关联模型名。 |
 
 ## 实验支持：CC Switch Proxy
 

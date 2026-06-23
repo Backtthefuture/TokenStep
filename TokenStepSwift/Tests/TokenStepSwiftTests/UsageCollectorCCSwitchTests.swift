@@ -32,7 +32,7 @@ final class UsageCollectorCCSwitchTests: XCTestCase {
         XCTAssertEqual(snapshot.daily.first?.models["claude-priced"], 155)
         XCTAssertNil(snapshot.daily.first?.models["claude-session-priced"])
         XCTAssertNil(snapshot.daily.first?.models["codex-session-priced"])
-        XCTAssertEqual(snapshot.daily.first?.models["gpt-5.4"], 13)
+        XCTAssertEqual(snapshot.daily.first?.models["GPT-5.4"], 13)
 
         let tools = Dictionary(uniqueKeysWithValues: snapshot.tools.map { ($0.tool, $0.tokens) })
         XCTAssertEqual(tools["Claude Code via CC Switch"], 155)
@@ -42,7 +42,7 @@ final class UsageCollectorCCSwitchTests: XCTestCase {
         XCTAssertEqual(models["Claude Code via CC Switch|claude-priced"], 155)
         XCTAssertNil(models["Claude Code via CC Switch|claude-session-priced"])
         XCTAssertNil(models["Codex via CC Switch|codex-session-priced"])
-        XCTAssertEqual(models["Codex via CC Switch|gpt-5.4"], 13)
+        XCTAssertEqual(models["Codex via CC Switch|GPT-5.4"], 13)
     }
 
     func testValidDatabaseWithoutSuccessfulTokenRowsReportsMissingValidRows() throws {
