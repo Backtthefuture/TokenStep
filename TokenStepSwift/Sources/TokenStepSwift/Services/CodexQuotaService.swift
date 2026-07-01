@@ -58,9 +58,13 @@ enum CodexQuotaService {
         var errorOutput = Data()
         var didReceiveQuotaResponse = false
 
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["codex", "app-server", "--listen", "stdio://"]
-        process.environment = appServerEnvironment()
+        let environment = appServerEnvironment()
+        guard let codexExecutable = CodexExecutableResolver.resolveExecutable(environment: environment) else {
+            throw TokenStepError.message(L("暂未读取到 Codex 额度"))
+        }
+        process.executableURL = codexExecutable
+        process.arguments = ["app-server", "--listen", "stdio://"]
+        process.environment = environment
         process.standardInput = inputPipe
         process.standardOutput = outputPipe
         process.standardError = errorPipe
@@ -190,12 +194,7 @@ enum CodexQuotaService {
 
     private static func appServerEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        if let existing = environment["PATH"], !existing.isEmpty {
-            environment["PATH"] = "\(defaultPath):\(existing)"
-        } else {
-            environment["PATH"] = defaultPath
-        }
+        environment["PATH"] = CodexExecutableResolver.augmentedPATH(environment: environment)
         return environment
     }
 }
