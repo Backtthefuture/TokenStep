@@ -10,6 +10,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Run Codex executable resolver checks
+        run: ./script/test_codex_executable_resolver.sh
       - name: Run usage collector fixture checks
         run: ./script/test_ccswitch_proxy_collector.sh
       - name: Build TokenStep
