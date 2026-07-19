@@ -228,7 +228,9 @@ final class UsageCollectorCodexTests: XCTestCase {
         let rhythm = try XCTUnwrap(snapshot.rhythm(for: "2026-06-21"))
 
         XCTAssertEqual(rhythm.totalTokens, 850)
-        XCTAssertEqual(rhythm.activeHours, 3)
+        // The 100-token night trace remains visible in its bucket, but is below
+        // the 30%-of-peak significance threshold used for active-hour labeling.
+        XCTAssertEqual(rhythm.activeHours, 2)
         XCTAssertEqual(rhythm.peakHour, 15)
         XCTAssertEqual(rhythm.peakTokens, 400)
         XCTAssertEqual(rhythm.bucket(hour: 15).tokens, 400)
