@@ -59,7 +59,7 @@ swiftc \
 # SwiftPM manifest linking is broken on some CommandLineTools-only machines.
 # The standalone fixture above executes the assertions; this additional pass
 # still type-checks the XCTest coverage that CI runs with a complete toolchain.
-if xcrun --find xctest >/dev/null 2>&1; then
+if printf '%s\n' 'import XCTest' | swiftc -typecheck - >/dev/null 2>&1; then
   swiftc \
     -target arm64-apple-macos14.0 \
     -vfsoverlay "$OVERLAY_FILE" \
