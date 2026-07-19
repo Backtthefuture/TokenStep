@@ -166,6 +166,35 @@ struct ErrorBanner: View {
     }
 }
 
+struct UsageRecalibrationNotice: View {
+    var dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Color.tokenGreen)
+                .padding(.top, 1)
+            Text(L("TokenStep 已按真实增量重新校准历史 Token。数字可能变小，但历史记录没有丢失。"))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.tokenInk.opacity(0.82))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L("关闭"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(Color.tokenMint.opacity(0.20), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.tokenGreen.opacity(0.18))
+        )
+    }
+}
+
 struct ProgressRingView: View {
     var progress: Double
     var lineWidth: CGFloat = 18
@@ -629,13 +658,17 @@ func tokenToolColor(_ tool: String) -> Color {
         return Color(red: 0.88, green: 0.42, blue: 0.24)
     case "Hermes", "Hermes Agent":
         return Color(red: 0.50, green: 0.28, blue: 0.92)
+    case "ZCode":
+        return Color(red: 0.20, green: 0.52, blue: 0.92)
+    case "Codex via CC Switch", "Claude Code via CC Switch", "Gemini via CC Switch":
+        return Color(red: 0.10, green: 0.64, blue: 0.72)
     default:
         return Color.tokenInk.opacity(0.44)
     }
 }
 
 func orderedToolEntries(_ tools: [String: Int]) -> [(name: String, tokens: Int)] {
-    let preferred = ["Codex", "Claude Code", "Hermes", "Hermes Agent"]
+    let preferred = ["Codex", "Claude Code", "ZCode", "Hermes", "Hermes Agent", "Codex via CC Switch", "Claude Code via CC Switch"]
     var entries: [(name: String, tokens: Int)] = preferred.compactMap { name in
         guard let value = tools[name], value > 0 else { return nil }
         return (name, value)

@@ -70,8 +70,8 @@ struct SettingsView: View {
                 SettingsAutostartCard()
             }
             HStack(alignment: .top, spacing: 18) {
+                SettingsExperimentalAgentSourcesCard()
                 SettingsPrivacyCard()
-                Spacer(minLength: 0)
             }
         }
     }
@@ -166,6 +166,7 @@ struct SettingsView: View {
                 appState.setCodexQuotaVisible(TokenStepSettings.defaults.showCodexQuota)
                 appState.setTokenRankVisible(TokenStepSettings.defaults.showTokenRank)
                 appState.setTokenRankUserID(TokenStepSettings.defaults.tokenRankUserID)
+                appState.setExperimentalAgentSourcesVisible(TokenStepSettings.defaults.showExperimentalAgentSources)
                 appState.setAutostart(true)
             } label: {
                 Text(L("恢复默认"))

@@ -1,13 +1,29 @@
 import AppKit
 import SwiftUI
 
+final class MainWindowNavigation: ObservableObject {
+    @Published private(set) var section: AppSection
+
+    init(section: AppSection = .today) {
+        self.section = section
+    }
+
+    func select(_ section: AppSection) {
+        self.section = section
+    }
+}
+
 @MainActor
 final class MainWindowPresenter {
     static let shared = MainWindowPresenter()
 
     private var window: NSWindow?
+    private let navigation = MainWindowNavigation()
 
-    func show(appState: AppState) {
+    func show(appState: AppState, section: AppSection? = nil) {
+        if let section {
+            navigation.select(section)
+        }
         let window = self.window ?? makeWindow(appState: appState)
         self.window = window
 
@@ -18,7 +34,7 @@ final class MainWindowPresenter {
     }
 
     private func makeWindow(appState: AppState) -> NSWindow {
-        let rootView = MainWindowView()
+        let rootView = MainWindowView(navigation: navigation)
             .environmentObject(appState)
             .frame(minWidth: 1080, minHeight: 720)
 

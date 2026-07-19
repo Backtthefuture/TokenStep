@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ShareRhythmCardView: View {
+    @EnvironmentObject private var appState: AppState
+
     var day: DailyUsage
     var rhythm: DailyRhythm
     var previousDay: DailyUsage?
@@ -155,11 +157,16 @@ struct ShareRhythmCardView: View {
 
     private var bottomMetrics: some View {
         HStack(spacing: 0) {
-            RhythmBottomMetric(symbol: "clock.fill", title: L("活跃时段"), value: LFormat("%d 个时段", rhythm.activeHours), color: palette.accent)
+            RhythmBottomMetric(
+                symbol: "clock.fill",
+                title: AgentWorkCopy.recordedHours,
+                value: "\(dayAgentWork.activeHours)/24",
+                color: palette.accent
+            )
             RhythmMetricDivider()
-            RhythmBottomMetric(symbol: "moon.stars.fill", title: L("夜间占比"), value: TokenStepFormat.percent(nightShare * 100), color: palette.night)
+            RhythmBottomMetric(symbol: "cpu.fill", title: L("Agent Token"), value: TokenStepFormat.tokens(dayAgentWork.totalTokens, compact: true), color: palette.secondary)
             RhythmMetricDivider()
-            RhythmBottomMetric(symbol: "timer", title: L("最长连续"), value: LFormat("%d 小时", longestActiveStreak), color: palette.accent)
+            RhythmBottomMetric(symbol: "calendar.badge.clock", title: L("近 7 日均"), value: TokenStepFormat.tokens(agentSevenDayAverage, compact: true), color: palette.accent)
         }
         .frame(height: 70)
     }
@@ -182,6 +189,7 @@ struct ShareRhythmCardView: View {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
         formatter.dateFormat = "yyyy.MM.dd"
         guard let date = DateFormatter.tokenStepDay.date(from: day.date) else { return day.date }
         return formatter.string(from: date)
@@ -192,6 +200,7 @@ struct ShareRhythmCardView: View {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = TokenStepLocalization.locale
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
         formatter.dateFormat = TokenStepLocalization.language == .en ? "EEE" : "EEEE"
         return formatter.string(from: date)
     }
@@ -201,24 +210,12 @@ struct ShareRhythmCardView: View {
         return String(format: "%02d:00-%02d:00", peakHour, (peakHour + 1) % 24)
     }
 
-    private var nightShare: Double {
-        guard rhythm.totalTokens > 0 else { return 0 }
-        let nightTokens = rhythm.tokens(in: 21...23) + rhythm.tokens(in: 0...2)
-        return Double(nightTokens) / Double(rhythm.totalTokens)
+    private var dayAgentWork: DailyAgentWork {
+        appState.agentWork(for: day.date)
     }
 
-    private var longestActiveStreak: Int {
-        var best = 0
-        var current = 0
-        for bucket in rhythm.buckets {
-            if rhythm.isSignificant(bucket) {
-                current += 1
-                best = max(best, current)
-            } else {
-                current = 0
-            }
-        }
-        return max(best, rhythm.activeHours > 0 ? 1 : 0)
+    private var agentSevenDayAverage: Int {
+        appState.sevenDayAgentAverage(endingAt: day.date)
     }
 }
 
@@ -309,7 +306,7 @@ private struct RhythmAxisLabel: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(hour == 24 ? "24时" : "\(hour)时")
+            Text(AgentWorkCopy.hourLabel(hour))
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(Color.white.opacity(0.48))
             if let symbol {

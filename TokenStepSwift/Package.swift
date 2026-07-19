@@ -7,25 +7,12 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "TokenStepSwift", targets: ["TokenStepSwift"]),
-        .executable(name: "TokenStepHelper", targets: ["TokenStepHelper"])
+        .executable(name: "TokenStepSwift", targets: ["TokenStepSwift"])
     ],
     targets: [
+        // TokenStepHelper is bundled by script/build_swiftui_and_run.sh because it
+        // intentionally shares internal app sources that SwiftPM cannot own twice.
         .executableTarget(name: "TokenStepSwift"),
-        .executableTarget(
-            name: "TokenStepHelper",
-            path: "Sources",
-            sources: [
-                "TokenStepSwift/Support/AppPaths.swift",
-                "TokenStepSwift/Support/Localization.swift",
-                "TokenStepSwift/Support/MemoryPressure.swift",
-                "TokenStepSwift/Support/Theme.swift",
-                "TokenStepSwift/Models/UsageModels.swift",
-                "TokenStepSwift/Services/UsageCollector.swift",
-                "TokenStepSwift/Services/DataService.swift",
-                "TokenStepHelper/main.swift"
-            ]
-        ),
         .testTarget(
             name: "TokenStepSwiftTests",
             dependencies: ["TokenStepSwift"]

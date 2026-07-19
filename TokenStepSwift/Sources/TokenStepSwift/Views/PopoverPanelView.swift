@@ -13,7 +13,13 @@ struct PopoverPanelView: View {
                     appState.clearError()
                 }
             }
+            if appState.showsUsageRecalibrationNotice {
+                UsageRecalibrationNotice {
+                    appState.dismissUsageRecalibrationNotice()
+                }
+            }
             PopoverTodayRingCard()
+            PopoverAgentWorkStrip()
             if appState.settings.showCodexQuota {
                 PopoverQuotaCard()
             }

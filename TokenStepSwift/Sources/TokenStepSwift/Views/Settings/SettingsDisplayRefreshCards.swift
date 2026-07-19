@@ -150,3 +150,75 @@ struct SettingsTokenRankCard: View {
         }
     }
 }
+
+struct SettingsExperimentalAgentSourcesCard: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        SettingsCard(title: L("实验 Agent 来源"), symbol: "point.3.connected.trianglepath.dotted", height: 282) {
+            VStack(alignment: .leading, spacing: 13) {
+                SettingsToggleRow(
+                    title: L("启用 ZCode / Hermes"),
+                    isOn: Binding(
+                        get: { appState.settings.showExperimentalAgentSources },
+                        set: { appState.setExperimentalAgentSourcesVisible($0) }
+                    )
+                )
+
+                Text(L("只读取本地 usage 字段，不读取对话正文。"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(spacing: 8) {
+                    experimentalSourceLine(name: "ZCode", sourceKey: "ZCode")
+                    experimentalSourceLine(name: "Hermes Agent", sourceKey: "Hermes Agent")
+                    experimentalSourceLine(name: "WorkBuddy", sourceKey: "WorkBuddy")
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func experimentalSourceLine(name: String, sourceKey: String) -> some View {
+        let rawStatus = appState.snapshot.sources[sourceKey]?.status
+        let status = normalizedExperimentalStatus(rawStatus)
+        let active = status == "ok"
+        let discoveredOnly = status == "discovered_no_usage"
+        return StatusLine(
+            symbol: active ? "checkmark.circle.fill" : discoveredOnly ? "magnifyingglass.circle.fill" : "circle.dashed",
+            title: name,
+            value: statusText(status),
+            tint: active ? .tokenGreen : discoveredOnly ? .orange : .gray
+        )
+    }
+
+    private func normalizedExperimentalStatus(_ status: String?) -> String {
+        guard appState.settings.showExperimentalAgentSources else {
+            return "disabled"
+        }
+        if appState.isRefreshing {
+            return "refreshing"
+        }
+        if status == nil || status == "disabled" {
+            return "pending_refresh"
+        }
+        return status ?? "missing"
+    }
+
+    private func statusText(_ status: String?) -> String {
+        switch status {
+        case "ok": return L("已计入实验统计")
+        case "discovered_no_usage": return L("已发现，暂不可统计")
+        case "refreshing": return L("刷新中")
+        case "pending_refresh": return L("等待刷新")
+        case "disabled": return L("默认关闭")
+        case "missing_db", "missing": return L("未发现数据源")
+        case "missing_valid_rows": return L("暂无可用 usage")
+        case "schema_mismatch", "schema_unreadable", "missing_table": return L("结构待适配")
+        case "unreadable_db": return L("无法读取")
+        default: return L("等待同步")
+        }
+    }
+}

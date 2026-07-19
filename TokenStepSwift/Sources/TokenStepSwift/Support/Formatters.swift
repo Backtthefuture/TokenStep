@@ -96,6 +96,7 @@ extension DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
