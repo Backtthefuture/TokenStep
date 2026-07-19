@@ -7,6 +7,7 @@ struct TodayView: View {
         VStack(spacing: 22) {
             hero
             todayBreakdownStrip
+            TodayAgentWorkCard()
             metricStrip
         }
     }

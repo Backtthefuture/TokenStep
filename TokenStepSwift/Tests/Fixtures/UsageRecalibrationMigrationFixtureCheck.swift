@@ -1,0 +1,138 @@
+import Foundation
+
+@main
+struct UsageRecalibrationMigrationFixtureCheck {
+    static func main() throws {
+        let root = AppPaths.appSupportRoot
+        try? FileManager.default.removeItem(at: root)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let legacy = snapshot(accountingRevision: nil, records: 1)
+        let current = snapshot(accountingRevision: 8, records: 2)
+        let migrated = try DataService.persistSnapshotForMigrationTests(
+            current,
+            previousSnapshot: legacy
+        )
+        try expect(
+            migrated.sources["Codex"]?.recalibratedFromRevision == 5,
+            "legacy snapshots should be treated as accounting revision 5"
+        )
+        try expect(
+            DataService.hasPendingUsageRecalibrationNotice,
+            "successful legacy migration should create the pending notice marker"
+        )
+        try expect(
+            try String(contentsOf: AppPaths.usageRecalibrationNoticeMarker, encoding: .utf8) == "8",
+            "pending marker should identify accounting revision 8"
+        )
+
+        DataService.acknowledgeUsageRecalibrationNotice()
+        try expect(
+            !DataService.hasPendingUsageRecalibrationNotice,
+            "acknowledging the notice should remove its marker"
+        )
+
+        try? FileManager.default.removeItem(at: root)
+        _ = try DataService.persistSnapshotForMigrationTests(current, previousSnapshot: nil)
+        try expect(
+            !DataService.hasPendingUsageRecalibrationNotice,
+            "a new installation must not see a migration notice"
+        )
+
+        let alreadyCurrent = snapshot(accountingRevision: 8, records: 1)
+        _ = try DataService.persistSnapshotForMigrationTests(current, previousSnapshot: alreadyCurrent)
+        try expect(
+            !DataService.hasPendingUsageRecalibrationNotice,
+            "an already-current snapshot must not recreate the notice"
+        )
+
+        try? FileManager.default.removeItem(at: root)
+        _ = try DataService.persistSnapshotForMigrationTests(legacy, previousSnapshot: nil)
+        let failedRecalibration = snapshot(accountingRevision: 8, records: 0)
+        do {
+            _ = try DataService.persistSnapshotForMigrationTests(
+                failedRecalibration,
+                previousSnapshot: legacy
+            )
+            throw NSError(
+                domain: "UsageRecalibrationMigrationFixture",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "an empty recalibration must fail"]
+            )
+        } catch let error as NSError where error.domain == "TokenStepCollector" {
+            // Expected: the old snapshot must stay intact until a valid v8 scan exists.
+        }
+        let preserved = try DataService.loadSnapshot()
+        try expect(
+            preserved.totals.tokens == legacy.totals.tokens,
+            "a failed recalibration must preserve the previous usage snapshot"
+        )
+        try expect(
+            !DataService.hasPendingUsageRecalibrationNotice,
+            "a failed recalibration must not create a migration notice"
+        )
+
+        let sqliteFallback = snapshot(
+            accountingRevision: nil,
+            records: 1,
+            status: "ok_sqlite"
+        )
+        do {
+            _ = try DataService.persistSnapshotForMigrationTests(
+                sqliteFallback,
+                previousSnapshot: legacy
+            )
+            throw NSError(
+                domain: "UsageRecalibrationMigrationFixture",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "a SQLite fallback must not complete recalibration"]
+            )
+        } catch let error as NSError where error.domain == "TokenStepCollector" {
+            // Expected: an approximate fallback cannot overwrite an older exact snapshot.
+        }
+        let preservedAfterFallback = try DataService.loadSnapshot()
+        try expect(
+            preservedAfterFallback.totals.tokens == legacy.totals.tokens,
+            "a SQLite fallback must preserve the previous usage snapshot"
+        )
+        try expect(
+            !DataService.hasPendingUsageRecalibrationNotice,
+            "a SQLite fallback must not create a migration notice"
+        )
+
+        print("PASS: usage recalibration migration marker and failure preservation")
+    }
+
+    private static func snapshot(
+        accountingRevision: Int?,
+        records: Int,
+        status: String = "ok"
+    ) -> UsageSnapshot {
+        UsageSnapshot(
+            generatedAt: "2026-07-13T00:00:00Z",
+            timezone: "Asia/Shanghai",
+            totals: UsageTotals(tokens: records * 100, cost: 0, activeDays: records > 0 ? 1 : 0),
+            daily: [],
+            tools: [],
+            models: [],
+            sources: [
+                "Codex": SourceInfo(
+                    status: status,
+                    files: records > 0 ? 1 : 0,
+                    records: records,
+                    accountingRevision: accountingRevision
+                )
+            ]
+        )
+    }
+
+    private static func expect(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
+        guard try condition() else {
+            throw NSError(
+                domain: "UsageRecalibrationMigrationFixture",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
+        }
+    }
+}

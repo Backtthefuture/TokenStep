@@ -57,7 +57,7 @@ enum AppSection: String, CaseIterable, Identifiable {
 
 struct MainWindowView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var selection: AppSection = .today
+    @ObservedObject var navigation: MainWindowNavigation
 
     var body: some View {
         HStack(spacing: 0) {
@@ -103,10 +103,10 @@ struct MainWindowView: View {
                 ForEach(AppSection.allCases) { section in
                     SidebarNavButton(
                         section: section,
-                        selected: selection == section
+                        selected: navigation.section == section
                     ) {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                            selection = section
+                            navigation.select(section)
                         }
                     }
                 }
@@ -145,6 +145,11 @@ struct MainWindowView: View {
                             appState.clearError()
                         }
                     }
+                    if appState.showsUsageRecalibrationNotice {
+                        UsageRecalibrationNotice {
+                            appState.dismissUsageRecalibrationNotice()
+                        }
+                    }
                     detailView
                 }
                 .frame(maxWidth: 1160, alignment: .leading)
@@ -160,10 +165,10 @@ struct MainWindowView: View {
     private var pageHeader: some View {
         HStack(alignment: .center, spacing: 18) {
             VStack(alignment: .leading, spacing: 7) {
-                Text(selection.title)
+                Text(navigation.section.title)
                     .font(.system(size: 42, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
-                Text(selection.subtitle)
+                Text(navigation.section.subtitle)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -186,7 +191,7 @@ struct MainWindowView: View {
 
                     ScreenshotMenuButton(
                         copyTitle: L("复制当前页截图"),
-                        saveTitle: selection.saveScreenshotTitle,
+                        saveTitle: navigation.section.saveScreenshotTitle,
                         help: L("截取当前页"),
                         copyAction: copyCurrentPageScreenshot,
                         saveAction: saveCurrentPageScreenshot
@@ -201,7 +206,7 @@ struct MainWindowView: View {
     }
 
     private var currentPageScreenshot: some View {
-        DashboardScreenshotView(section: selection)
+        DashboardScreenshotView(section: navigation.section)
             .environmentObject(appState)
             .environment(\.isScreenshotRendering, true)
     }
@@ -218,7 +223,7 @@ struct MainWindowView: View {
         do {
             try ScreenshotExporter.save(
                 currentPageScreenshot,
-                suggestedFileName: ScreenshotExporter.suggestedFileName(prefix: selection.screenshotFilePrefix)
+                suggestedFileName: ScreenshotExporter.suggestedFileName(prefix: navigation.section.screenshotFilePrefix)
             )
         } catch {
             appState.lastError = error.localizedDescription
@@ -227,7 +232,7 @@ struct MainWindowView: View {
 
     @ViewBuilder
     private var detailView: some View {
-        switch selection {
+        switch navigation.section {
         case .today:
             TodayView()
         case .history:

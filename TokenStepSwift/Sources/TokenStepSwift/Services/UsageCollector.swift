@@ -1,6 +1,8 @@
 import Foundation
 
 enum UsageCollector {
+    static let codexAccountingRevision = 8
+
     private static let timezone = TimeZone(identifier: "Asia/Shanghai") ?? .current
     private static let maxRelevantLineBytes = 1_048_576
     private static let ccSwitchSourceName = "CC Switch Proxy"
@@ -8,15 +10,30 @@ enum UsageCollector {
     static func collect(
         historyDays: Int = TokenStepSettings.defaults.historyDays,
         includeCCSwitchProxyUsage: Bool = true,
-        ccSwitchDatabaseURL: URL? = nil
+        ccSwitchDatabaseURL: URL? = nil,
+        includeExperimentalAgentSources: Bool = false,
+        zCodeDatabaseURL: URL? = nil,
+        hermesDatabaseURL: URL? = nil,
+        workBuddyRootURLs: [URL]? = nil
     ) -> UsageSnapshot {
-        var cache = loadCache()
+        let cacheLoad = loadCache()
+        var cache = cacheLoad.cache
         var livePaths = Set<String>()
         let sourceCutoff = sourceFileCutoffDate(historyDays: historyDays)
-        let codex = collectCodex(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        var codex = collectCodex(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        codex.source.recalibratedFromRevision = cacheLoad.recalibratedFromRevision
         let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         var ccSwitch = includeCCSwitchProxyUsage
             ? collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let zCode = includeExperimentalAgentSources
+            ? collectZCodeUsage(databaseURL: zCodeDatabaseURL)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let hermes = includeExperimentalAgentSources
+            ? collectHermesUsage(databaseURL: hermesDatabaseURL)
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let workBuddy = includeExperimentalAgentSources
+            ? discoverWorkBuddyUsage(rootURLs: workBuddyRootURLs)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         cache.files = cache.files.filter { livePaths.contains($0.key) }
         saveCache(cache)
@@ -29,12 +46,20 @@ enum UsageCollector {
         if includeCCSwitchProxyUsage {
             ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
         }
+        let records = recordsInHistoryWindow(
+            deduped.records + zCode.records + hermes.records,
+            historyDays: historyDays,
+            now: Date()
+        )
         return aggregate(
-            records: deduped.records,
+            records: records,
             sources: [
                 "Codex": codex.source,
                 "Claude Code": claude.source,
-                ccSwitchSourceName: ccSwitch.source
+                ccSwitchSourceName: ccSwitch.source,
+                "ZCode": zCode.source,
+                "Hermes Agent": hermes.source,
+                "WorkBuddy": workBuddy.source
             ]
         )
     }
@@ -54,8 +79,8 @@ enum UsageCollector {
         return aggregate(records: result.records, sources: ["Claude Code": result.source])
     }
 
-    static func collectCodexUsageSnapshotForTests(homeURL: URL) -> UsageSnapshot {
-        var cache = CollectorCache()
+    static func collectCodexUsageSnapshotForTests(homeURL: URL, cacheURL: URL? = nil) -> UsageSnapshot {
+        var cache = cacheURL.map(loadCurrentCache(at:)) ?? CollectorCache()
         var livePaths = Set<String>()
         let result = collectCodexFromJSONL(
             cache: &cache,
@@ -63,13 +88,27 @@ enum UsageCollector {
             modifiedSince: nil,
             homeURL: homeURL
         )
+        if let cacheURL {
+            cache.files = cache.files.filter { livePaths.contains($0.key) }
+            saveCache(cache, to: cacheURL)
+        }
         return aggregate(records: result.records, sources: ["Codex": result.source])
+    }
+
+    static func collectorCacheRecalibrationRevisionForTests(cacheURL: URL) -> Int? {
+        loadCache(at: cacheURL).recalibratedFromRevision
     }
 
     static func collectUsageSnapshotForTests(
         codexRoots: [URL] = [],
         claudeRootURL: URL? = nil,
-        ccSwitchDatabaseURL: URL? = nil
+        ccSwitchDatabaseURL: URL? = nil,
+        zCodeDatabaseURL: URL? = nil,
+        hermesDatabaseURL: URL? = nil,
+        workBuddyRootURLs: [URL]? = nil,
+        includeExperimentalAgentSources: Bool = false,
+        historyDays: Int? = nil,
+        now: Date = Date()
     ) -> UsageSnapshot {
         var cache = CollectorCache()
         var livePaths = Set<String>()
@@ -87,17 +126,33 @@ enum UsageCollector {
         var ccSwitch = ccSwitchDatabaseURL.map {
             collectCCSwitchProxyUsage(databaseURL: $0)
         } ?? CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let zCode = includeExperimentalAgentSources
+            ? zCodeDatabaseURL.map { collectZCodeUsage(databaseURL: $0) } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let hermes = includeExperimentalAgentSources
+            ? hermesDatabaseURL.map { collectHermesUsage(databaseURL: $0) } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let workBuddy = includeExperimentalAgentSources
+            ? discoverWorkBuddyUsage(rootURLs: workBuddyRootURLs ?? [])
+            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         let deduped = deduplicateCrossSource(
             nativeRecords: codex.records + claude.records,
             proxyRecords: ccSwitch.records
         )
         ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
+        let allRecords = deduped.records + zCode.records + hermes.records
+        let records = historyDays.map {
+            recordsInHistoryWindow(allRecords, historyDays: $0, now: now)
+        } ?? allRecords
         return aggregate(
-            records: deduped.records,
+            records: records,
             sources: [
                 "Codex": codex.source,
                 "Claude Code": claude.source,
-                ccSwitchSourceName: ccSwitch.source
+                ccSwitchSourceName: ccSwitch.source,
+                "ZCode": zCode.source,
+                "Hermes Agent": hermes.source,
+                "WorkBuddy": workBuddy.source
             ]
         )
     }
@@ -180,33 +235,120 @@ enum UsageCollector {
         roots: [URL]? = nil
     ) -> CollectorResult {
         let roots = roots ?? defaultCodexSessionRoots(homeURL: homeURL)
-        let paths = roots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
-        var records: [UsageRecord] = []
-        var seen = Set<String>()
+        let paths = roots
+            .flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
+            .sorted { $0.path < $1.path }
+        var scans: [CodexSessionScan] = []
 
-        for path in paths.sorted(by: { $0.path < $1.path }) {
+        for path in paths {
             livePaths.insert(path.path)
-            if let cached = cachedRecords(for: path, tool: "Codex", cache: cache) {
-                records.append(contentsOf: cached)
+            if let cached = cachedCodexScan(for: path, cache: cache) {
+                scans.append(cached)
                 continue
             }
 
-            var fileRecords: [UsageRecord] = []
-            var sessionID = path.deletingPathExtension().lastPathComponent
-            var currentModel = "unknown"
-            var eventIndex = 0
-            var lineNumber = 0
-            guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
+            guard var result = stableCodexScan(at: path) else { continue }
+            if !result.isStable, let retry = stableCodexScan(at: path) {
+                result = retry
+            }
+            scans.append(result.scan)
+            if result.isStable {
+                updateCodexCache(path: path, scan: result.scan, metadata: result.metadata, cache: &cache)
+            }
+        }
 
-            try? forEachLine(in: path, matchingAny: ["session_meta", "turn_context", "token_count"]) { line in
+        let scansBySessionID = Dictionary(
+            scans.map { ($0.canonicalSessionID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var records: [UsageRecord] = []
+        var diagnostics = CodexCollectionDiagnostics()
+        var seenRequestIDs = Set<String>()
+        for scan in scans.sorted(by: { $0.sourcePath < $1.sourcePath }) {
+            let parentAnchor = codexForkAnchor(for: scan, scansBySessionID: scansBySessionID)
+            let result = codexDeltaRecords(
+                from: scan,
+                parentAnchor: parentAnchor,
+                seenRequestIDs: &seenRequestIDs
+            )
+            records.append(contentsOf: result.records)
+            diagnostics.add(result.diagnostics)
+        }
+
+        let breakdown = records.reduce(into: TokenUsageCounts()) { partial, record in
+            partial.add(record.usage)
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing" : "ok",
+                files: paths.count,
+                records: records.count,
+                rawRecords: diagnostics.rawRecords,
+                dedupedRecords: diagnostics.duplicateRecords + diagnostics.inheritedRecords,
+                skippedRecords: diagnostics.skippedRecords,
+                strategy: "total_token_usage_delta_v6_with_legacy_fallback",
+                exactRecords: diagnostics.exactRecords,
+                legacyRecords: diagnostics.legacyRecords,
+                duplicateRecords: diagnostics.duplicateRecords,
+                counterResets: diagnostics.counterResets,
+                inheritedRecords: diagnostics.inheritedRecords,
+                inheritedTokens: diagnostics.inheritedTokens,
+                unknownBreakdownRecords: diagnostics.unknownBreakdownRecords,
+                accountingRevision: CollectorCache.currentVersion,
+                tokenBreakdown: SourceTokenBreakdown(
+                    processedTokens: breakdown.totalTokens,
+                    inputTokens: breakdown.inputTokens,
+                    cachedInputTokens: breakdown.cacheReadInputTokens,
+                    uncachedInputTokens: max(
+                        0,
+                        breakdown.inputTokens
+                            - breakdown.cacheReadInputTokens
+                            - breakdown.cacheCreationInputTokens
+                    ),
+                    outputTokens: breakdown.outputTokens,
+                    reasoningTokens: breakdown.reasoningOutputTokens
+                )
+            )
+        )
+    }
+
+    private static func stableCodexScan(
+        at path: URL
+    ) -> (scan: CodexSessionScan, isStable: Bool, metadata: (size: UInt64, modificationTime: TimeInterval))? {
+        guard let before = fileMetadata(for: path),
+              let scan = scanCodexSessionFile(at: path),
+              let after = fileMetadata(for: path)
+        else {
+            return nil
+        }
+        return (scan, metadata(before, matches: after), after)
+    }
+
+    private static func scanCodexSessionFile(at path: URL) -> CodexSessionScan? {
+        guard FileManager.default.isReadableFile(atPath: path.path) else { return nil }
+        var canonicalSessionID: String?
+        var createdAt: String?
+        var parentSessionID: String?
+        var currentModel = "unknown"
+        var events: [CodexTokenEvent] = []
+        var relevantLineNumber = 0
+
+        do {
+            try forEachLine(in: path, matchingAny: ["session_meta", "turn_context", "token_count"]) { line in
                 autoreleasepool {
-                    lineNumber += 1
+                    relevantLineNumber += 1
                     guard let obj = jsonObject(line) else { return }
                     let type = obj["type"] as? String
                     let payload = obj["payload"] as? [String: Any]
 
-                    if type == "session_meta", let id = payload?["id"] as? String, !id.isEmpty {
-                        sessionID = id
+                    if type == "session_meta", canonicalSessionID == nil,
+                       let id = nonEmptyString(payload?["id"] as? String) {
+                        canonicalSessionID = id
+                        createdAt = nonEmptyString(obj["timestamp"] as? String)
+                            ?? nonEmptyString(payload?["timestamp"] as? String)
+                        parentSessionID = codexParentSessionID(from: payload)
                     }
                     if type == "turn_context" {
                         currentModel = modelKey(payload?["model"] as? String ?? currentModel)
@@ -218,46 +360,308 @@ enum UsageCollector {
                         return
                     }
 
-                    let usage = normalizeUsage(info["last_token_usage"] as? [String: Any])
-                    guard usage.totalTokens > 0,
-                          let timestamp = obj["timestamp"] as? String,
-                          let day = dayString(fromISO: timestamp)
-                    else {
-                        return
-                    }
-
-                    eventIndex += 1
-                    let key = "\(sessionID)|\(timestamp)|\(eventIndex)|\(usage.totalTokens)"
-                    guard !seen.contains(key) else { return }
-                    seen.insert(key)
-                    fileRecords.append(
-                        UsageRecord(
-                            date: day,
-                            timestamp: timestamp,
-                            tool: "Codex",
+                    let cumulativePresent = info.keys.contains("total_token_usage")
+                    let cumulative = (info["total_token_usage"] as? [String: Any]).map(normalizeCodexUsage)
+                    let last = (info["last_token_usage"] as? [String: Any]).map(normalizeCodexUsage)
+                    events.append(
+                        CodexTokenEvent(
+                            timestamp: nonEmptyString(obj["timestamp"] as? String),
                             model: currentModel,
-                            usage: usage,
-                            source: .nativeCodex,
-                            requestID: key,
-                            sessionID: sessionID,
-                            sourcePath: path.path,
-                            lineNumber: lineNumber
+                            cumulativePresent: cumulativePresent,
+                            cumulative: cumulative,
+                            last: last,
+                            modelContextWindow: integerValue(info["model_context_window"] as Any),
+                            lineNumber: relevantLineNumber
                         )
                     )
                 }
             }
-            records.append(contentsOf: fileRecords)
-            updateCache(path: path, tool: "Codex", records: fileRecords, cache: &cache)
+        } catch {
+            return nil
         }
 
-        return CollectorResult(
-            records: records,
-            source: SourceInfo(
-                status: records.isEmpty ? "missing" : "ok",
-                files: paths.count,
-                records: records.count
-            )
+        return CodexSessionScan(
+            canonicalSessionID: canonicalSessionID ?? path.deletingPathExtension().lastPathComponent,
+            createdAt: createdAt,
+            parentSessionID: parentSessionID,
+            sourcePath: path.path,
+            events: events
         )
+    }
+
+    private static func codexParentSessionID(from payload: [String: Any]?) -> String? {
+        if let source = payload?["source"] as? [String: Any],
+           let subagent = source["subagent"] as? [String: Any],
+           let threadSpawn = subagent["thread_spawn"] as? [String: Any],
+           let parent = nonEmptyString(threadSpawn["parent_thread_id"] as? String) {
+            return parent
+        }
+        return [
+            payload?["parent_thread_id"] as? String,
+            payload?["forked_from_id"] as? String
+        ].compactMap(nonEmptyString).first
+    }
+
+    private static func codexForkAnchor(
+        for scan: CodexSessionScan,
+        scansBySessionID: [String: CodexSessionScan]
+    ) -> TokenUsageCounts? {
+        guard let parentID = scan.parentSessionID,
+              let parent = scansBySessionID[parentID],
+              let childCreatedAt = scan.createdAt.flatMap(parseISO)
+        else {
+            return nil
+        }
+        return parent.events.last(where: { event in
+            guard event.cumulativePresent,
+                  let usage = event.cumulative,
+                  usage.totalTokens > 0,
+                  let timestamp = event.timestamp.flatMap(parseISO)
+            else {
+                return false
+            }
+            return timestamp <= childCreatedAt
+        })?.cumulative
+    }
+
+    private static func codexDeltaRecords(
+        from scan: CodexSessionScan,
+        parentAnchor: TokenUsageCounts?,
+        seenRequestIDs: inout Set<String>
+    ) -> (records: [UsageRecord], diagnostics: CodexCollectionDiagnostics) {
+        var diagnostics = CodexCollectionDiagnostics(rawRecords: scan.events.count)
+        var records: [UsageRecord] = []
+        let hasCumulativeSchema = scan.events.contains { $0.cumulativePresent }
+
+        if !hasCumulativeSchema {
+            for event in scan.events {
+                guard let usage = event.last,
+                      usage.totalTokens > 0,
+                      let timestamp = event.timestamp,
+                      let day = dayString(fromISO: timestamp)
+                else {
+                    diagnostics.skippedRecords += 1
+                    continue
+                }
+                let requestID = "codex:legacy:\(scan.canonicalSessionID):\(timestamp):\(usage.fingerprint)"
+                guard seenRequestIDs.insert(requestID).inserted else {
+                    diagnostics.duplicateRecords += 1
+                    continue
+                }
+                records.append(
+                    codexUsageRecord(
+                        scan: scan,
+                        event: event,
+                        day: day,
+                        usage: usage,
+                        requestID: requestID,
+                        dataSource: "codex_last_usage_legacy_estimate"
+                    )
+                )
+                diagnostics.legacyRecords += 1
+                if !isCodexBreakdownConsistent(usage, total: usage.totalTokens) {
+                    diagnostics.unknownBreakdownRecords += 1
+                }
+            }
+            return (records, diagnostics)
+        }
+
+        var startIndex = 0
+        var previous: TokenUsageCounts?
+        if let parentAnchor,
+           parentAnchor.totalTokens > 0,
+           let anchorIndex = scan.events.firstIndex(where: {
+               $0.cumulativePresent && $0.cumulative == parentAnchor
+           }) {
+            previous = parentAnchor
+            startIndex = anchorIndex + 1
+            diagnostics.inheritedRecords = scan.events[...anchorIndex].filter(\.cumulativePresent).count
+            diagnostics.inheritedTokens = parentAnchor.totalTokens
+        }
+
+        var epoch = 0
+        for index in startIndex..<scan.events.count {
+            let event = scan.events[index]
+            guard event.cumulativePresent else {
+                diagnostics.skippedRecords += 1
+                continue
+            }
+            guard let current = event.cumulative,
+                  current.totalTokens > 0,
+                  let timestamp = event.timestamp,
+                  let day = dayString(fromISO: timestamp)
+            else {
+                diagnostics.skippedRecords += 1
+                continue
+            }
+
+            let deltaTotal: Int
+            let isReset: Bool
+            if let previous {
+                if current.totalTokens == previous.totalTokens {
+                    diagnostics.duplicateRecords += 1
+                    continue
+                }
+                if current.totalTokens > previous.totalTokens {
+                    deltaTotal = current.totalTokens - previous.totalTokens
+                    isReset = false
+                } else if isCodexContextWindowSentinel(event) {
+                    diagnostics.skippedRecords += 1
+                    continue
+                } else if isCredibleCodexReset(
+                    at: index,
+                    events: scan.events,
+                    current: current,
+                    previous: previous
+                ) {
+                    epoch += 1
+                    diagnostics.counterResets += 1
+                    deltaTotal = current.totalTokens
+                    isReset = true
+                } else {
+                    diagnostics.skippedRecords += 1
+                    continue
+                }
+            } else {
+                deltaTotal = current.totalTokens
+                isReset = false
+            }
+
+            guard deltaTotal > 0 else { continue }
+            let componentResult = codexIncrementUsage(
+                current: current,
+                previous: isReset ? nil : previous,
+                last: event.last,
+                total: deltaTotal
+            )
+            let requestID = "codex:cumulative:\(scan.canonicalSessionID):\(epoch):\(current.totalTokens)"
+            guard seenRequestIDs.insert(requestID).inserted else {
+                diagnostics.duplicateRecords += 1
+                previous = current
+                continue
+            }
+            records.append(
+                codexUsageRecord(
+                    scan: scan,
+                    event: event,
+                    day: day,
+                    usage: componentResult.usage,
+                    requestID: requestID,
+                    dataSource: componentResult.hasKnownBreakdown
+                        ? "codex_total_usage_delta"
+                        : "codex_total_usage_delta_unknown_breakdown"
+                )
+            )
+            diagnostics.exactRecords += 1
+            if !componentResult.hasKnownBreakdown {
+                diagnostics.unknownBreakdownRecords += 1
+            }
+            previous = current
+        }
+        return (records, diagnostics)
+    }
+
+    private static func codexUsageRecord(
+        scan: CodexSessionScan,
+        event: CodexTokenEvent,
+        day: String,
+        usage: TokenUsageCounts,
+        requestID: String,
+        dataSource: String
+    ) -> UsageRecord {
+        UsageRecord(
+            date: day,
+            timestamp: event.timestamp,
+            tool: "Codex",
+            model: event.model,
+            usage: usage,
+            source: .nativeCodex,
+            requestID: requestID,
+            sessionID: scan.canonicalSessionID,
+            sourcePath: scan.sourcePath,
+            lineNumber: event.lineNumber,
+            dataSource: dataSource
+        )
+    }
+
+    private static func codexIncrementUsage(
+        current: TokenUsageCounts,
+        previous: TokenUsageCounts?,
+        last: TokenUsageCounts?,
+        total: Int
+    ) -> (usage: TokenUsageCounts, hasKnownBreakdown: Bool) {
+        if let last,
+           last.totalTokens == total,
+           isCodexBreakdownConsistent(last, total: total) {
+            var result = last
+            result.totalTokens = total
+            return (result, true)
+        }
+
+        let previous = previous ?? TokenUsageCounts()
+        guard current.inputTokens >= previous.inputTokens,
+              current.outputTokens >= previous.outputTokens,
+              current.cacheCreationInputTokens >= previous.cacheCreationInputTokens,
+              current.cacheReadInputTokens >= previous.cacheReadInputTokens,
+              current.reasoningOutputTokens >= previous.reasoningOutputTokens
+        else {
+            return (TokenUsageCounts(totalTokens: total), false)
+        }
+        var result = TokenUsageCounts(
+            inputTokens: current.inputTokens - previous.inputTokens,
+            outputTokens: current.outputTokens - previous.outputTokens,
+            cacheCreationInputTokens: current.cacheCreationInputTokens - previous.cacheCreationInputTokens,
+            cacheReadInputTokens: current.cacheReadInputTokens - previous.cacheReadInputTokens,
+            reasoningOutputTokens: current.reasoningOutputTokens - previous.reasoningOutputTokens,
+            totalTokens: total
+        )
+        guard isCodexBreakdownConsistent(result, total: total) else {
+            result = TokenUsageCounts(totalTokens: total)
+            return (result, false)
+        }
+        return (result, true)
+    }
+
+    private static func isCodexBreakdownConsistent(_ usage: TokenUsageCounts, total: Int) -> Bool {
+        usage.inputTokens >= 0
+            && usage.outputTokens >= 0
+            && usage.cacheCreationInputTokens >= 0
+            && usage.cacheReadInputTokens >= 0
+            && usage.reasoningOutputTokens >= 0
+            && usage.inputTokens + usage.outputTokens == total
+            && usage.cacheCreationInputTokens + usage.cacheReadInputTokens <= usage.inputTokens
+            && usage.reasoningOutputTokens <= usage.outputTokens
+    }
+
+    private static func isCodexContextWindowSentinel(_ event: CodexTokenEvent) -> Bool {
+        guard let current = event.cumulative else { return false }
+        return current.inputTokens == 0
+            && current.outputTokens == 0
+            && current.cacheCreationInputTokens == 0
+            && current.cacheReadInputTokens == 0
+            && current.reasoningOutputTokens == 0
+            && (event.last?.totalTokens ?? 0) == 0
+            && event.modelContextWindow > 0
+            && current.totalTokens == event.modelContextWindow
+    }
+
+    private static func isCredibleCodexReset(
+        at index: Int,
+        events: [CodexTokenEvent],
+        current: TokenUsageCounts,
+        previous: TokenUsageCounts
+    ) -> Bool {
+        if let last = events[index].last,
+           last.totalTokens == current.totalTokens,
+           isCodexBreakdownConsistent(last, total: current.totalTokens) {
+            return true
+        }
+        for candidate in events.dropFirst(index + 1) where candidate.cumulativePresent {
+            guard let next = candidate.cumulative, next.totalTokens > 0 else { continue }
+            if next.totalTokens == current.totalTokens { continue }
+            return next.totalTokens > current.totalTokens && next.totalTokens < previous.totalTokens
+        }
+        return false
     }
 
     private static func defaultCodexSessionRoots(homeURL: URL) -> [URL] {
@@ -410,6 +814,9 @@ enum UsageCollector {
         }
 
         let sessionColumn = availableColumns.contains("session_id") ? "session_id" : "null"
+        let inputSemanticsColumn = availableColumns.contains("input_token_semantics")
+            ? "coalesce(input_token_semantics, 0)"
+            : "0"
         let query = """
         select
             request_id,
@@ -422,6 +829,7 @@ enum UsageCollector {
             coalesce(output_tokens, 0) as output_tokens,
             coalesce(cache_read_tokens, 0) as cache_read_tokens,
             coalesce(cache_creation_tokens, 0) as cache_creation_tokens,
+            \(inputSemanticsColumn) as input_token_semantics,
             cast(coalesce(nullif(total_cost_usd, ''), '0') as real) as total_cost_usd
         from proxy_request_logs
         where status_code >= 200
@@ -448,21 +856,30 @@ enum UsageCollector {
                 return nil
             }
 
-            var usage = TokenUsageCounts()
-            usage.inputTokens = integerValue(row["input_tokens"] as Any)
-            usage.outputTokens = integerValue(row["output_tokens"] as Any)
-            usage.cacheReadInputTokens = integerValue(row["cache_read_tokens"] as Any)
-            usage.cacheCreationInputTokens = integerValue(row["cache_creation_tokens"] as Any)
-            usage.totalTokens = usage.inputTokens
-                + usage.outputTokens
-                + usage.cacheReadInputTokens
-                + usage.cacheCreationInputTokens
+            let appType = row["app_type"] as? String
+            let rawInputTokens = integerValue(row["input_tokens"] as Any)
+            let cacheReadTokens = integerValue(row["cache_read_tokens"] as Any)
+            let cacheCreationTokens = integerValue(row["cache_creation_tokens"] as Any)
+            let freshInputTokens = ccSwitchFreshInputTokens(
+                rawInputTokens: rawInputTokens,
+                cacheReadTokens: cacheReadTokens,
+                cacheCreationTokens: cacheCreationTokens,
+                appType: appType,
+                inputTokenSemantics: integerValue(row["input_token_semantics"] as Any)
+            )
+            let usage = canonicalUsageCounts(
+                rawInputTokens: freshInputTokens,
+                outputTokens: integerValue(row["output_tokens"] as Any),
+                cacheCreationInputTokens: cacheCreationTokens,
+                cacheReadInputTokens: cacheReadTokens,
+                inputIncludesCachedTokens: false
+            )
             guard usage.totalTokens > 0 else { return nil }
 
             return UsageRecord(
                 date: day,
                 timestamp: isoString(fromEpoch: row["created_at"] as Any),
-                tool: ccSwitchToolName(appType: row["app_type"] as? String),
+                tool: ccSwitchToolName(appType: appType),
                 model: modelKey(row["display_model"] as? String),
                 usage: usage,
                 costUSD: doubleValue(row["total_cost_usd"] as Any),
@@ -483,39 +900,356 @@ enum UsageCollector {
         )
     }
 
+    private static func collectZCodeUsage(databaseURL: URL? = nil) -> CollectorResult {
+        let database = databaseURL ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".zcode/cli/db/db.sqlite")
+
+        guard FileManager.default.fileExists(atPath: database.path) else {
+            return CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
+        }
+        guard FileManager.default.isReadableFile(atPath: database.path) else {
+            return CollectorResult(records: [], source: SourceInfo(status: "unreadable_db", files: 1, records: 0))
+        }
+        guard let columns = sqliteJSONRows(database: database, query: "pragma table_info(model_usage)") else {
+            return CollectorResult(records: [], source: SourceInfo(status: "schema_unreadable", files: 1, records: 0))
+        }
+        guard !columns.isEmpty else {
+            return CollectorResult(records: [], source: SourceInfo(status: "missing_table", files: 1, records: 0))
+        }
+
+        let availableColumns = Set(columns.compactMap { $0["name"] as? String })
+        let requiredColumns: Set<String> = [
+            "id",
+            "session_id",
+            "status",
+            "started_at",
+            "model_id",
+            "input_tokens",
+            "output_tokens",
+            "reasoning_tokens",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+            "computed_total_tokens",
+            "tool_call_count"
+        ]
+        guard requiredColumns.isSubset(of: availableColumns) else {
+            return CollectorResult(records: [], source: SourceInfo(status: "schema_mismatch", files: 1, records: 0))
+        }
+
+        let providerTotalExpression = availableColumns.contains("provider_total_tokens")
+            ? "coalesce(provider_total_tokens, 0)"
+            : "0"
+        let query = """
+        select
+            id,
+            session_id,
+            started_at,
+            coalesce(nullif(model_id, ''), 'unknown') as display_model,
+            coalesce(input_tokens, 0) as input_tokens,
+            coalesce(output_tokens, 0) as output_tokens,
+            coalesce(reasoning_tokens, 0) as reasoning_tokens,
+            coalesce(cache_creation_input_tokens, 0) as cache_creation_input_tokens,
+            coalesce(cache_read_input_tokens, 0) as cache_read_input_tokens,
+            coalesce(computed_total_tokens, 0) as computed_total_tokens,
+            \(providerTotalExpression) as provider_total_tokens,
+            coalesce(tool_call_count, 0) as tool_call_count
+        from model_usage
+        where status = 'completed'
+            and (
+                coalesce(computed_total_tokens, 0) > 0
+                or \(providerTotalExpression) > 0
+                or (
+                    coalesce(input_tokens, 0)
+                    + coalesce(output_tokens, 0)
+                    + coalesce(reasoning_tokens, 0)
+                    + coalesce(cache_creation_input_tokens, 0)
+                    + coalesce(cache_read_input_tokens, 0)
+                ) > 0
+            )
+        order by started_at, id
+        """
+
+        guard let rows = sqliteJSONRows(database: database, query: query) else {
+            return CollectorResult(records: [], source: SourceInfo(status: "query_failed", files: 1, records: 0))
+        }
+
+        let records = rows.compactMap { row -> UsageRecord? in
+            guard let day = dayString(fromEpoch: row["started_at"] as Any) else { return nil }
+            let computedTotal = integerValue(row["computed_total_tokens"] as Any)
+            let providerTotal = integerValue(row["provider_total_tokens"] as Any)
+            let usage = canonicalUsageCounts(
+                rawInputTokens: integerValue(row["input_tokens"] as Any),
+                outputTokens: integerValue(row["output_tokens"] as Any),
+                cacheCreationInputTokens: integerValue(row["cache_creation_input_tokens"] as Any),
+                cacheReadInputTokens: integerValue(row["cache_read_input_tokens"] as Any),
+                reasoningOutputTokens: integerValue(row["reasoning_tokens"] as Any),
+                inputIncludesCachedTokens: true,
+                explicitTotalTokens: computedTotal > 0 ? computedTotal : providerTotal
+            )
+            guard usage.totalTokens > 0 else { return nil }
+
+            return UsageRecord(
+                date: day,
+                timestamp: isoString(fromEpoch: row["started_at"] as Any),
+                tool: "ZCode",
+                model: modelKey(row["display_model"] as? String),
+                usage: usage,
+                source: .zcode,
+                requestID: nonEmptyString(row["id"] as? String),
+                sessionID: nonEmptyString(row["session_id"] as? String),
+                modelRequestCount: 1,
+                toolCallCount: integerValue(row["tool_call_count"] as Any)
+            )
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(status: records.isEmpty ? "missing_valid_rows" : "ok", files: 1, records: records.count)
+        )
+    }
+
+    private static func collectHermesUsage(databaseURL: URL? = nil) -> CollectorResult {
+        let database = databaseURL ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".hermes/state.db")
+
+        guard FileManager.default.fileExists(atPath: database.path) else {
+            return CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
+        }
+        guard FileManager.default.isReadableFile(atPath: database.path) else {
+            return CollectorResult(records: [], source: SourceInfo(status: "unreadable_db", files: 1, records: 0))
+        }
+        guard let columns = sqliteJSONRows(database: database, query: "pragma table_info(sessions)") else {
+            return CollectorResult(records: [], source: SourceInfo(status: "schema_unreadable", files: 1, records: 0))
+        }
+        guard !columns.isEmpty else {
+            return CollectorResult(records: [], source: SourceInfo(status: "missing_table", files: 1, records: 0))
+        }
+
+        let availableColumns = Set(columns.compactMap { $0["name"] as? String })
+        let requiredColumns: Set<String> = [
+            "id",
+            "source",
+            "model",
+            "started_at",
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "reasoning_tokens",
+            "tool_call_count",
+            "api_call_count",
+            "actual_cost_usd",
+            "estimated_cost_usd",
+            "cost_status"
+        ]
+        guard requiredColumns.isSubset(of: availableColumns) else {
+            return CollectorResult(records: [], source: SourceInfo(status: "schema_mismatch", files: 1, records: 0))
+        }
+
+        let query = """
+        select
+            id,
+            source,
+            model,
+            started_at,
+            coalesce(input_tokens, 0) as input_tokens,
+            coalesce(output_tokens, 0) as output_tokens,
+            coalesce(cache_read_tokens, 0) as cache_read_tokens,
+            coalesce(cache_write_tokens, 0) as cache_write_tokens,
+            coalesce(reasoning_tokens, 0) as reasoning_tokens,
+            coalesce(tool_call_count, 0) as tool_call_count,
+            coalesce(api_call_count, 0) as api_call_count,
+            coalesce(actual_cost_usd, 0) as actual_cost_usd,
+            coalesce(estimated_cost_usd, 0) as estimated_cost_usd,
+            coalesce(cost_status, '') as cost_status
+        from sessions
+        where (
+            coalesce(input_tokens, 0)
+            + coalesce(output_tokens, 0)
+            + coalesce(cache_read_tokens, 0)
+            + coalesce(cache_write_tokens, 0)
+            + coalesce(reasoning_tokens, 0)
+        ) > 0
+        order by started_at, id
+        """
+
+        guard let rows = sqliteJSONRows(database: database, query: query) else {
+            return CollectorResult(records: [], source: SourceInfo(status: "query_failed", files: 1, records: 0))
+        }
+
+        let records = rows.compactMap { row -> UsageRecord? in
+            guard let day = dayString(fromEpoch: row["started_at"] as Any) else { return nil }
+            let usage = canonicalUsageCounts(
+                rawInputTokens: integerValue(row["input_tokens"] as Any),
+                outputTokens: integerValue(row["output_tokens"] as Any),
+                cacheCreationInputTokens: integerValue(row["cache_write_tokens"] as Any),
+                cacheReadInputTokens: integerValue(row["cache_read_tokens"] as Any),
+                reasoningOutputTokens: integerValue(row["reasoning_tokens"] as Any),
+                inputIncludesCachedTokens: false
+            )
+            guard usage.totalTokens > 0 else { return nil }
+
+            let actualCost = doubleValue(row["actual_cost_usd"] as Any)
+            let estimatedCost = doubleValue(row["estimated_cost_usd"] as Any)
+            let cost: Double?
+            if actualCost > 0 {
+                cost = actualCost
+            } else if estimatedCost > 0 {
+                cost = estimatedCost
+            } else {
+                cost = nil
+            }
+            let requestCount = integerValue(row["api_call_count"] as Any)
+
+            return UsageRecord(
+                date: day,
+                timestamp: isoString(fromEpoch: row["started_at"] as Any),
+                tool: "Hermes Agent",
+                model: modelKey(row["model"] as? String),
+                usage: usage,
+                costUSD: cost,
+                source: .hermes,
+                requestID: nonEmptyString(row["id"] as? String),
+                sessionID: nonEmptyString(row["id"] as? String),
+                dataSource: nonEmptyString(row["source"] as? String),
+                modelRequestCount: requestCount,
+                toolCallCount: integerValue(row["tool_call_count"] as Any)
+            )
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(status: records.isEmpty ? "missing_valid_rows" : "ok", files: 1, records: records.count)
+        )
+    }
+
+    private static func discoverWorkBuddyUsage(rootURLs: [URL]? = nil) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let roots = rootURLs ?? [
+            home.appendingPathComponent(".workbuddy", isDirectory: true),
+            home.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
+        ]
+        let discovered = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        return CollectorResult(
+            records: [],
+            source: SourceInfo(
+                status: discovered.isEmpty ? "missing" : "discovered_no_usage",
+                files: discovered.count,
+                records: 0
+            )
+        )
+    }
+
     private static func deduplicateCrossSource(
         nativeRecords: [UsageRecord],
         proxyRecords: [UsageRecord]
     ) -> CrossSourceDedupeResult {
         var enrichedNativeRecords = nativeRecords
-        var keptProxyRecords: [UsageRecord] = []
-        var dedupedProxyRecords = 0
+        let deduplicableProxyIndices = proxyRecords.indices.filter {
+            isDeduplicableProxyRecord(proxyRecords[$0])
+        }
+        var matchedProxyIndices = Set<Int>()
+        var matchedNativeIndices = Set<Int>()
         let skippedProxyRecords = 0
 
-        for proxyRecord in proxyRecords {
-            guard isDeduplicableProxyRecord(proxyRecord) else {
-                keptProxyRecords.append(proxyRecord)
-                continue
-            }
-
-            if let nativeIndex = nativeRecords.firstIndex(where: { isDuplicate(proxyRecord: proxyRecord, nativeRecord: $0) }) {
-                enrichedNativeRecords[nativeIndex] = enrichedRecord(
-                    enrichedNativeRecords[nativeIndex],
-                    withProxyCostFrom: proxyRecord
-                )
-                dedupedProxyRecords += 1
-            } else {
-                keptProxyRecords.append(proxyRecord)
-            }
+        let exactPairs = uniqueDedupePairs(
+            proxyIndices: deduplicableProxyIndices,
+            nativeIndices: Array(nativeRecords.indices)
+        ) { proxyIndex, nativeIndex in
+            isSameDedupeDomain(
+                proxyRecord: proxyRecords[proxyIndex],
+                nativeRecord: nativeRecords[nativeIndex]
+            ) && hasExactIdentifierMatch(
+                proxyRecord: proxyRecords[proxyIndex],
+                nativeRecord: nativeRecords[nativeIndex]
+            )
         }
+        applyDedupePairs(
+            exactPairs,
+            proxyRecords: proxyRecords,
+            enrichedNativeRecords: &enrichedNativeRecords,
+            matchedProxyIndices: &matchedProxyIndices,
+            matchedNativeIndices: &matchedNativeIndices
+        )
 
+        // Similar timing/model/token vectors alone are not proof of identity: concurrent
+        // requests can legitimately look the same. A shared session is the minimum
+        // fallback correlation when request/response IDs are unavailable.
+        let remainingProxyIndices = deduplicableProxyIndices.filter { !matchedProxyIndices.contains($0) }
+        let remainingNativeIndices = nativeRecords.indices.filter { !matchedNativeIndices.contains($0) }
+        let sessionPairs = uniqueDedupePairs(
+            proxyIndices: remainingProxyIndices,
+            nativeIndices: Array(remainingNativeIndices)
+        ) { proxyIndex, nativeIndex in
+            isSameDedupeDomain(
+                proxyRecord: proxyRecords[proxyIndex],
+                nativeRecord: nativeRecords[nativeIndex]
+            ) && hasSessionIdentityMatch(
+                proxyRecord: proxyRecords[proxyIndex],
+                nativeRecord: nativeRecords[nativeIndex]
+            )
+        }
+        applyDedupePairs(
+            sessionPairs,
+            proxyRecords: proxyRecords,
+            enrichedNativeRecords: &enrichedNativeRecords,
+            matchedProxyIndices: &matchedProxyIndices,
+            matchedNativeIndices: &matchedNativeIndices
+        )
+
+        let keptProxyRecords = proxyRecords.indices
+            .filter { !matchedProxyIndices.contains($0) }
+            .map { proxyRecords[$0] }
         return CrossSourceDedupeResult(
             records: enrichedNativeRecords + keptProxyRecords,
             rawProxyRecords: proxyRecords.count,
             keptProxyRecords: keptProxyRecords.count,
-            dedupedProxyRecords: dedupedProxyRecords,
+            dedupedProxyRecords: matchedProxyIndices.count,
             skippedProxyRecords: skippedProxyRecords
         )
+    }
+
+    private static func uniqueDedupePairs(
+        proxyIndices: [Int],
+        nativeIndices: [Int],
+        matches: (Int, Int) -> Bool
+    ) -> [(proxy: Int, native: Int)] {
+        var nativeCandidatesByProxy: [Int: [Int]] = [:]
+        var proxyCandidateCountByNative: [Int: Int] = [:]
+        for proxyIndex in proxyIndices {
+            let candidates = nativeIndices.filter { matches(proxyIndex, $0) }
+            nativeCandidatesByProxy[proxyIndex] = candidates
+            for nativeIndex in candidates {
+                proxyCandidateCountByNative[nativeIndex, default: 0] += 1
+            }
+        }
+        return proxyIndices.compactMap { proxyIndex in
+            guard let candidates = nativeCandidatesByProxy[proxyIndex],
+                  candidates.count == 1,
+                  let nativeIndex = candidates.first,
+                  proxyCandidateCountByNative[nativeIndex] == 1
+            else {
+                return nil
+            }
+            return (proxy: proxyIndex, native: nativeIndex)
+        }
+    }
+
+    private static func applyDedupePairs(
+        _ pairs: [(proxy: Int, native: Int)],
+        proxyRecords: [UsageRecord],
+        enrichedNativeRecords: inout [UsageRecord],
+        matchedProxyIndices: inout Set<Int>,
+        matchedNativeIndices: inout Set<Int>
+    ) {
+        for pair in pairs {
+            enrichedNativeRecords[pair.native] = enrichedRecord(
+                enrichedNativeRecords[pair.native],
+                withProxyCostFrom: proxyRecords[pair.proxy]
+            )
+            matchedProxyIndices.insert(pair.proxy)
+            matchedNativeIndices.insert(pair.native)
+        }
     }
 
     private static func sourceInfo(
@@ -543,7 +1277,7 @@ enum UsageCollector {
         return family == "claude" || family == "codex"
     }
 
-    private static func isDuplicate(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
+    private static func isSameDedupeDomain(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
         guard proxyRecord.date == nativeRecord.date,
               let proxyFamily = toolFamily(for: proxyRecord.tool),
               let nativeFamily = toolFamily(for: nativeRecord.tool),
@@ -552,37 +1286,26 @@ enum UsageCollector {
         else {
             return false
         }
-
-        if hasExactIdentityMatch(proxyRecord: proxyRecord, nativeRecord: nativeRecord) {
-            return true
-        }
-
-        return hasStrongUsageMatch(proxyRecord: proxyRecord, nativeRecord: nativeRecord)
+        return true
     }
 
-    private static func hasExactIdentityMatch(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
+    private static func hasExactIdentifierMatch(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
         let proxyIDs = Set([proxyRecord.requestID, proxyRecord.responseID].compactMap(nonEmptyString))
         let nativeIDs = Set([nativeRecord.requestID, nativeRecord.responseID].compactMap(nonEmptyString))
-        if !proxyIDs.isDisjoint(with: nativeIDs) {
-            return true
-        }
+        return !proxyIDs.isDisjoint(with: nativeIDs)
+    }
 
+    private static func hasSessionIdentityMatch(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
         guard let proxySessionID = nonEmptyString(proxyRecord.sessionID),
               let nativeSessionID = nonEmptyString(nativeRecord.sessionID),
               proxySessionID == nativeSessionID,
               areTimestampsClose(proxyRecord.timestamp, nativeRecord.timestamp, seconds: 10),
               modelsCompatible(proxyRecord.model, nativeRecord.model),
-              usageVectorsClose(proxyRecord.usage, nativeRecord.usage)
+              usageVectorsClose(proxyRecord: proxyRecord, nativeRecord: nativeRecord)
         else {
             return false
         }
         return true
-    }
-
-    private static func hasStrongUsageMatch(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
-        areTimestampsClose(proxyRecord.timestamp, nativeRecord.timestamp, seconds: 30)
-            && modelsCompatible(proxyRecord.model, nativeRecord.model)
-            && usageVectorsClose(proxyRecord.usage, nativeRecord.usage)
     }
 
     private static func enrichedRecord(
@@ -653,6 +1376,37 @@ enum UsageCollector {
         }
     }
 
+    private static func usageVectorsClose(proxyRecord: UsageRecord, nativeRecord: UsageRecord) -> Bool {
+        guard toolFamily(for: proxyRecord.tool) == "codex",
+              toolFamily(for: nativeRecord.tool) == "codex"
+        else {
+            return usageVectorsClose(proxyRecord.usage, nativeRecord.usage)
+        }
+
+        let proxy = proxyRecord.usage
+        let native = nativeRecord.usage
+        guard tokenValuesClose(proxy.outputTokens, native.outputTokens),
+              tokenValuesClose(proxy.cacheReadInputTokens, native.cacheReadInputTokens),
+              tokenValuesClose(proxy.cacheCreationInputTokens, native.cacheCreationInputTokens)
+        else {
+            return false
+        }
+
+        // Native Codex reports cached input as a subset of input. CC Switch versions
+        // have emitted input both inclusive and exclusive of cached input, so compare
+        // both canonical interpretations without changing either source's stored data.
+        let nativeUncachedInput = max(0, native.inputTokens - native.cacheReadInputTokens)
+        let inputMatches = tokenValuesClose(proxy.inputTokens, native.inputTokens)
+            || tokenValuesClose(proxy.inputTokens, nativeUncachedInput)
+        guard inputMatches else { return false }
+
+        let proxyProcessedCandidates = [
+            proxy.inputTokens + proxy.outputTokens,
+            proxy.inputTokens + proxy.cacheReadInputTokens + proxy.cacheCreationInputTokens + proxy.outputTokens
+        ]
+        return proxyProcessedCandidates.contains { tokenValuesClose($0, native.totalTokens) }
+    }
+
     private static func tokenValuesClose(_ lhs: Int, _ rhs: Int) -> Bool {
         if lhs == rhs { return true }
         let baseline = max(lhs, rhs)
@@ -664,15 +1418,21 @@ enum UsageCollector {
     private static func aggregate(records: [UsageRecord], sources: [String: SourceInfo]) -> UsageSnapshot {
         var daily = [String: DailyAccumulator]()
         var rhythms = [String: RhythmAccumulator]()
+        var agentWork = [String: AgentWorkAccumulator]()
         var tools = [String: UsageAccumulator]()
         var models = [ModelKey: UsageAccumulator]()
 
         for record in records {
             let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model)
             daily[record.date, default: DailyAccumulator(date: record.date)].add(record: record, cost: cost)
-            if let hour = hour(fromISO: record.timestamp) {
+            let recordHour = hour(fromISO: record.timestamp)
+            if let hour = recordHour {
                 rhythms[record.date, default: RhythmAccumulator(date: record.date)]
                     .add(tokens: record.usage.totalTokens, hour: hour)
+            }
+            if isAgentWorkRecord(record) {
+                agentWork[record.date, default: AgentWorkAccumulator(date: record.date)]
+                    .add(record: record, hour: recordHour)
             }
             tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: cost)
             models[ModelKey(tool: record.tool, model: record.model), default: UsageAccumulator()].add(record.usage, cost: cost)
@@ -695,6 +1455,11 @@ enum UsageCollector {
 
         let rhythmRows = rhythms.values
             .map(\.dailyRhythm)
+            .filter { $0.totalTokens > 0 }
+            .sorted { $0.date < $1.date }
+
+        let agentWorkRows = agentWork.values
+            .map(\.dailyAgentWork)
             .filter { $0.totalTokens > 0 }
             .sorted { $0.date < $1.date }
 
@@ -729,10 +1494,20 @@ enum UsageCollector {
             ),
             daily: dailyRows,
             rhythms: rhythmRows,
+            agentWork: agentWorkRows,
             tools: toolRows,
             models: modelRows,
             sources: sources
         )
+    }
+
+    private static func isAgentWorkRecord(_ record: UsageRecord) -> Bool {
+        switch record.source {
+        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes:
+            return true
+        case .unknown:
+            return false
+        }
     }
 
     private static func jsonlFiles(under root: URL, modifiedSince cutoffDate: Date? = nil) -> [URL] {
@@ -765,23 +1540,68 @@ enum UsageCollector {
 
     private static func cachedRecords(for url: URL, tool: String, cache: CollectorCache) -> [UsageRecord]? {
         guard let metadata = fileMetadata(for: url),
+              let fingerprint = contentFingerprint(for: url, size: metadata.size),
               let cached = cache.files[url.path],
               cached.tool == tool,
               cached.size == metadata.size,
-              abs(cached.modificationTime - metadata.modificationTime) < 0.001
+              abs(cached.modificationTime - metadata.modificationTime) < 0.001,
+              cached.contentFingerprint == fingerprint
         else {
             return nil
         }
         return cached.records
     }
 
+    private static func cachedCodexScan(for url: URL, cache: CollectorCache) -> CodexSessionScan? {
+        guard let metadata = fileMetadata(for: url),
+              let fingerprint = contentFingerprint(for: url, size: metadata.size),
+              let cached = cache.files[url.path],
+              cached.tool == "Codex",
+              cached.size == metadata.size,
+              abs(cached.modificationTime - metadata.modificationTime) < 0.001,
+              cached.contentFingerprint == fingerprint
+        else {
+            return nil
+        }
+        return cached.codexScan
+    }
+
     private static func updateCache(path: URL, tool: String, records: [UsageRecord], cache: inout CollectorCache) {
-        guard let metadata = fileMetadata(for: path) else { return }
+        guard let metadata = fileMetadata(for: path),
+              let fingerprint = contentFingerprint(for: path, size: metadata.size)
+        else {
+            return
+        }
         cache.files[path.path] = CachedUsageFile(
             tool: tool,
             size: metadata.size,
             modificationTime: metadata.modificationTime,
-            records: records
+            records: records,
+            contentFingerprint: fingerprint
+        )
+    }
+
+    private static func updateCodexCache(
+        path: URL,
+        scan: CodexSessionScan,
+        metadata: (size: UInt64, modificationTime: TimeInterval),
+        cache: inout CollectorCache
+    ) {
+        guard let currentMetadata = fileMetadata(for: path),
+              UsageCollector.metadata(metadata, matches: currentMetadata),
+              let fingerprint = contentFingerprint(for: path, size: currentMetadata.size),
+              let finalMetadata = fileMetadata(for: path),
+              UsageCollector.metadata(currentMetadata, matches: finalMetadata)
+        else {
+            return
+        }
+        cache.files[path.path] = CachedUsageFile(
+            tool: "Codex",
+            size: finalMetadata.size,
+            modificationTime: finalMetadata.modificationTime,
+            records: [],
+            codexScan: scan,
+            contentFingerprint: fingerprint
         )
     }
 
@@ -795,8 +1615,64 @@ enum UsageCollector {
         return (UInt64(max(0, size)), modificationDate.timeIntervalSince1970)
     }
 
-    private static func loadCache() -> CollectorCache {
-        guard let data = try? Data(contentsOf: AppPaths.collectorCacheJSON),
+    private static func metadata(
+        _ lhs: (size: UInt64, modificationTime: TimeInterval),
+        matches rhs: (size: UInt64, modificationTime: TimeInterval)
+    ) -> Bool {
+        lhs.size == rhs.size && abs(lhs.modificationTime - rhs.modificationTime) < 0.001
+    }
+
+    private static func contentFingerprint(for url: URL, size: UInt64) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+
+        let chunkSize = 4_096
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        func include(_ data: Data) {
+            for byte in data {
+                hash ^= UInt64(byte)
+                hash &*= 1_099_511_628_211
+            }
+        }
+
+        do {
+            include(withUnsafeBytes(of: size.littleEndian) { Data($0) })
+            include(try handle.read(upToCount: chunkSize) ?? Data())
+            if size > UInt64(chunkSize) {
+                try handle.seek(toOffset: size - UInt64(chunkSize))
+                include(try handle.read(upToCount: chunkSize) ?? Data())
+            }
+            return String(format: "%016llx", hash)
+        } catch {
+            return nil
+        }
+    }
+
+    private static func loadCache() -> CollectorCacheLoad {
+        loadCache(at: AppPaths.collectorCacheJSON)
+    }
+
+    private static func loadCache(at url: URL) -> CollectorCacheLoad {
+        guard let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode(CollectorCache.self, from: data)
+        else {
+            return CollectorCacheLoad(cache: CollectorCache(), recalibratedFromRevision: nil)
+        }
+        guard decoded.version == CollectorCache.currentVersion else {
+            return CollectorCacheLoad(
+                cache: CollectorCache(),
+                recalibratedFromRevision: decoded.version < CollectorCache.currentVersion ? decoded.version : nil
+            )
+        }
+        return CollectorCacheLoad(cache: decoded, recalibratedFromRevision: nil)
+    }
+
+    private static func saveCache(_ cache: CollectorCache) {
+        saveCache(cache, to: AppPaths.collectorCacheJSON)
+    }
+
+    private static func loadCurrentCache(at url: URL) -> CollectorCache {
+        guard let data = try? Data(contentsOf: url),
               let cache = try? JSONDecoder().decode(CollectorCache.self, from: data),
               cache.version == CollectorCache.currentVersion
         else {
@@ -805,23 +1681,44 @@ enum UsageCollector {
         return cache
     }
 
-    private static func saveCache(_ cache: CollectorCache) {
+    private static func saveCache(_ cache: CollectorCache, to url: URL) {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             let data = try encoder.encode(cache)
             try FileManager.default.createDirectory(
-                at: AppPaths.collectorCacheJSON.deletingLastPathComponent(),
+                at: url.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try data.write(to: AppPaths.collectorCacheJSON, options: .atomic)
+            try data.write(to: url, options: .atomic)
         } catch {
             // Cache misses should never prevent the app from showing fresh usage.
         }
     }
 
     private static func sourceFileCutoffDate(historyDays: Int) -> Date? {
-        Calendar.current.date(byAdding: .day, value: -max(7, historyDays + 1), to: Date())
+        calendar.date(byAdding: .day, value: -max(7, historyDays + 1), to: Date())
+    }
+
+    private static func recordsInHistoryWindow(
+        _ records: [UsageRecord],
+        historyDays: Int,
+        now: Date
+    ) -> [UsageRecord] {
+        let inclusiveDays = max(1, historyDays)
+        let today = calendar.startOfDay(for: now)
+        guard let firstDay = calendar.date(
+            byAdding: .day,
+            value: -(inclusiveDays - 1),
+            to: today
+        ) else {
+            return records
+        }
+        let firstDayString = dayFormatter.string(from: firstDay)
+        let todayString = dayFormatter.string(from: today)
+        return records.filter {
+            $0.date >= firstDayString && $0.date <= todayString
+        }
     }
 
     private static func forEachLine(in url: URL, matchingAny markers: [String] = [], _ body: (String) -> Void) throws {
@@ -899,44 +1796,81 @@ enum UsageCollector {
 
     private static func normalizeUsage(_ raw: [String: Any]?) -> TokenUsageCounts {
         guard let raw else { return TokenUsageCounts() }
-        var usage = TokenUsageCounts()
-        let aliases = [
-            "input": "inputTokens",
-            "output": "outputTokens",
-            "cached": "cacheReadInputTokens",
-            "thoughts": "reasoningOutputTokens",
-            "total": "totalTokens",
-            "input_tokens": "inputTokens",
-            "output_tokens": "outputTokens",
-            "cache_creation_input_tokens": "cacheCreationInputTokens",
-            "cache_read_input_tokens": "cacheReadInputTokens",
-            "cached_input_tokens": "cacheReadInputTokens",
-            "reasoning_output_tokens": "reasoningOutputTokens",
-            "total_tokens": "totalTokens"
-        ]
-
-        for (key, value) in raw {
-            guard let mapped = aliases[key] else { continue }
-            let intValue = integerValue(value)
-            switch mapped {
-            case "inputTokens": usage.inputTokens += intValue
-            case "outputTokens": usage.outputTokens += intValue
-            case "cacheCreationInputTokens": usage.cacheCreationInputTokens += intValue
-            case "cacheReadInputTokens": usage.cacheReadInputTokens += intValue
-            case "reasoningOutputTokens": usage.reasoningOutputTokens += intValue
-            case "totalTokens": usage.totalTokens += intValue
-            default: break
+        func value(_ keys: [String]) -> Int {
+            for key in keys where raw.keys.contains(key) {
+                return max(0, integerValue(raw[key] as Any))
             }
+            return 0
         }
 
-        if usage.totalTokens <= 0 {
-            usage.totalTokens = usage.inputTokens
-                + usage.outputTokens
-                + usage.cacheCreationInputTokens
-                + usage.cacheReadInputTokens
-                + usage.reasoningOutputTokens
+        let explicitTotal = ["total_tokens", "total"].first(where: { raw.keys.contains($0) })
+            .map { max(0, integerValue(raw[$0] as Any)) }
+        return canonicalUsageCounts(
+            rawInputTokens: value(["input_tokens", "input"]),
+            outputTokens: value(["output_tokens", "output"]),
+            cacheCreationInputTokens: value(["cache_creation_input_tokens"]),
+            cacheReadInputTokens: value(["cache_read_input_tokens", "cached_input_tokens", "cached"]),
+            reasoningOutputTokens: value(["reasoning_output_tokens", "reasoning_tokens", "thoughts"]),
+            inputIncludesCachedTokens: false,
+            explicitTotalTokens: explicitTotal
+        )
+    }
+
+    private static func normalizeCodexUsage(_ raw: [String: Any]) -> TokenUsageCounts {
+        func value(_ keys: [String]) -> Int {
+            for key in keys where raw.keys.contains(key) {
+                return max(0, integerValue(raw[key] as Any))
+            }
+            return 0
         }
-        return usage
+
+        let input = value(["input_tokens", "input"])
+        let output = value(["output_tokens", "output"])
+        let cached = value(["cached_input_tokens", "cache_read_input_tokens", "cached"])
+        let reasoning = value(["reasoning_output_tokens", "reasoning_tokens", "thoughts"])
+        let explicitTotal = ["total_tokens", "total"].first(where: { raw.keys.contains($0) })
+            .map { max(0, integerValue(raw[$0] as Any)) }
+        return canonicalUsageCounts(
+            rawInputTokens: input,
+            outputTokens: output,
+            cacheCreationInputTokens: value(["cache_creation_input_tokens", "cache_write_input_tokens"]),
+            cacheReadInputTokens: cached,
+            reasoningOutputTokens: reasoning,
+            inputIncludesCachedTokens: true,
+            explicitTotalTokens: explicitTotal,
+            explicitTotalIsAuthoritative: true
+        )
+    }
+
+    private static func canonicalUsageCounts(
+        rawInputTokens: Int,
+        outputTokens: Int,
+        cacheCreationInputTokens: Int = 0,
+        cacheReadInputTokens: Int = 0,
+        reasoningOutputTokens: Int = 0,
+        inputIncludesCachedTokens: Bool,
+        explicitTotalTokens: Int? = nil,
+        explicitTotalIsAuthoritative: Bool = false
+    ) -> TokenUsageCounts {
+        let rawInput = max(0, rawInputTokens)
+        let output = max(0, outputTokens)
+        let cacheCreation = max(0, cacheCreationInputTokens)
+        let cacheRead = max(0, cacheReadInputTokens)
+        let reasoning = max(0, reasoningOutputTokens)
+        let input = rawInput + (inputIncludesCachedTokens ? 0 : cacheCreation + cacheRead)
+        let derivedTotal = input + output
+        let explicitTotal = max(0, explicitTotalTokens ?? 0)
+        let total = explicitTotalIsAuthoritative && explicitTotal > 0
+            ? explicitTotal
+            : (derivedTotal > 0 ? derivedTotal : explicitTotal)
+        return TokenUsageCounts(
+            inputTokens: input,
+            outputTokens: output,
+            cacheCreationInputTokens: cacheCreation,
+            cacheReadInputTokens: cacheRead,
+            reasoningOutputTokens: reasoning,
+            totalTokens: total
+        )
     }
 
     private static func integerValue(_ value: Any) -> Int {
@@ -1066,6 +2000,40 @@ enum UsageCollector {
         }
     }
 
+    private static func ccSwitchFreshInputTokens(
+        rawInputTokens: Int,
+        cacheReadTokens: Int,
+        cacheCreationTokens: Int,
+        appType: String?,
+        inputTokenSemantics: Int
+    ) -> Int {
+        let rawInput = max(0, rawInputTokens)
+        let cacheRead = max(0, cacheReadTokens)
+        let cacheCreation = max(0, cacheCreationTokens)
+        let normalizedAppType = (appType ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let cacheInclusiveAppTypes: Set<String> = ["codex", "gemini", "grokbuild"]
+        guard cacheInclusiveAppTypes.contains(normalizedAppType) else {
+            return rawInput
+        }
+
+        switch inputTokenSemantics {
+        case 2:
+            // FRESH: input excludes both cache-read and cache-write buckets.
+            return rawInput
+        case 1 where rawInput >= cacheRead + cacheCreation:
+            // TOTAL: input already includes both cache buckets.
+            return rawInput - cacheRead - cacheCreation
+        case 0 where rawInput >= cacheRead:
+            // LEGACY: cache reads were included, cache writes were separate.
+            return rawInput - cacheRead
+        default:
+            // Malformed or future semantics stay conservative instead of going negative.
+            return rawInput
+        }
+    }
+
     private static func sqliteJSONRows(database: URL, query: String) -> [[String: Any]]? {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tokenstep-sqlite-\(UUID().uuidString).json")
@@ -1124,10 +2092,18 @@ enum UsageCollector {
         output: Double
     ) -> Double {
         let cached = max(0, usage.cacheReadInputTokens)
-        let uncachedInput = max(0, usage.inputTokens - cached)
-        return Double(uncachedInput + usage.cacheCreationInputTokens) / 1_000_000 * input
+        let cacheCreation = max(0, usage.cacheCreationInputTokens)
+        let uncachedInput = max(0, usage.inputTokens - cached - cacheCreation)
+        if uncachedInput == 0,
+           cached == 0,
+           cacheCreation == 0,
+           usage.outputTokens == 0,
+           usage.totalTokens > 0 {
+            return Double(usage.totalTokens) / 1_000_000 * input
+        }
+        return Double(uncachedInput + cacheCreation) / 1_000_000 * input
             + Double(cached) / 1_000_000 * cachedInput
-            + Double(usage.outputTokens + usage.reasoningOutputTokens) / 1_000_000 * output
+            + Double(usage.outputTokens) / 1_000_000 * output
     }
 
     private static func costByParts(
@@ -1137,11 +2113,14 @@ enum UsageCollector {
         cacheCreation: Double,
         cacheRead: Double
     ) -> Double {
-        Double(usage.inputTokens) / 1_000_000 * input
+        let uncachedInput = max(
+            0,
+            usage.inputTokens - usage.cacheCreationInputTokens - usage.cacheReadInputTokens
+        )
+        return Double(uncachedInput) / 1_000_000 * input
             + Double(usage.outputTokens) / 1_000_000 * output
             + Double(usage.cacheCreationInputTokens) / 1_000_000 * cacheCreation
             + Double(usage.cacheReadInputTokens) / 1_000_000 * cacheRead
-            + Double(usage.reasoningOutputTokens) / 1_000_000 * output
     }
 
     private static func percent(_ value: Int, of total: Int) -> Double {
@@ -1188,10 +2167,15 @@ private struct CollectorResult {
 }
 
 private struct CollectorCache: Codable {
-    static let currentVersion = 4
+    static let currentVersion = UsageCollector.codexAccountingRevision
 
     var version = currentVersion
     var files: [String: CachedUsageFile] = [:]
+}
+
+private struct CollectorCacheLoad {
+    var cache: CollectorCache
+    var recalibratedFromRevision: Int?
 }
 
 private struct CachedUsageFile: Codable {
@@ -1199,6 +2183,50 @@ private struct CachedUsageFile: Codable {
     var size: UInt64
     var modificationTime: TimeInterval
     var records: [UsageRecord]
+    var codexScan: CodexSessionScan? = nil
+    var contentFingerprint: String? = nil
+}
+
+private struct CodexSessionScan: Codable {
+    var canonicalSessionID: String
+    var createdAt: String?
+    var parentSessionID: String?
+    var sourcePath: String
+    var events: [CodexTokenEvent]
+}
+
+private struct CodexTokenEvent: Codable {
+    var timestamp: String?
+    var model: String
+    var cumulativePresent: Bool
+    var cumulative: TokenUsageCounts?
+    var last: TokenUsageCounts?
+    var modelContextWindow: Int
+    var lineNumber: Int
+}
+
+private struct CodexCollectionDiagnostics {
+    var rawRecords = 0
+    var exactRecords = 0
+    var legacyRecords = 0
+    var duplicateRecords = 0
+    var counterResets = 0
+    var inheritedRecords = 0
+    var inheritedTokens = 0
+    var skippedRecords = 0
+    var unknownBreakdownRecords = 0
+
+    mutating func add(_ other: CodexCollectionDiagnostics) {
+        rawRecords += other.rawRecords
+        exactRecords += other.exactRecords
+        legacyRecords += other.legacyRecords
+        duplicateRecords += other.duplicateRecords
+        counterResets += other.counterResets
+        inheritedRecords += other.inheritedRecords
+        inheritedTokens += other.inheritedTokens
+        skippedRecords += other.skippedRecords
+        unknownBreakdownRecords += other.unknownBreakdownRecords
+    }
 }
 
 private struct UsageRecord: Codable {
@@ -1215,6 +2243,79 @@ private struct UsageRecord: Codable {
     var sourcePath: String? = nil
     var lineNumber: Int? = nil
     var dataSource: String? = nil
+    var modelRequestCount = 1
+    var toolCallCount = 0
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case timestamp
+        case tool
+        case model
+        case usage
+        case costUSD
+        case source
+        case requestID
+        case sessionID
+        case responseID
+        case sourcePath
+        case lineNumber
+        case dataSource
+        case modelRequestCount
+        case toolCallCount
+    }
+
+    init(
+        date: String,
+        timestamp: String?,
+        tool: String,
+        model: String,
+        usage: TokenUsageCounts,
+        costUSD: Double? = nil,
+        source: UsageRecordSource = .unknown,
+        requestID: String? = nil,
+        sessionID: String? = nil,
+        responseID: String? = nil,
+        sourcePath: String? = nil,
+        lineNumber: Int? = nil,
+        dataSource: String? = nil,
+        modelRequestCount: Int = 1,
+        toolCallCount: Int = 0
+    ) {
+        self.date = date
+        self.timestamp = timestamp
+        self.tool = tool
+        self.model = model
+        self.usage = usage
+        self.costUSD = costUSD
+        self.source = source
+        self.requestID = requestID
+        self.sessionID = sessionID
+        self.responseID = responseID
+        self.sourcePath = sourcePath
+        self.lineNumber = lineNumber
+        self.dataSource = dataSource
+        self.modelRequestCount = modelRequestCount
+        self.toolCallCount = toolCallCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        date = try container.decode(String.self, forKey: .date)
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
+        tool = try container.decode(String.self, forKey: .tool)
+        model = try container.decode(String.self, forKey: .model)
+        usage = try container.decode(TokenUsageCounts.self, forKey: .usage)
+        costUSD = try container.decodeIfPresent(Double.self, forKey: .costUSD)
+        source = try container.decodeIfPresent(UsageRecordSource.self, forKey: .source) ?? .unknown
+        requestID = try container.decodeIfPresent(String.self, forKey: .requestID)
+        sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID)
+        responseID = try container.decodeIfPresent(String.self, forKey: .responseID)
+        sourcePath = try container.decodeIfPresent(String.self, forKey: .sourcePath)
+        lineNumber = try container.decodeIfPresent(Int.self, forKey: .lineNumber)
+        dataSource = try container.decodeIfPresent(String.self, forKey: .dataSource)
+        modelRequestCount = try container.decodeIfPresent(Int.self, forKey: .modelRequestCount) ?? 1
+        toolCallCount = try container.decodeIfPresent(Int.self, forKey: .toolCallCount) ?? 0
+    }
 }
 
 private enum UsageRecordSource: String, Codable {
@@ -1222,6 +2323,8 @@ private enum UsageRecordSource: String, Codable {
     case nativeCodexSQLite
     case nativeClaudeCode
     case ccSwitchProxy
+    case zcode
+    case hermes
     case unknown
 }
 
@@ -1279,7 +2382,7 @@ private struct ClaudeUsageCandidate {
     }
 }
 
-private struct TokenUsageCounts: Codable {
+private struct TokenUsageCounts: Codable, Equatable {
     var inputTokens = 0
     var outputTokens = 0
     var cacheCreationInputTokens = 0
@@ -1294,6 +2397,28 @@ private struct TokenUsageCounts: Codable {
         cacheReadInputTokens += other.cacheReadInputTokens
         reasoningOutputTokens += other.reasoningOutputTokens
         totalTokens += other.totalTokens
+    }
+
+    var fingerprint: String {
+        [
+            totalTokens,
+            inputTokens,
+            cacheReadInputTokens,
+            outputTokens,
+            reasoningOutputTokens,
+            cacheCreationInputTokens
+        ].map(String.init).joined(separator: ":")
+    }
+
+    var cacheCoverageComplete: Bool {
+        inputTokens >= 0
+            && outputTokens >= 0
+            && cacheCreationInputTokens >= 0
+            && cacheReadInputTokens >= 0
+            && reasoningOutputTokens >= 0
+            && totalTokens == inputTokens + outputTokens
+            && cacheCreationInputTokens + cacheReadInputTokens <= inputTokens
+            && reasoningOutputTokens <= outputTokens
     }
 }
 
@@ -1324,6 +2449,125 @@ private struct DailyAccumulator {
         models[record.model, default: 0] += record.usage.totalTokens
         totalTokens += record.usage.totalTokens
         self.cost += cost
+    }
+}
+
+private struct AgentWorkAccumulator {
+    var date: String
+    var totalTokens = 0
+    var inputTokens = 0
+    var cachedInputTokens = 0
+    var outputTokens = 0
+    var cacheCoverageComplete = true
+    var unbucketedTokens = 0
+    var activeHours = Set<Int>()
+    var modelRequestCount = 0
+    var toolCallCount = 0
+    var sources: [String: AgentWorkSourceAccumulator] = [:]
+    var hourlySources: [Int: [String: AgentWorkHourlySourceAccumulator]] = [:]
+
+    mutating func add(record: UsageRecord, hour: Int?) {
+        totalTokens += record.usage.totalTokens
+        inputTokens += record.usage.inputTokens
+        cachedInputTokens += record.usage.cacheReadInputTokens
+        outputTokens += record.usage.outputTokens
+        cacheCoverageComplete = cacheCoverageComplete && record.usage.cacheCoverageComplete
+        if let hour {
+            activeHours.insert(hour)
+            var sourceRows = hourlySources[hour] ?? [:]
+            sourceRows[record.tool, default: AgentWorkHourlySourceAccumulator(source: record.tool)]
+                .add(record: record)
+            hourlySources[hour] = sourceRows
+        } else {
+            unbucketedTokens += record.usage.totalTokens
+        }
+        modelRequestCount += max(0, record.modelRequestCount)
+        toolCallCount += max(0, record.toolCallCount)
+        sources[record.tool, default: AgentWorkSourceAccumulator(source: record.tool)]
+            .add(record: record)
+    }
+
+    var dailyAgentWork: DailyAgentWork {
+        DailyAgentWork(
+            date: date,
+            totalTokens: totalTokens,
+            activeHours: activeHours.count,
+            modelRequestCount: modelRequestCount,
+            toolCallCount: toolCallCount,
+            sources: sources.values
+                .filter { $0.tokens > 0 }
+                .sorted { $0.tokens > $1.tokens }
+                .map(\.agentWorkSource),
+            inputTokens: inputTokens,
+            cachedInputTokens: cachedInputTokens,
+            outputTokens: outputTokens,
+            cacheCoverageComplete: cacheCoverageComplete,
+            hourlyBuckets: (0..<24).map { hour in
+                AgentWorkHourBucket(
+                    hour: hour,
+                    sources: (hourlySources[hour] ?? [:]).values
+                        .filter { $0.tokens > 0 }
+                        .sorted {
+                            if $0.tokens == $1.tokens {
+                                return $0.source < $1.source
+                            }
+                            return $0.tokens > $1.tokens
+                        }
+                        .map(\.hourlySource)
+                )
+            },
+            unbucketedTokens: unbucketedTokens
+        )
+    }
+}
+
+private struct AgentWorkSourceAccumulator {
+    var source: String
+    var tokens = 0
+    var modelRequestCount = 0
+    var toolCallCount = 0
+
+    mutating func add(record: UsageRecord) {
+        tokens += record.usage.totalTokens
+        modelRequestCount += max(0, record.modelRequestCount)
+        toolCallCount += max(0, record.toolCallCount)
+    }
+
+    var agentWorkSource: AgentWorkSource {
+        AgentWorkSource(
+            source: source,
+            tokens: tokens,
+            modelRequestCount: modelRequestCount,
+            toolCallCount: toolCallCount
+        )
+    }
+}
+
+private struct AgentWorkHourlySourceAccumulator {
+    var source: String
+    var tokens = 0
+    var inputTokens = 0
+    var cachedInputTokens = 0
+    var outputTokens = 0
+    var cacheCoverageComplete = true
+
+    mutating func add(record: UsageRecord) {
+        tokens += record.usage.totalTokens
+        inputTokens += record.usage.inputTokens
+        cachedInputTokens += record.usage.cacheReadInputTokens
+        outputTokens += record.usage.outputTokens
+        cacheCoverageComplete = cacheCoverageComplete && record.usage.cacheCoverageComplete
+    }
+
+    var hourlySource: AgentWorkHourlySource {
+        AgentWorkHourlySource(
+            source: source,
+            tokens: tokens,
+            inputTokens: inputTokens,
+            cachedInputTokens: cachedInputTokens,
+            outputTokens: outputTokens,
+            cacheCoverageComplete: cacheCoverageComplete
+        )
     }
 }
 

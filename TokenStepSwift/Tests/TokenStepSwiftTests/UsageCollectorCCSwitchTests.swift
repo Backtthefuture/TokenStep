@@ -11,7 +11,7 @@ final class UsageCollectorCCSwitchTests: XCTestCase {
             total_cost_usd, status_code, created_at, data_source, request_model, pricing_model
         ) values
             ('proxy-1', 'provider-a', 'claude', 'claude-raw', 100, 20, 30, 5, '0.12', 200, 1717200000, 'proxy', 'claude-request', 'claude-priced'),
-            ('proxy-2', 'provider-b', 'codex', 'gpt-5.4', 10, 3, 0, 0, '0.34', 201, 1717203600, 'proxy', 'gpt-5-request', ''),
+            ('proxy-2', 'provider-b', 'codex', 'gpt-5.4', 10, 3, 8, 0, '0.34', 201, 1717203600, 'proxy', 'gpt-5-request', ''),
             ('session-import', 'provider-c', 'claude', 'claude-session-raw', 21, 19, 0, 0, '0.10', 200, 1717207200, 'session_log', 'claude-session-request', 'claude-session-priced'),
             ('codex-import', 'provider-c', 'codex', 'codex-session-raw', 99, 1, 0, 0, '0.20', 200, 1717207200, 'codex_session', 'codex-session-request', 'codex-session-priced'),
             ('failed-proxy', 'provider-d', 'gemini', 'ignored-gemini', 1000, 1000, 0, 0, '8.88', 500, 1717207200, 'proxy', 'ignored', 'ignored'),

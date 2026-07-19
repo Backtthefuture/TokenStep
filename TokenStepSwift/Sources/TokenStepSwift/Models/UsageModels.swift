@@ -6,6 +6,7 @@ struct UsageSnapshot: Codable {
     var totals: UsageTotals
     var daily: [DailyUsage]
     var rhythms: [DailyRhythm]
+    var agentWork: [DailyAgentWork]
     var tools: [ToolUsage]
     var models: [ModelUsage]
     var sources: [String: SourceInfo]
@@ -16,6 +17,7 @@ struct UsageSnapshot: Codable {
         case totals
         case daily
         case rhythms
+        case agentWork = "agent_work"
         case tools
         case models
         case sources
@@ -27,6 +29,7 @@ struct UsageSnapshot: Codable {
         totals: UsageTotals,
         daily: [DailyUsage],
         rhythms: [DailyRhythm] = [],
+        agentWork: [DailyAgentWork] = [],
         tools: [ToolUsage],
         models: [ModelUsage],
         sources: [String: SourceInfo]
@@ -36,6 +39,7 @@ struct UsageSnapshot: Codable {
         self.totals = totals
         self.daily = daily
         self.rhythms = rhythms
+        self.agentWork = agentWork
         self.tools = tools
         self.models = models
         self.sources = sources
@@ -48,6 +52,7 @@ struct UsageSnapshot: Codable {
         totals = try container.decode(UsageTotals.self, forKey: .totals)
         daily = try container.decodeIfPresent([DailyUsage].self, forKey: .daily) ?? []
         rhythms = try container.decodeIfPresent([DailyRhythm].self, forKey: .rhythms) ?? []
+        agentWork = try container.decodeIfPresent([DailyAgentWork].self, forKey: .agentWork) ?? []
         tools = try container.decodeIfPresent([ToolUsage].self, forKey: .tools) ?? []
         models = try container.decodeIfPresent([ModelUsage].self, forKey: .models) ?? []
         sources = try container.decodeIfPresent([String: SourceInfo].self, forKey: .sources) ?? [:]
@@ -57,12 +62,17 @@ struct UsageSnapshot: Codable {
         rhythms.first { $0.date == date && $0.totalTokens > 0 }
     }
 
+    func agentWork(for date: String) -> DailyAgentWork? {
+        agentWork.first { $0.date == date && $0.totalTokens > 0 }
+    }
+
     static let empty = UsageSnapshot(
         generatedAt: nil,
         timezone: "Asia/Shanghai",
         totals: UsageTotals(tokens: 0, cost: 0, activeDays: 0),
         daily: [],
         rhythms: [],
+        agentWork: [],
         tools: [],
         models: [],
         sources: [:]
@@ -208,6 +218,171 @@ struct HourlyTokenBucket: Codable, Identifiable {
     var tokens: Int
 }
 
+struct DailyAgentWork: Codable, Identifiable {
+    var id: String { date }
+    var date: String
+    var totalTokens: Int
+    var inputTokens: Int
+    var cachedInputTokens: Int
+    var outputTokens: Int
+    var cacheCoverageComplete: Bool
+    var activeHours: Int
+    var modelRequestCount: Int
+    var toolCallCount: Int
+    var sources: [AgentWorkSource]
+    var hourlyBuckets: [AgentWorkHourBucket]
+    var unbucketedTokens: Int
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case totalTokens = "total_tokens"
+        case inputTokens = "input_tokens"
+        case cachedInputTokens = "cached_input_tokens"
+        case outputTokens = "output_tokens"
+        case cacheCoverageComplete = "cache_coverage_complete"
+        case activeHours = "active_hours"
+        case modelRequestCount = "model_request_count"
+        case toolCallCount = "tool_call_count"
+        case sources
+        case hourlyBuckets = "hourly_buckets"
+        case unbucketedTokens = "unbucketed_tokens"
+    }
+
+    init(
+        date: String,
+        totalTokens: Int,
+        activeHours: Int,
+        modelRequestCount: Int,
+        toolCallCount: Int,
+        sources: [AgentWorkSource],
+        inputTokens: Int = 0,
+        cachedInputTokens: Int = 0,
+        outputTokens: Int = 0,
+        cacheCoverageComplete: Bool = false,
+        hourlyBuckets: [AgentWorkHourBucket] = [],
+        unbucketedTokens: Int? = nil
+    ) {
+        self.date = date
+        self.totalTokens = totalTokens
+        self.inputTokens = inputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.outputTokens = outputTokens
+        self.cacheCoverageComplete = cacheCoverageComplete
+        self.activeHours = activeHours
+        self.modelRequestCount = modelRequestCount
+        self.toolCallCount = toolCallCount
+        self.sources = sources
+        self.hourlyBuckets = Self.normalizedHourlyBuckets(hourlyBuckets)
+        self.unbucketedTokens = max(
+            0,
+            unbucketedTokens ?? (totalTokens - self.hourlyBuckets.map(\.totalTokens).reduce(0, +))
+        )
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        date = try container.decode(String.self, forKey: .date)
+        totalTokens = try container.decode(Int.self, forKey: .totalTokens)
+        inputTokens = try container.decodeIfPresent(Int.self, forKey: .inputTokens) ?? 0
+        cachedInputTokens = try container.decodeIfPresent(Int.self, forKey: .cachedInputTokens) ?? 0
+        outputTokens = try container.decodeIfPresent(Int.self, forKey: .outputTokens) ?? 0
+        cacheCoverageComplete = try container.decodeIfPresent(Bool.self, forKey: .cacheCoverageComplete) ?? false
+        activeHours = try container.decodeIfPresent(Int.self, forKey: .activeHours) ?? 0
+        modelRequestCount = try container.decodeIfPresent(Int.self, forKey: .modelRequestCount) ?? 0
+        toolCallCount = try container.decodeIfPresent(Int.self, forKey: .toolCallCount) ?? 0
+        sources = try container.decodeIfPresent([AgentWorkSource].self, forKey: .sources) ?? []
+        let decodedBuckets = try container.decodeIfPresent([AgentWorkHourBucket].self, forKey: .hourlyBuckets)
+        hourlyBuckets = Self.normalizedHourlyBuckets(decodedBuckets ?? [])
+        unbucketedTokens = max(
+            0,
+            try container.decodeIfPresent(Int.self, forKey: .unbucketedTokens)
+                ?? (totalTokens - hourlyBuckets.map(\.totalTokens).reduce(0, +))
+        )
+    }
+
+    var cacheHitRate: Double? {
+        guard cacheCoverageComplete,
+              inputTokens > 0,
+              cachedInputTokens >= 0,
+              cachedInputTokens <= inputTokens
+        else {
+            return nil
+        }
+        return Double(cachedInputTokens) / Double(inputTokens)
+    }
+
+    func bucket(hour: Int) -> AgentWorkHourBucket {
+        hourlyBuckets.first { $0.hour == hour } ?? AgentWorkHourBucket(hour: hour, sources: [])
+    }
+
+    private static var emptyHourlyBuckets: [AgentWorkHourBucket] {
+        (0..<24).map { AgentWorkHourBucket(hour: $0, sources: []) }
+    }
+
+    private static func normalizedHourlyBuckets(_ buckets: [AgentWorkHourBucket]) -> [AgentWorkHourBucket] {
+        let byHour = Dictionary(
+            buckets.filter { (0..<24).contains($0.hour) }.map { ($0.hour, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        return (0..<24).map { byHour[$0] ?? AgentWorkHourBucket(hour: $0, sources: []) }
+    }
+}
+
+struct AgentWorkSource: Codable, Identifiable {
+    var id: String { source }
+    var source: String
+    var tokens: Int
+    var modelRequestCount: Int
+    var toolCallCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case source
+        case tokens
+        case modelRequestCount = "model_request_count"
+        case toolCallCount = "tool_call_count"
+    }
+}
+
+struct AgentWorkHourBucket: Codable, Identifiable {
+    var id: Int { hour }
+    var hour: Int
+    var sources: [AgentWorkHourlySource]
+
+    var totalTokens: Int {
+        sources.map(\.tokens).reduce(0, +)
+    }
+}
+
+struct AgentWorkHourlySource: Codable, Identifiable {
+    var id: String { source }
+    var source: String
+    var tokens: Int
+    var inputTokens: Int
+    var cachedInputTokens: Int
+    var outputTokens: Int
+    var cacheCoverageComplete: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case source
+        case tokens
+        case inputTokens = "input_tokens"
+        case cachedInputTokens = "cached_input_tokens"
+        case outputTokens = "output_tokens"
+        case cacheCoverageComplete = "cache_coverage_complete"
+    }
+
+    var cacheHitRate: Double? {
+        guard cacheCoverageComplete,
+              inputTokens > 0,
+              cachedInputTokens >= 0,
+              cachedInputTokens <= inputTokens
+        else {
+            return nil
+        }
+        return Double(cachedInputTokens) / Double(inputTokens)
+    }
+}
+
 enum RhythmTag: String, Codable {
     case earlyStarter = "early_starter"
     case morningPlanner = "morning_planner"
@@ -313,6 +488,16 @@ struct SourceInfo: Codable {
     var dedupedRecords: Int?
     var skippedRecords: Int?
     var strategy: String?
+    var exactRecords: Int?
+    var legacyRecords: Int?
+    var duplicateRecords: Int?
+    var counterResets: Int?
+    var inheritedRecords: Int?
+    var inheritedTokens: Int?
+    var unknownBreakdownRecords: Int?
+    var accountingRevision: Int?
+    var recalibratedFromRevision: Int?
+    var tokenBreakdown: SourceTokenBreakdown?
 
     enum CodingKeys: String, CodingKey {
         case status
@@ -322,6 +507,34 @@ struct SourceInfo: Codable {
         case dedupedRecords = "deduped_records"
         case skippedRecords = "skipped_records"
         case strategy
+        case exactRecords = "exact_records"
+        case legacyRecords = "legacy_records"
+        case duplicateRecords = "duplicate_records"
+        case counterResets = "counter_resets"
+        case inheritedRecords = "inherited_records"
+        case inheritedTokens = "inherited_tokens"
+        case unknownBreakdownRecords = "unknown_breakdown_records"
+        case accountingRevision = "accounting_revision"
+        case recalibratedFromRevision = "recalibrated_from_revision"
+        case tokenBreakdown = "token_breakdown"
+    }
+}
+
+struct SourceTokenBreakdown: Codable, Equatable {
+    var processedTokens: Int
+    var inputTokens: Int
+    var cachedInputTokens: Int
+    var uncachedInputTokens: Int
+    var outputTokens: Int
+    var reasoningTokens: Int
+
+    enum CodingKeys: String, CodingKey {
+        case processedTokens = "processed_tokens"
+        case inputTokens = "input_tokens"
+        case cachedInputTokens = "cached_input_tokens"
+        case uncachedInputTokens = "uncached_input_tokens"
+        case outputTokens = "output_tokens"
+        case reasoningTokens = "reasoning_tokens"
     }
 }
 
@@ -552,6 +765,7 @@ struct TokenStepSettings: Codable {
     var tokenIslandPlacement: TokenIslandDisplayPlacement
     var showCodexQuota: Bool
     var showTokenRank: Bool
+    var showExperimentalAgentSources: Bool
     var tokenRankUserID: String
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
@@ -568,6 +782,7 @@ struct TokenStepSettings: Codable {
         case tokenIslandPlacement = "token_island_placement"
         case showCodexQuota = "show_codex_quota"
         case showTokenRank = "show_token_rank"
+        case showExperimentalAgentSources = "show_experimental_agent_sources"
         case tokenRankUserID = "token_rank_user_id"
         case language
         case skippedUpdateVersion = "skipped_update_version"
@@ -585,6 +800,7 @@ struct TokenStepSettings: Codable {
         tokenIslandPlacement: .menuBar,
         showCodexQuota: false,
         showTokenRank: false,
+        showExperimentalAgentSources: false,
         tokenRankUserID: "",
         language: .system,
         skippedUpdateVersion: nil
@@ -602,6 +818,7 @@ struct TokenStepSettings: Codable {
         tokenIslandPlacement: TokenIslandDisplayPlacement,
         showCodexQuota: Bool,
         showTokenRank: Bool,
+        showExperimentalAgentSources: Bool,
         tokenRankUserID: String,
         language: TokenStepLanguage,
         skippedUpdateVersion: String?
@@ -617,6 +834,7 @@ struct TokenStepSettings: Codable {
         self.tokenIslandPlacement = tokenIslandPlacement
         self.showCodexQuota = showCodexQuota
         self.showTokenRank = showTokenRank
+        self.showExperimentalAgentSources = showExperimentalAgentSources
         self.tokenRankUserID = Self.cleanedTokenRankUserID(tokenRankUserID)
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
@@ -650,6 +868,7 @@ struct TokenStepSettings: Codable {
         }
         showCodexQuota = try container.decodeIfPresent(Bool.self, forKey: .showCodexQuota) ?? defaults.showCodexQuota
         showTokenRank = try container.decodeIfPresent(Bool.self, forKey: .showTokenRank) ?? defaults.showTokenRank
+        showExperimentalAgentSources = try container.decodeIfPresent(Bool.self, forKey: .showExperimentalAgentSources) ?? defaults.showExperimentalAgentSources
         let decodedTokenRankUserID = try container.decodeIfPresent(String.self, forKey: .tokenRankUserID) ?? defaults.tokenRankUserID
         tokenRankUserID = Self.cleanedTokenRankUserID(decodedTokenRankUserID)
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language

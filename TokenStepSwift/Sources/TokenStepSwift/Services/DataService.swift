@@ -33,7 +33,69 @@ enum DataService {
 
     static func runCollector(historyDays: Int = TokenStepSettings.defaults.historyDays) throws {
         defer { MemoryPressure.relieveAllocatorPressure() }
-        let snapshot = UsageCollector.collect(historyDays: historyDays)
+        let settings = loadSettings()
+        let previousSnapshot = try? loadSnapshot()
+        let collectedSnapshot = UsageCollector.collect(
+            historyDays: historyDays,
+            includeExperimentalAgentSources: settings.showExperimentalAgentSources
+        )
+        try validateRecalibrationCandidate(
+            collectedSnapshot,
+            previousSnapshot: previousSnapshot
+        )
+        let snapshot = snapshotWithMigrationMetadata(
+            collectedSnapshot,
+            previousSnapshot: previousSnapshot
+        )
+        try persist(snapshot: snapshot)
+    }
+
+    private static func snapshotWithMigrationMetadata(
+        _ collectedSnapshot: UsageSnapshot,
+        previousSnapshot: UsageSnapshot?
+    ) -> UsageSnapshot {
+        var snapshot = collectedSnapshot
+        if snapshot.sources["Codex"]?.recalibratedFromRevision == nil,
+           let previousCodex = previousSnapshot?.sources["Codex"],
+           (previousCodex.records ?? 0) > 0,
+           let currentRevision = snapshot.sources["Codex"]?.accountingRevision {
+            let previousRevision = previousCodex.accountingRevision ?? 5
+            if previousRevision < currentRevision {
+                snapshot.sources["Codex"]?.recalibratedFromRevision = previousRevision
+            }
+        }
+        return snapshot
+    }
+
+    private static func validateRecalibrationCandidate(
+        _ collectedSnapshot: UsageSnapshot,
+        previousSnapshot: UsageSnapshot?
+    ) throws {
+        guard let previousCodex = previousSnapshot?.sources["Codex"],
+              (previousCodex.records ?? 0) > 0
+        else {
+            return
+        }
+
+        let previousRevision = previousCodex.accountingRevision ?? 5
+        let requiredRevision = UsageCollector.codexAccountingRevision
+        guard previousRevision < requiredRevision else { return }
+        let currentCodex = collectedSnapshot.sources["Codex"]
+        guard currentCodex?.accountingRevision == requiredRevision,
+              (currentCodex?.records ?? 0) > 0,
+              currentCodex?.status == "ok"
+        else {
+            throw NSError(
+                domain: "TokenStepCollector",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey: L("Token 重新校准未完成，已保留原统计。")
+                ]
+            )
+        }
+    }
+
+    private static func persist(snapshot: UsageSnapshot) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(snapshot)
@@ -42,6 +104,40 @@ enum DataService {
             withIntermediateDirectories: true
         )
         try data.write(to: AppPaths.usageJSON, options: .atomic)
+        if let previousRevision = snapshot.sources["Codex"]?.recalibratedFromRevision,
+           let currentRevision = snapshot.sources["Codex"]?.accountingRevision,
+           previousRevision < currentRevision,
+           (snapshot.sources["Codex"]?.records ?? 0) > 0 {
+            try FileManager.default.createDirectory(
+                at: AppPaths.usageRecalibrationNoticeMarker.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try String(currentRevision).write(
+                to: AppPaths.usageRecalibrationNoticeMarker,
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+    }
+
+#if TOKENSTEP_TESTING
+    static func persistSnapshotForMigrationTests(
+        _ snapshot: UsageSnapshot,
+        previousSnapshot: UsageSnapshot?
+    ) throws -> UsageSnapshot {
+        try validateRecalibrationCandidate(snapshot, previousSnapshot: previousSnapshot)
+        let prepared = snapshotWithMigrationMetadata(snapshot, previousSnapshot: previousSnapshot)
+        try persist(snapshot: prepared)
+        return prepared
+    }
+#endif
+
+    static var hasPendingUsageRecalibrationNotice: Bool {
+        FileManager.default.fileExists(atPath: AppPaths.usageRecalibrationNoticeMarker.path)
+    }
+
+    static func acknowledgeUsageRecalibrationNotice() {
+        try? FileManager.default.removeItem(at: AppPaths.usageRecalibrationNoticeMarker)
     }
 
     static func runCollectorInHelper(historyDays: Int = TokenStepSettings.defaults.historyDays) throws {
@@ -124,6 +220,7 @@ enum DataService {
             tokenIslandPlacement: placement,
             showCodexQuota: settings.showCodexQuota,
             showTokenRank: settings.showTokenRank,
+            showExperimentalAgentSources: settings.showExperimentalAgentSources,
             tokenRankUserID: TokenStepSettings.cleanedTokenRankUserID(settings.tokenRankUserID),
             language: settings.language,
             skippedUpdateVersion: settings.skippedUpdateVersion

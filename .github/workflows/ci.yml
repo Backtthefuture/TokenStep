@@ -10,7 +10,13 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Run Swift tests
+        run: swift test --package-path TokenStepSwift
       - name: Run usage collector fixture checks
         run: ./script/test_ccswitch_proxy_collector.sh
+      - name: Run Codex cumulative accounting checks
+        run: ./script/test_codex_cumulative_collector.sh
+      - name: Run accounting migration checks
+        run: ./script/test_usage_recalibration_migration.sh
       - name: Build TokenStep
         run: ./script/build_swiftui_and_run.sh --no-launch
