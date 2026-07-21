@@ -29,10 +29,10 @@ final class AppState: ObservableObject {
 
     init() {
         load()
+        refreshIfSnapshotIsStale()
         applyDefaultAutostartIfNeeded()
         configureTimer()
         refreshCodexQuota()
-        refreshIfSnapshotIsStale()
         scheduleDeferredUpdateCheck()
     }
 
@@ -499,25 +499,23 @@ final class AppState: ObservableObject {
     }
 
     private func refreshIfSnapshotIsStale() {
-        if snapshot.daily.contains(where: { $0.totalTokens > 0 && $0.models.isEmpty }) {
-            refresh()
+        guard let reason = UsageSnapshotRefreshPolicy.reason(
+            snapshot: snapshot,
+            refreshIntervalSeconds: settings.refreshIntervalSeconds,
+            now: Date()
+        ) else {
             return
         }
-        guard settings.refreshIntervalSeconds > 0 else {
-            if snapshot.generatedAt == nil {
-                refresh()
-            }
-            return
+
+        if reason == .accountingRevision {
+            let storedRevision = snapshot.sources["Codex"]?.accountingRevision
+                .map(String.init) ?? "legacy"
+            LifecycleLogger.log(
+                "Codex accounting revision \(storedRevision) is older than "
+                    + "\(UsageCollector.codexAccountingRevision); starting immediate recalibration."
+            )
         }
-        guard let generatedAt = snapshot.generatedAt,
-              let generatedDate = Self.parseGeneratedAt(generatedAt)
-        else {
-            refresh()
-            return
-        }
-        if Date().timeIntervalSince(generatedDate) >= TimeInterval(settings.refreshIntervalSeconds) {
-            refresh()
-        }
+        refresh()
     }
 
     private func scheduleDeferredUpdateCheck() {
@@ -574,6 +572,40 @@ final class AppState: ObservableObject {
             withIntermediateDirectories: true
         )
         try Data("applied\n".utf8).write(to: AppPaths.autostartDefaultMarker, options: .atomic)
+    }
+}
+
+enum UsageSnapshotRefreshReason: Equatable {
+    case accountingRevision
+    case missingModelBreakdown
+    case missingSnapshotTimestamp
+    case stale
+}
+
+enum UsageSnapshotRefreshPolicy {
+    static func reason(
+        snapshot: UsageSnapshot,
+        refreshIntervalSeconds: Int,
+        now: Date
+    ) -> UsageSnapshotRefreshReason? {
+        if DataService.requiresImmediateCodexRecalibration(snapshot) {
+            return .accountingRevision
+        }
+        if snapshot.daily.contains(where: { $0.totalTokens > 0 && $0.models.isEmpty }) {
+            return .missingModelBreakdown
+        }
+        guard refreshIntervalSeconds > 0 else {
+            return snapshot.generatedAt == nil ? .missingSnapshotTimestamp : nil
+        }
+        guard let generatedAt = snapshot.generatedAt,
+              let generatedDate = parseGeneratedAt(generatedAt)
+        else {
+            return .missingSnapshotTimestamp
+        }
+        if now.timeIntervalSince(generatedDate) >= TimeInterval(refreshIntervalSeconds) {
+            return .stale
+        }
+        return nil
     }
 
     private static func parseGeneratedAt(_ value: String) -> Date? {
