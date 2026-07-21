@@ -7,8 +7,40 @@ struct UsageRecalibrationMigrationFixtureCheck {
         try? FileManager.default.removeItem(at: root)
         defer { try? FileManager.default.removeItem(at: root) }
 
+        let currentRevision = UsageCollector.codexAccountingRevision
         let legacy = snapshot(accountingRevision: nil, records: 1)
-        let current = snapshot(accountingRevision: 8, records: 2)
+        let previous = snapshot(accountingRevision: currentRevision - 1, records: 1)
+        let current = snapshot(accountingRevision: currentRevision, records: 2)
+        let future = snapshot(accountingRevision: currentRevision + 1, records: 1)
+        let emptyLegacy = snapshot(accountingRevision: nil, records: 0)
+        var missingCodex = current
+        missingCodex.sources.removeValue(forKey: "Codex")
+
+        try expect(
+            DataService.requiresImmediateCodexRecalibration(legacy),
+            "legacy snapshots with Codex records should recalibrate immediately"
+        )
+        try expect(
+            DataService.requiresImmediateCodexRecalibration(previous),
+            "older accounting revisions should recalibrate immediately"
+        )
+        try expect(
+            !DataService.requiresImmediateCodexRecalibration(current),
+            "the current accounting revision should not recalibrate again"
+        )
+        try expect(
+            !DataService.requiresImmediateCodexRecalibration(future),
+            "a future accounting revision should not be downgraded"
+        )
+        try expect(
+            !DataService.requiresImmediateCodexRecalibration(emptyLegacy),
+            "an empty legacy source should not trigger a recalibration loop"
+        )
+        try expect(
+            !DataService.requiresImmediateCodexRecalibration(missingCodex),
+            "a snapshot without Codex usage should not require Codex recalibration"
+        )
+
         let migrated = try DataService.persistSnapshotForMigrationTests(
             current,
             previousSnapshot: legacy
@@ -22,8 +54,9 @@ struct UsageRecalibrationMigrationFixtureCheck {
             "successful legacy migration should create the pending notice marker"
         )
         try expect(
-            try String(contentsOf: AppPaths.usageRecalibrationNoticeMarker, encoding: .utf8) == "8",
-            "pending marker should identify accounting revision 8"
+            try String(contentsOf: AppPaths.usageRecalibrationNoticeMarker, encoding: .utf8)
+                == "\(currentRevision)",
+            "pending marker should identify the current accounting revision"
         )
 
         DataService.acknowledgeUsageRecalibrationNotice()
@@ -39,7 +72,7 @@ struct UsageRecalibrationMigrationFixtureCheck {
             "a new installation must not see a migration notice"
         )
 
-        let alreadyCurrent = snapshot(accountingRevision: 8, records: 1)
+        let alreadyCurrent = snapshot(accountingRevision: currentRevision, records: 1)
         _ = try DataService.persistSnapshotForMigrationTests(current, previousSnapshot: alreadyCurrent)
         try expect(
             !DataService.hasPendingUsageRecalibrationNotice,
@@ -48,7 +81,7 @@ struct UsageRecalibrationMigrationFixtureCheck {
 
         try? FileManager.default.removeItem(at: root)
         _ = try DataService.persistSnapshotForMigrationTests(legacy, previousSnapshot: nil)
-        let failedRecalibration = snapshot(accountingRevision: 8, records: 0)
+        let failedRecalibration = snapshot(accountingRevision: currentRevision, records: 0)
         do {
             _ = try DataService.persistSnapshotForMigrationTests(
                 failedRecalibration,

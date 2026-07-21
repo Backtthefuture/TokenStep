@@ -4,6 +4,7 @@ import Foundation
 enum DataService {
     private static let helperName = "TokenStepHelper"
     private static let helperTimeoutSeconds: TimeInterval = 120
+    private static let legacyCodexAccountingRevision = 5
 
     static func loadSnapshot() throws -> UsageSnapshot {
         let data = try Data(contentsOf: AppPaths.usageJSON)
@@ -17,6 +18,17 @@ enum DataService {
             return .defaults
         }
         return normalize(settings)
+    }
+
+    static func requiresImmediateCodexRecalibration(_ snapshot: UsageSnapshot) -> Bool {
+        guard let codex = snapshot.sources["Codex"],
+              (codex.records ?? 0) > 0
+        else {
+            return false
+        }
+
+        let storedRevision = codex.accountingRevision ?? legacyCodexAccountingRevision
+        return storedRevision < UsageCollector.codexAccountingRevision
     }
 
     static func saveSettings(_ settings: TokenStepSettings) throws {
@@ -59,7 +71,7 @@ enum DataService {
            let previousCodex = previousSnapshot?.sources["Codex"],
            (previousCodex.records ?? 0) > 0,
            let currentRevision = snapshot.sources["Codex"]?.accountingRevision {
-            let previousRevision = previousCodex.accountingRevision ?? 5
+            let previousRevision = previousCodex.accountingRevision ?? legacyCodexAccountingRevision
             if previousRevision < currentRevision {
                 snapshot.sources["Codex"]?.recalibratedFromRevision = previousRevision
             }
@@ -77,7 +89,7 @@ enum DataService {
             return
         }
 
-        let previousRevision = previousCodex.accountingRevision ?? 5
+        let previousRevision = previousCodex.accountingRevision ?? legacyCodexAccountingRevision
         let requiredRevision = UsageCollector.codexAccountingRevision
         guard previousRevision < requiredRevision else { return }
         let currentCodex = collectedSnapshot.sources["Codex"]

@@ -136,7 +136,7 @@ struct AgentWorkCardRender {
                     status: "ok",
                     files: 665,
                     records: 2_440,
-                    accountingRevision: 6
+                    accountingRevision: UsageCollector.codexAccountingRevision
                 ),
                 "Hermes Agent": SourceInfo(
                     status: "ok",
