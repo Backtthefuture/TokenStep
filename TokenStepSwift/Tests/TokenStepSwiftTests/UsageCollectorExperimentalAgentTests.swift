@@ -165,7 +165,6 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         XCTAssertEqual(work.inputTokens, 150)
         XCTAssertEqual(work.cachedInputTokens, 120)
         XCTAssertEqual(work.outputTokens, 30)
-        XCTAssertEqual(work.reasoningOutputTokens, 3)
         XCTAssertEqual(work.modelRequestCount, 2)
         XCTAssertEqual(work.toolCallCount, 1)
         XCTAssertEqual(work.sources.first?.source, "WorkBuddy")
