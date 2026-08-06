@@ -1,50 +1,115 @@
 import Foundation
 
-enum TokenRankService {
-    static let defaultBoard = "total"
+enum AgentWorkRankService {
+    static let defaultClient = "all"
     static let defaultRange = "today"
-    static let cacheTTL: TimeInterval = 120
-    static let leaderboardPageURL = URL(string: "https://scys.com/tokenrank/")!
+    static let defaultUsageMode = "all"
+    static let cacheTTL: TimeInterval = 5 * 60
+    static let leaderboardPageURL = URL(string: "https://www.zhenganhuo.com/token-rank")!
+    static let myPageURL = URL(string: "https://www.zhenganhuo.com/token-rank/me")!
 
-    private static let leaderboardAPIURL = URL(string: "https://scys.com/tokenrank/api/subapp/leaderboard")!
-
-    static func userPageURL(userID: String) -> URL? {
-        let cleanedID = TokenStepSettings.cleanedTokenRankUserID(userID)
-        guard !cleanedID.isEmpty else { return nil }
-        return URL(string: "https://scys.com/tokenrank/u/")?.appendingPathComponent(cleanedID)
-    }
+    private static let leaderboardAPIURL = URL(
+        string: "https://www.zhenganhuo.com/api/token-rank/leaderboard.php"
+    )!
 
     static func fetchLeaderboard(
-        board: String = defaultBoard,
-        range: String = defaultRange
+        client: String = defaultClient,
+        range: String = defaultRange,
+        usageMode: String = defaultUsageMode
     ) async throws -> TokenRankLeaderboard {
         var components = URLComponents(url: leaderboardAPIURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
-            URLQueryItem(name: "board", value: board),
-            URLQueryItem(name: "range", value: range)
+            URLQueryItem(name: "client", value: client),
+            URLQueryItem(name: "range", value: range),
+            URLQueryItem(name: "usage_mode", value: usageMode)
         ]
 
         guard let url = components?.url else {
             throw TokenRankServiceError.invalidURL
         }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = 12
+        let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
               (200..<300).contains(httpResponse.statusCode) else {
             throw TokenRankServiceError.unavailable
         }
+        return try decodeLeaderboard(data: data)
+    }
 
+    static func decodeLeaderboard(
+        data: Data,
+        fetchedAt: Date = Date()
+    ) throws -> TokenRankLeaderboard {
         let decoded = try JSONDecoder().decode(TokenRankLeaderboardResponse.self, from: data)
-        guard decoded.status ?? 0 == 0 else {
+        guard decoded.success else {
             throw TokenRankServiceError.unavailable
         }
-
+        let payload = decoded.data
         return TokenRankLeaderboard(
-            fetchedAt: Date(),
-            board: decoded.board,
-            range: decoded.range,
-            entries: decoded.entries
+            fetchedAt: fetchedAt,
+            range: payload.range,
+            client: payload.client,
+            usageMode: payload.usageMode,
+            totalTokens: payload.totalTokens,
+            totalRankedUsers: payload.totalRankedUsers,
+            topLimit: payload.topLimit,
+            entries: payload.rows
         )
+    }
+
+    static func loadLocalIdentity(
+        clientStateURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".token-rank/client-state.json")
+    ) -> AgentWorkRankIdentity? {
+        guard let data = try? Data(contentsOf: clientStateURL),
+              let state = try? JSONDecoder().decode(LocalClientState.self, from: data),
+              let user = state.user,
+              user.id > 0
+        else {
+            return nil
+        }
+        return AgentWorkRankIdentity(
+            id: user.id,
+            name: user.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? L("匿名用户")
+                : user.name,
+            avatarURL: user.avatarURL,
+            lastSyncedAt: state.lastSuccessfulSyncAt.flatMap(parseDate)
+        )
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFractional.date(from: value) {
+            return date
+        }
+        return ISO8601DateFormatter().date(from: value)
+    }
+}
+
+private struct LocalClientState: Decodable {
+    var user: LocalClientUser?
+    var lastSuccessfulSyncAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case user
+        case lastSuccessfulSyncAt = "last_successful_sync_at"
+    }
+}
+
+private struct LocalClientUser: Decodable {
+    var id: Int
+    var name: String
+    var avatarURL: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case avatarURL = "avatar_url"
     }
 }
 

@@ -164,8 +164,7 @@ struct SettingsView: View {
                 appState.setRequireVerifiedUpdates(TokenStepSettings.defaults.requireVerifiedUpdates)
                 appState.setTokenIslandPlacement(TokenStepSettings.defaults.tokenIslandPlacement)
                 appState.setCodexQuotaVisible(TokenStepSettings.defaults.showCodexQuota)
-                appState.setTokenRankVisible(TokenStepSettings.defaults.showTokenRank)
-                appState.setTokenRankUserID(TokenStepSettings.defaults.tokenRankUserID)
+                appState.setAgentWorkRankVisible(TokenStepSettings.defaults.showAgentWorkRank)
                 appState.setExperimentalAgentSourcesVisible(TokenStepSettings.defaults.showExperimentalAgentSources)
                 appState.setAutostart(true)
             } label: {

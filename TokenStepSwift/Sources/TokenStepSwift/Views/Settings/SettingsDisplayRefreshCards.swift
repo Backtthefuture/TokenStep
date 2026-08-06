@@ -93,49 +93,52 @@ struct SettingsTokenRankCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("生财 Token 榜单"), symbol: "list.number") {
+        SettingsCard(title: L("Agent 消耗榜"), symbol: "list.number") {
             VStack(alignment: .leading, spacing: 13) {
                 SettingsToggleRow(
-                    title: L("生财榜单显示"),
+                    title: L("Agent 消耗榜显示"),
                     isOn: Binding(
-                        get: { appState.settings.showTokenRank },
-                        set: { appState.setTokenRankVisible($0) }
+                        get: { appState.settings.showAgentWorkRank },
+                        set: { appState.setAgentWorkRankVisible($0) }
                     )
                 )
 
-                if appState.settings.showTokenRank {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(L("我的生财 userId"))
-                            .font(.caption.weight(.heavy))
-                            .foregroundStyle(Color.tokenInk.opacity(0.72))
-
-                        HStack(spacing: 8) {
-                            Image(systemName: "person.text.rectangle")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(Color.tokenGreen)
-
-                            TextField(
-                                L("可选，填写后显示我的排名"),
-                                text: Binding(
-                                    get: { appState.settings.tokenRankUserID },
-                                    set: { appState.setTokenRankUserID($0) }
-                                )
-                            )
-                            .textFieldStyle(.plain)
-                            .font(.callout.weight(.semibold))
-                        }
-                        .padding(.horizontal, 12)
-                        .frame(height: 38)
-                        .background(Color.tokenTrack.opacity(0.30), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(Color.black.opacity(0.045)))
-                    }
+                if appState.settings.showAgentWorkRank {
+                    StatusLine(
+                        symbol: appState.agentWorkRankIdentity == nil ? "person.crop.circle.badge.questionmark" : "checkmark.circle.fill",
+                        title: appState.agentWorkRankIdentity == nil ? L("尚未关联") : L("已自动关联"),
+                        value: identityText,
+                        tint: appState.agentWorkRankIdentity == nil ? .orange : .tokenGreen
+                    )
 
                     StatusLine(
-                        symbol: "arrow.up.right.circle.fill",
-                        title: L("点击卡片"),
-                        value: appState.settings.tokenRankUserID.isEmpty ? L("打开榜单页") : L("打开个人页"),
+                        symbol: "arrow.triangle.2.circlepath",
+                        title: L("数据同步"),
+                        value: syncText,
                         tint: .tokenGreen
                     )
+
+                    HStack(spacing: 8) {
+                        Button {
+                            appState.openTokenRankUserPage()
+                        } label: {
+                            Label(L("我的消耗"), systemImage: "person.crop.circle")
+                                .font(.caption.weight(.heavy))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 32)
+                        }
+                        .buttonStyle(SettingsSecondaryButtonStyle())
+
+                        Button {
+                            appState.openTokenRankLeaderboardPage()
+                        } label: {
+                            Label(L("打开榜单"), systemImage: "list.number")
+                                .font(.caption.weight(.heavy))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 32)
+                        }
+                        .buttonStyle(SettingsSecondaryButtonStyle())
+                    }
                 } else {
                     StatusLine(
                         symbol: "eye.slash.fill",
@@ -149,6 +152,27 @@ struct SettingsTokenRankCard: View {
             }
         }
     }
+
+    private var identityText: String {
+        guard let identity = appState.agentWorkRankIdentity else {
+            return L("安装 Token Rank 后自动识别")
+        }
+        return "\(identity.name) · ID \(identity.id)"
+    }
+
+    private var syncText: String {
+        guard let date = appState.agentWorkRankIdentity?.lastSyncedAt else {
+            return L("等待同步")
+        }
+        return relativeTime(date)
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
+        if minutes < 1 { return L("刚刚") }
+        if minutes < 60 { return LFormat("%d 分钟前", minutes) }
+        return LFormat("%d 小时前", minutes / 60)
+    }
 }
 
 struct SettingsExperimentalAgentSourcesCard: View {
@@ -158,7 +182,7 @@ struct SettingsExperimentalAgentSourcesCard: View {
         SettingsCard(title: L("实验 Agent 来源"), symbol: "point.3.connected.trianglepath.dotted", height: 282) {
             VStack(alignment: .leading, spacing: 13) {
                 SettingsToggleRow(
-                    title: L("启用 ZCode / Hermes"),
+                    title: L("启用 ZCode / Hermes / WorkBuddy"),
                     isOn: Binding(
                         get: { appState.settings.showExperimentalAgentSources },
                         set: { appState.setExperimentalAgentSourcesVisible($0) }

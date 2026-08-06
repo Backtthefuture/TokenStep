@@ -149,7 +149,7 @@ TokenStepSwift/dist/TokenStep.app
 Developer ID 签名：
 
 ```bash
-TOKENSTEP_VERSION=0.1.45 \
+TOKENSTEP_VERSION=0.1.46 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 ./script/package_release.sh
 ```
@@ -157,7 +157,7 @@ CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 签名 + Apple 公证：
 
 ```bash
-TOKENSTEP_VERSION=0.1.45 \
+TOKENSTEP_VERSION=0.1.46 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
 ./script/package_release.sh --notarize

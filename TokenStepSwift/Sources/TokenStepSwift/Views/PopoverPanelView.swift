@@ -23,7 +23,7 @@ struct PopoverPanelView: View {
             if appState.settings.showCodexQuota {
                 PopoverQuotaCard()
             }
-            if appState.settings.showTokenRank {
+            if appState.settings.showAgentWorkRank {
                 PopoverTokenRankCard()
             }
             if let update = appState.availableUpdate {

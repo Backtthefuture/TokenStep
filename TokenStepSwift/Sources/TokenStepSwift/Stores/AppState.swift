@@ -13,6 +13,7 @@ final class AppState: ObservableObject {
     @Published private(set) var claudeQuota: CodexQuotaSnapshot = .unavailable
     @Published private(set) var isRefreshingTokenRank = false
     @Published private(set) var tokenRank: TokenRankLeaderboard?
+    @Published private(set) var agentWorkRankIdentity: AgentWorkRankIdentity?
     @Published private(set) var tokenRankError: String?
     @Published private(set) var isDownloadingUpdate = false
     @Published private(set) var updateDownloadProgress = 0.0
@@ -33,6 +34,7 @@ final class AppState: ObservableObject {
         applyDefaultAutostartIfNeeded()
         configureTimer()
         refreshCodexQuota()
+        refreshTokenRank()
         scheduleDeferredUpdateCheck()
     }
 
@@ -130,7 +132,7 @@ final class AppState: ObservableObject {
             codexQuota = .unavailable
             claudeQuota = .unavailable
         }
-        if !loadedSettings.showTokenRank {
+        if !loadedSettings.showAgentWorkRank {
             clearTokenRankState()
         }
         autostartEnabled = AutostartService.isEnabled
@@ -294,21 +296,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    func setTokenRankVisible(_ visible: Bool) {
-        settings.showTokenRank = visible
+    func setAgentWorkRankVisible(_ visible: Bool) {
+        settings.showAgentWorkRank = visible
         saveSettingsAndReload()
-        if settings.showTokenRank {
+        if settings.showAgentWorkRank {
             refreshTokenRank(force: true)
         } else {
             clearTokenRankState()
-        }
-    }
-
-    func setTokenRankUserID(_ userID: String) {
-        settings.tokenRankUserID = TokenStepSettings.cleanedTokenRankUserID(userID)
-        saveSettingsAndReload()
-        if settings.showTokenRank, tokenRank == nil {
-            refreshTokenRank(force: true)
         }
     }
 
@@ -319,32 +313,33 @@ final class AppState: ObservableObject {
     }
 
     func refreshTokenRank(force: Bool = false) {
-        guard settings.showTokenRank else {
+        guard settings.showAgentWorkRank else {
             clearTokenRankState()
             return
         }
         guard !isRefreshingTokenRank else { return }
         if !force,
            let fetchedAt = tokenRank?.fetchedAt,
-           Date().timeIntervalSince(fetchedAt) < TokenRankService.cacheTTL {
+           Date().timeIntervalSince(fetchedAt) < AgentWorkRankService.cacheTTL {
             return
         }
 
+        agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
         isRefreshingTokenRank = true
         Task {
             defer {
                 isRefreshingTokenRank = false
             }
             do {
-                let leaderboard = try await TokenRankService.fetchLeaderboard()
-                guard settings.showTokenRank else {
+                let leaderboard = try await AgentWorkRankService.fetchLeaderboard()
+                guard settings.showAgentWorkRank else {
                     clearTokenRankState()
                     return
                 }
                 tokenRank = leaderboard
                 tokenRankError = nil
             } catch {
-                guard settings.showTokenRank else {
+                guard settings.showAgentWorkRank else {
                     clearTokenRankState()
                     return
                 }
@@ -358,15 +353,11 @@ final class AppState: ObservableObject {
     }
 
     func openTokenRankLeaderboardPage() {
-        NSWorkspace.shared.open(TokenRankService.leaderboardPageURL)
+        NSWorkspace.shared.open(AgentWorkRankService.leaderboardPageURL)
     }
 
     func openTokenRankUserPage() {
-        guard let url = TokenRankService.userPageURL(userID: settings.tokenRankUserID) else {
-            openTokenRankLeaderboardPage()
-            return
-        }
-        NSWorkspace.shared.open(url)
+        NSWorkspace.shared.open(AgentWorkRankService.myPageURL)
     }
 
     func setAutoUpdateEnabled(_ enabled: Bool) {
@@ -482,6 +473,7 @@ final class AppState: ObservableObject {
 
     private func clearTokenRankState() {
         tokenRank = nil
+        agentWorkRankIdentity = nil
         tokenRankError = nil
         isRefreshingTokenRank = false
     }
