@@ -121,6 +121,55 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         XCTAssertTrue(snapshot.agentWork.isEmpty)
     }
 
+    func testWorkBuddyCollectorReadsUsageWithoutMessageContent() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepWorkBuddy-\(UUID().uuidString)", isDirectory: true)
+        let project = root.appendingPathComponent("projects/example", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let lines = [
+            """
+            {"type":"function_call","timestamp":1717200000000,"sessionId":"wb-session","message":{"usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120,"cache_read_input_tokens":80}},"providerData":{"requestModelId":"hy3","conversationRequestId":"wb-request-1","toolResult":{"content":"must not be parsed"}}}
+            """,
+            """
+            {"type":"message","timestamp":1717203600000,"sessionId":"wb-session","providerData":{"requestModelId":"kimi-k3-1","conversationRequestId":"wb-request-2","rawUsage":{"prompt_tokens":50,"completion_tokens":10,"total_tokens":60,"prompt_cache_hit_tokens":40,"completion_thinking_tokens":3}}}
+            """,
+            """
+            {"type":"message","timestamp":1717207200000,"sessionId":"wb-session","message":{"content":"no usage row"}}
+            """
+        ]
+        try lines.joined(separator: "\n").write(
+            to: project.appendingPathComponent("session.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let snapshot = UsageCollector.collectUsageSnapshotForTests(
+            workBuddyRootURLs: [root],
+            includeExperimentalAgentSources: true
+        )
+
+        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.status, "ok")
+        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.files, 1)
+        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.records, 2)
+        XCTAssertEqual(snapshot.totals.tokens, 180)
+        XCTAssertEqual(snapshot.daily.first?.tools["WorkBuddy"], 180)
+        XCTAssertEqual(snapshot.daily.first?.models["hy3"], 120)
+        XCTAssertEqual(snapshot.daily.first?.models["kimi-k3-1"], 60)
+
+        let work = try XCTUnwrap(snapshot.agentWork.first)
+        XCTAssertEqual(work.totalTokens, 180)
+        XCTAssertEqual(work.inputTokens, 150)
+        XCTAssertEqual(work.cachedInputTokens, 120)
+        XCTAssertEqual(work.outputTokens, 30)
+        XCTAssertEqual(work.modelRequestCount, 2)
+        XCTAssertEqual(work.toolCallCount, 1)
+        XCTAssertEqual(work.sources.first?.source, "WorkBuddy")
+    }
+
     private func makeZCodeDatabase(rowsSQL: String) throws -> URL {
         let database = try fixtureDatabase(prefix: "TokenStepZCode")
         try runSQLite(database: database, sql: """

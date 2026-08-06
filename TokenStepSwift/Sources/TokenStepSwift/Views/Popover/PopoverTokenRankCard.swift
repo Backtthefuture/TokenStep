@@ -23,7 +23,7 @@ struct PopoverTokenRankCard: View {
                     let dx = abs(value.location.x - value.startLocation.x)
                     let dy = abs(value.location.y - value.startLocation.y)
                     guard dx < 4, dy < 4 else { return }
-                    if hasConfiguredUserID, userRankFrame.contains(value.location) {
+                    if appState.agentWorkRankIdentity != nil, userRankFrame.contains(value.location) {
                         appState.openTokenRankUserPage()
                     } else {
                         appState.openTokenRankLeaderboardPage()
@@ -40,7 +40,7 @@ struct PopoverTokenRankCard: View {
             Circle()
                 .fill(Color.tokenGreen)
                 .frame(width: 8, height: 8)
-            Text(L("生财 Token 榜单"))
+            Text(L("Agent 消耗榜"))
                 .font(.callout.weight(.heavy))
                 .foregroundStyle(Color.tokenInk)
             Spacer()
@@ -49,7 +49,7 @@ struct PopoverTokenRankCard: View {
                     .controlSize(.small)
                     .scaleEffect(0.72)
             } else if let fetchedAt = appState.tokenRank?.fetchedAt {
-                Text(fetchedText(fetchedAt))
+                Text(relativeTime(fetchedAt))
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
             }
@@ -57,54 +57,40 @@ struct PopoverTokenRankCard: View {
     }
 
     private var userRankContent: some View {
-        mainContent
-            .background(
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: TokenRankUserRowFrameKey.self,
-                        value: proxy.frame(in: .named("tokenRankCard"))
-                    )
-                }
-            )
-            .help(hasConfiguredUserID ? L("打开个人页") : L("打开榜单页"))
-    }
-
-    private var mainContent: some View {
         HStack(alignment: .center, spacing: 12) {
-            mainIcon
-            mainText
+            Image(systemName: mainSymbol)
+                .font(.system(size: 18, weight: .heavy))
+                .foregroundStyle(mainTint)
+                .frame(width: 38, height: 38)
+                .background(mainTint.opacity(0.16), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(mainTitle)
+                    .font(.title3.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                Text(mainSubtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
             Spacer(minLength: 0)
-            mainArrow
+            Image(systemName: "arrow.up.right")
+                .font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(Color.tokenInk.opacity(0.48))
         }
         .contentShape(Rectangle())
-    }
-
-    private var mainIcon: some View {
-        Image(systemName: mainSymbol)
-            .font(.system(size: 18, weight: .heavy))
-            .foregroundStyle(mainTint)
-            .frame(width: 38, height: 38)
-            .background(mainTint.opacity(0.16), in: Circle())
-    }
-
-    private var mainText: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(mainTitle)
-                .font(.title3.weight(.heavy))
-                .foregroundStyle(Color.tokenInk)
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-            Text(mainSubtitle)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-    }
-
-    private var mainArrow: some View {
-        Image(systemName: "arrow.up.right")
-            .font(.system(size: 13, weight: .heavy))
-            .foregroundStyle(Color.tokenInk.opacity(0.48))
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: TokenRankUserRowFrameKey.self,
+                    value: proxy.frame(in: .named("tokenRankCard"))
+                )
+            }
+        )
+        .help(appState.agentWorkRankIdentity == nil ? L("打开榜单页") : L("打开个人页"))
     }
 
     @ViewBuilder
@@ -126,13 +112,12 @@ struct PopoverTokenRankCard: View {
         } else {
             HStack(spacing: 8) {
                 if let entry = currentUserEntry {
-                    TokenRankMetaPill(label: L("今日 Token"), value: TokenStepFormat.tokens(entry.score, compact: true))
+                    TokenRankMetaPill(label: L("今日 Token"), value: TokenStepFormat.tokens(entry.totalTokens, compact: true))
                 } else if let topEntry = appState.tokenRank?.topEntry {
-                    TokenRankMetaPill(label: L("今日榜首"), value: "#\(topEntry.rank) \(TokenStepFormat.tokens(topEntry.score, compact: true))")
+                    TokenRankMetaPill(label: L("今日榜首"), value: TokenStepFormat.tokens(topEntry.totalTokens, compact: true))
                 } else {
                     TokenRankMetaPill(label: L("今日榜单"), value: L("等待同步"))
                 }
-
                 TokenRankMetaPill(label: L("上榜："), value: rankingThresholdText)
             }
 
@@ -146,46 +131,40 @@ struct PopoverTokenRankCard: View {
     }
 
     private var currentUserEntry: TokenRankEntry? {
-        appState.tokenRank?.entry(matching: appState.settings.tokenRankUserID)
-    }
-
-    private var hasConfiguredUserID: Bool {
-        !appState.settings.tokenRankUserID.isEmpty
+        guard let identity = appState.agentWorkRankIdentity else { return nil }
+        return appState.tokenRank?.entry(matching: identity.id)
     }
 
     private var mainTitle: String {
         if let entry = currentUserEntry {
             return LFormat("今日排名 #%d", entry.rank)
         }
-        if hasConfiguredUserID, appState.tokenRank != nil {
+        if appState.agentWorkRankIdentity == nil {
+            return L("尚未关联")
+        }
+        if appState.tokenRank != nil {
             return L("今日未上榜")
         }
-        if appState.tokenRank == nil, appState.tokenRankError != nil {
+        if appState.tokenRankError != nil {
             return L("榜单暂不可用")
         }
-        return L("生财榜单")
+        return L("Agent 消耗榜")
     }
 
     private var mainSubtitle: String {
         if let entry = currentUserEntry {
-            return entry.name
+            return "\(entry.name) · \(primaryClientName(entry))"
         }
-        if hasConfiguredUserID, appState.tokenRank != nil {
-            return L("点击查看今日榜单")
+        if let identity = appState.agentWorkRankIdentity {
+            return identity.name
         }
-        if appState.tokenRank == nil, appState.tokenRankError != nil {
-            return L("点击打开榜单页")
-        }
-        return L("点击查看今日榜单")
+        return L("安装 Token Rank 后自动识别")
     }
 
     private var mainSymbol: String {
-        if currentUserEntry != nil {
-            return "trophy.fill"
-        }
-        if appState.tokenRank == nil, appState.tokenRankError != nil {
-            return "exclamationmark.triangle.fill"
-        }
+        if currentUserEntry != nil { return "trophy.fill" }
+        if appState.agentWorkRankIdentity == nil { return "person.crop.circle.badge.questionmark" }
+        if appState.tokenRank == nil, appState.tokenRankError != nil { return "exclamationmark.triangle.fill" }
         return "list.number"
     }
 
@@ -194,24 +173,33 @@ struct PopoverTokenRankCard: View {
     }
 
     private var rankingThresholdText: String {
-        guard let entry = rankingThresholdEntry else {
-            return L("等待同步")
-        }
-        return TokenStepFormat.tokens(entry.score, compact: true)
+        guard let entry = rankingThresholdEntry else { return L("等待同步") }
+        return TokenStepFormat.tokens(entry.totalTokens, compact: true)
     }
 
     private var rankingThresholdEntry: TokenRankEntry? {
-        guard let entries = appState.tokenRank?.entries, !entries.isEmpty else {
-            return nil
-        }
-        return entries.first { $0.rank == 100 } ?? entries.max { $0.rank < $1.rank }
+        guard let leaderboard = appState.tokenRank, !leaderboard.entries.isEmpty else { return nil }
+        return leaderboard.entries.first { $0.rank == leaderboard.topLimit }
+            ?? leaderboard.entries.max { $0.rank < $1.rank }
     }
 
-    private func fetchedText(_ date: Date) -> String {
-        let seconds = max(0, Int(Date().timeIntervalSince(date).rounded()))
-        if seconds < 60 {
-            return L("刚刚")
+    private func primaryClientName(_ entry: TokenRankEntry) -> String {
+        guard let client = entry.clients.max(by: { $0.value < $1.value })?.key else {
+            return L("全部工具")
         }
+        switch client {
+        case "codex": return "Codex"
+        case "claude": return "Claude Code"
+        case "workbuddy": return "WorkBuddy"
+        case "zcode": return "ZCode"
+        case "hermes": return "Hermes"
+        default: return client
+        }
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(date).rounded()))
+        if seconds < 60 { return L("刚刚") }
         return LFormat("%d 分钟前", max(1, seconds / 60))
     }
 }

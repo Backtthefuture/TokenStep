@@ -231,9 +231,8 @@ enum DataService {
             tokenIslandEnabled: placement != .menuBar,
             tokenIslandPlacement: placement,
             showCodexQuota: settings.showCodexQuota,
-            showTokenRank: settings.showTokenRank,
+            showAgentWorkRank: settings.showAgentWorkRank,
             showExperimentalAgentSources: settings.showExperimentalAgentSources,
-            tokenRankUserID: TokenStepSettings.cleanedTokenRankUserID(settings.tokenRankUserID),
             language: settings.language,
             skippedUpdateVersion: settings.skippedUpdateVersion
         )

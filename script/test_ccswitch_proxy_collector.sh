@@ -42,6 +42,7 @@ swiftc \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Localization.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/TokenRankService.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift" \
   "$SWIFT_DIR/Tests/Fixtures/CCSwitchProxyFixtureCheck.swift" \
   -o "$EXECUTABLE"
