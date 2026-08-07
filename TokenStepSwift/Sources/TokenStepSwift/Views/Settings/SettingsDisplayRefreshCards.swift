@@ -52,7 +52,7 @@ struct SettingsRefreshCard: View {
     var body: some View {
         SettingsCard(title: L("自动刷新"), symbol: "arrow.triangle.2.circlepath.circle.fill") {
             VStack(alignment: .leading, spacing: 18) {
-                Text(L("菜单栏、弹层和仪表盘会按这个频率同步更新。"))
+                Text(L("面板可见时按此频率检查；后台会根据供电状态降低频率。"))
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
 

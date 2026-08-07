@@ -37,6 +37,11 @@ struct PopoverPanelView: View {
         .frame(width: 412)
         .background(TokenStepBackdrop())
         .id(appState.appearanceID)
+        .onAppear {
+            if !isScreenshotRendering {
+                appState.refreshForForeground()
+            }
+        }
     }
 
     private var header: some View {

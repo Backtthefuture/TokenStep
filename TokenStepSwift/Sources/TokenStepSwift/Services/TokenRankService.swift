@@ -4,7 +4,7 @@ enum AgentWorkRankService {
     static let defaultClient = "all"
     static let defaultRange = "today"
     static let defaultUsageMode = "all"
-    static let cacheTTL: TimeInterval = 5 * 60
+    static let cacheTTL: TimeInterval = 30 * 60
     static let leaderboardPageURL = URL(string: "https://www.zhenganhuo.com/token-rank")!
     static let myPageURL = URL(string: "https://www.zhenganhuo.com/token-rank/me")!
 

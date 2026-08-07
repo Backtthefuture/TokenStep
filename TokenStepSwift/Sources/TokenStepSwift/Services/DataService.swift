@@ -43,13 +43,32 @@ enum DataService {
         try data.write(to: AppPaths.settingsJSON, options: .atomic)
     }
 
-    static func runCollector(historyDays: Int = TokenStepSettings.defaults.historyDays) throws {
+    @discardableResult
+    static func runCollector(
+        historyDays: Int = TokenStepSettings.defaults.historyDays,
+        force: Bool = false
+    ) throws -> CollectionRunOutcome {
         defer { MemoryPressure.relieveAllocatorPressure() }
         let settings = loadSettings()
         let previousSnapshot = try? loadSnapshot()
-        let collectedSnapshot = UsageCollector.collect(
+        let beforeState = UsageCollector.collectionState(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources
+        )
+        let existingCheckpoint = loadCollectionCheckpoint()
+        if CollectionCheckpointPolicy.shouldSkipCollection(
+            force: force,
+            hasSnapshot: previousSnapshot != nil,
+            checkpoint: existingCheckpoint,
+            state: beforeState,
+            now: Date()
+        ) {
+            return .unchanged
+        }
+        let collectedSnapshot = UsageCollector.collect(
+            historyDays: historyDays,
+            includeExperimentalAgentSources: settings.showExperimentalAgentSources,
+            forceFullValidation: force || existingCheckpoint?.isFresh(at: Date()) != true
         )
         try validateRecalibrationCandidate(
             collectedSnapshot,
@@ -60,6 +79,23 @@ enum DataService {
             previousSnapshot: previousSnapshot
         )
         try persist(snapshot: snapshot)
+        let afterState = UsageCollector.collectionState(
+            historyDays: historyDays,
+            includeExperimentalAgentSources: settings.showExperimentalAgentSources
+        )
+        let sourceStateWasStable = CollectionCheckpointPolicy.shouldPersist(
+            beforeCollection: beforeState,
+            afterCollection: afterState
+        )
+        if sourceStateWasStable {
+            saveCollectionCheckpoint(
+                CollectionCheckpoint(
+                    verifiedAt: Date(),
+                    state: afterState
+                )
+            )
+        }
+        return sourceStateWasStable ? .updated : .updatedWhileSourcesChanged
     }
 
     private static func snapshotWithMigrationMetadata(
@@ -148,20 +184,45 @@ enum DataService {
         FileManager.default.fileExists(atPath: AppPaths.usageRecalibrationNoticeMarker.path)
     }
 
+    private static func loadCollectionCheckpoint() -> CollectionCheckpoint? {
+        guard let data = try? Data(contentsOf: AppPaths.collectionCheckpointJSON) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CollectionCheckpoint.self, from: data)
+    }
+
+    private static func saveCollectionCheckpoint(_ checkpoint: CollectionCheckpoint) {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(checkpoint)
+            try FileManager.default.createDirectory(
+                at: AppPaths.collectionCheckpointJSON.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: AppPaths.collectionCheckpointJSON, options: .atomic)
+        } catch {
+            // A missing checkpoint only costs another safe collection.
+        }
+    }
+
     static func acknowledgeUsageRecalibrationNotice() {
         try? FileManager.default.removeItem(at: AppPaths.usageRecalibrationNoticeMarker)
     }
 
-    static func runCollectorInHelper(historyDays: Int = TokenStepSettings.defaults.historyDays) throws {
+    static func runCollectorInHelper(
+        historyDays: Int = TokenStepSettings.defaults.historyDays,
+        force: Bool = false
+    ) throws -> CollectionRunOutcome {
         guard let helperURL = bundledHelperURL() else {
-            try runCollector(historyDays: historyDays)
-            return
+            return try runCollector(historyDays: historyDays, force: force)
         }
 
         let process = Process()
         process.executableURL = helperURL
-        process.arguments = ["collect", "\(historyDays)"]
-        process.standardOutput = Pipe()
+        process.arguments = ["collect", "\(historyDays)"] + (force ? ["--force"] : [])
+        let standardOutput = Pipe()
+        process.standardOutput = standardOutput
         let standardError = Pipe()
         process.standardError = standardError
 
@@ -197,6 +258,10 @@ enum DataService {
                 userInfo: [NSLocalizedDescriptionKey: message?.isEmpty == false ? message! : "Token collector failed."]
             )
         }
+        let outputData = standardOutput.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: outputData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return CollectionRunOutcome(rawValue: output ?? "") ?? .updated
     }
 
     static func bundledHelperURL() -> URL? {
@@ -236,5 +301,42 @@ enum DataService {
             language: settings.language,
             skippedUpdateVersion: settings.skippedUpdateVersion
         )
+    }
+}
+
+enum CollectionRunOutcome: String {
+    case updated
+    case unchanged
+    case updatedWhileSourcesChanged = "updated_source_changed"
+}
+
+struct CollectionCheckpoint: Codable, Equatable {
+    static let validationTTL: TimeInterval = 24 * 60 * 60
+
+    var verifiedAt: Date
+    var state: UsageCollectionState
+
+    func isFresh(at now: Date = Date()) -> Bool {
+        now.timeIntervalSince(verifiedAt) < Self.validationTTL
+    }
+}
+
+enum CollectionCheckpointPolicy {
+    static func shouldSkipCollection(
+        force: Bool,
+        hasSnapshot: Bool,
+        checkpoint: CollectionCheckpoint?,
+        state: UsageCollectionState,
+        now: Date
+    ) -> Bool {
+        guard !force, hasSnapshot, let checkpoint else { return false }
+        return checkpoint.isFresh(at: now) && checkpoint.state == state
+    }
+
+    static func shouldPersist(
+        beforeCollection: UsageCollectionState,
+        afterCollection: UsageCollectionState
+    ) -> Bool {
+        beforeCollection == afterCollection
     }
 }

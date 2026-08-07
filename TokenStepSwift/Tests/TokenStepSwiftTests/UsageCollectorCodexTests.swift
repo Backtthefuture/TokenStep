@@ -100,7 +100,7 @@ final class UsageCollectorCodexTests: XCTestCase {
     func testCodexCollectorCacheHitAppendAndRebuildRemainStable() throws {
         let home = try makeTemporaryHome("cache")
         let root = home.appendingPathComponent(".codex/sessions/2026/07/13", isDirectory: true)
-        let cache = home.appendingPathComponent("cache/collector-v8.json")
+        let cache = home.appendingPathComponent("cache/codex-incremental.sqlite3")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let file = root.appendingPathComponent("stable.jsonl")
         let initial = [
@@ -112,11 +112,18 @@ final class UsageCollectorCodexTests: XCTestCase {
         try writeCodexSession(initial, to: file)
 
         let first = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
-        let firstCache = try Data(contentsOf: cache)
+        let firstStats = try XCTUnwrap(
+            UsageCollector.codexIncrementalCacheStatsForTests(databaseURL: cache)
+        )
         let repeated = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
         XCTAssertEqual(first.totals.tokens, 160)
         XCTAssertEqual(repeated.totals.tokens, first.totals.tokens)
-        XCTAssertEqual(try Data(contentsOf: cache), firstCache)
+        XCTAssertEqual(
+            UsageCollector.codexIncrementalCacheStatsForTests(databaseURL: cache),
+            firstStats
+        )
+        XCTAssertEqual(firstStats.sessions, 1)
+        XCTAssertEqual(firstStats.records, 2)
 
         try writeCodexSession(
             initial + [
@@ -126,9 +133,18 @@ final class UsageCollectorCodexTests: XCTestCase {
         )
         let appended = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
         XCTAssertEqual(appended.totals.tokens, 230)
+        let appendedStats = try XCTUnwrap(
+            UsageCollector.codexIncrementalCacheStatsForTests(databaseURL: cache)
+        )
+        XCTAssertEqual(appendedStats.generation, firstStats.generation + 1)
+        XCTAssertEqual(appendedStats.sessions, 1)
+        XCTAssertEqual(appendedStats.records, 3)
 
-        try FileManager.default.removeItem(at: cache)
-        let rebuilt = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cache)
+        let rebuiltCache = home.appendingPathComponent("cache/codex-rebuilt.sqlite3")
+        let rebuilt = UsageCollector.collectCodexUsageSnapshotForTests(
+            homeURL: home,
+            cacheURL: rebuiltCache
+        )
         XCTAssertEqual(rebuilt.totals.tokens, appended.totals.tokens)
         XCTAssertEqual(rebuilt.sources["Codex"]?.tokenBreakdown, appended.sources["Codex"]?.tokenBreakdown)
     }

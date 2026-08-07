@@ -54,6 +54,7 @@ final class TokenIslandWindowPresenter {
               appState.shouldShowTokenIsland,
               let screen = TokenIslandDisplayDetector.notchedPrimaryScreen
         else { return }
+        appState.setForegroundRefreshSurface("token-island", visible: true)
 
         let panel = popoverPanel ?? makePopoverPanel(appState: appState)
         popoverPanel = panel
@@ -93,6 +94,7 @@ final class TokenIslandWindowPresenter {
         hidePopoverTask?.cancel()
         hidePopoverTask = nil
         popoverVisible = false
+        appState?.setForegroundRefreshSurface("token-island", visible: false)
         guard let panel = popoverPanel else { return }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.10
@@ -115,6 +117,7 @@ final class TokenIslandWindowPresenter {
             ringPanel?.orderOut(nil)
             popoverPanel?.orderOut(nil)
             popoverVisible = false
+            appState.setForegroundRefreshSurface("token-island", visible: false)
             return
         }
 

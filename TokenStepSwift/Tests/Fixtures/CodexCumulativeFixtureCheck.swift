@@ -15,7 +15,13 @@ struct CodexCumulativeFixtureCheck {
             try checkParallelChildren()
             try checkNestedChild()
             try checkRescanAppendAndRebuildStability()
+            try checkFirstFullValidationDoesNotTrustMissingHash()
+            try checkFullValidationDetectsMiddleRewrite()
+            try checkFullValidationRescansRewriteThenAppend()
             try checkParentAnchorCacheDependency()
+            try checkLateSessionMetadataForcesFullRescan()
+            try checkCorruptIncrementalCacheSelfHeals()
+            try checkCorruptIncrementalPayloadSelfHeals()
             try checkLegacyCacheRevisionTriggersRecalibration()
             try checkReasoningAndCachedSubsetsAreNotDoublePriced()
             try checkShanghaiMidnightBoundary()
@@ -347,7 +353,7 @@ struct CodexCumulativeFixtureCheck {
 
     private static func checkRescanAppendAndRebuildStability() throws {
         try withFixtureHome("stable-rescan") { home in
-            let cacheURL = home.appendingPathComponent("fixture-cache/collector-cache-v8.json")
+            let cacheURL = home.appendingPathComponent("fixture-cache/codex-incremental.sqlite3")
             let initialLines = [
                 sessionMeta(id: "stable-session", timestamp: "2026-07-13T11:00:00Z"),
                 turnContext(model: "gpt-5", timestamp: "2026-07-13T11:00:01Z"),
@@ -357,13 +363,11 @@ struct CodexCumulativeFixtureCheck {
             let log = try writeSession(home: home, filename: "stable.jsonl", lines: initialLines)
 
             let first = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cacheURL)
-            let firstCacheData = try Data(contentsOf: cacheURL)
+            let firstStats = try requireCacheStats(cacheURL)
             let repeated = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cacheURL)
-            let repeatedCacheData = try Data(contentsOf: cacheURL)
             try expectEqual(first.totals.tokens, 160, "initial scan total")
             try expectEqual(snapshotSignature(repeated), snapshotSignature(first), "unchanged repeated scan is deterministic")
-            try expectEqual(repeatedCacheData, firstCacheData, "unchanged cache hit is byte-stable")
-            try expectEqual(try cacheVersion(at: cacheURL), 8, "fixture uses the v8 cache schema")
+            try expectEqual(try requireCacheStats(cacheURL), firstStats, "unchanged cache hit performs no writes")
 
             let originalMetadata = try FileManager.default.attributesOfItem(atPath: log.path)
             let originalModificationDate = originalMetadata[.modificationDate] as? Date
@@ -393,7 +397,8 @@ struct CodexCumulativeFixtureCheck {
             }
             let afterSameMetadataRewrite = UsageCollector.collectCodexUsageSnapshotForTests(
                 homeURL: home,
-                cacheURL: cacheURL
+                cacheURL: cacheURL,
+                forceFullValidation: true
             )
             try expectEqual(
                 afterSameMetadataRewrite.totals.tokens,
@@ -410,8 +415,11 @@ struct CodexCumulativeFixtureCheck {
             let afterAppend = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cacheURL)
             try expectEqual(afterAppend.totals.tokens, 230, "append advances only to final cumulative total")
 
-            try FileManager.default.removeItem(at: cacheURL)
-            let afterCacheRebuild = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cacheURL)
+            let rebuiltCacheURL = home.appendingPathComponent("fixture-cache/codex-rebuilt.sqlite3")
+            let afterCacheRebuild = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: rebuiltCacheURL
+            )
             try expectEqual(
                 snapshotSignature(afterCacheRebuild),
                 snapshotSignature(afterAppend),
@@ -432,12 +440,13 @@ struct CodexCumulativeFixtureCheck {
 
     private static func checkParentAnchorCacheDependency() throws {
         try withFixtureHome("parent-cache-dependency") { home in
-            let cacheURL = home.appendingPathComponent("fixture-cache/collector-cache-v8.json")
+            let cacheURL = home.appendingPathComponent("fixture-cache/codex-incremental.sqlite3")
             let parentLines = [
                 sessionMeta(id: "cache-parent", timestamp: "2026-07-13T00:00:00Z"),
                 turnContext(model: "gpt-5", timestamp: "2026-07-13T00:00:01Z"),
                 tokenCount(timestamp: "2026-07-13T00:01:00Z", cumulative: vector(total: 100), last: vector(total: 100)),
-                tokenCount(timestamp: "2026-07-13T00:02:00Z", cumulative: vector(total: 200), last: vector(total: 100))
+                tokenCount(timestamp: "2026-07-13T00:02:00Z", cumulative: vector(total: 200), last: vector(total: 100)),
+                String(repeating: "ignored-padding-", count: 512)
             ]
             let parentLog = try writeSession(home: home, filename: "99-parent.jsonl", lines: parentLines)
             try writeSession(
@@ -473,6 +482,321 @@ struct CodexCumulativeFixtureCheck {
             )
             try expectEqual(afterParentAppend.totals.tokens, 360, "parent anchor update does not replay cached child history")
             try expectEqual(afterParentAppend.sources["Codex"]?.inheritedTokens, 300, "unchanged child cache uses refreshed parent anchor")
+        }
+    }
+
+    private static func checkFullValidationDetectsMiddleRewrite() throws {
+        try withFixtureHome("full-validation-middle-rewrite") { home in
+            let cacheURL = home.appendingPathComponent("fixture-cache/codex-incremental.sqlite3")
+            let initialLines = [
+                String(repeating: "leading-padding-", count: 400),
+                sessionMeta(id: "middle-rewrite", timestamp: "2026-07-13T11:30:00Z"),
+                turnContext(model: "gpt-5", timestamp: "2026-07-13T11:30:01Z"),
+                tokenCount(timestamp: "2026-07-13T11:31:00Z", cumulative: vector(total: 100), last: vector(total: 100)),
+                tokenCount(timestamp: "2026-07-13T11:32:00Z", cumulative: vector(total: 160), last: vector(total: 60)),
+                String(repeating: "trailing-padding-", count: 400)
+            ]
+            let log = try writeSession(home: home, filename: "middle.jsonl", lines: initialLines)
+            let initial = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL
+            )
+            let initialStats = try requireCacheStats(cacheURL)
+            try expectEqual(initial.totals.tokens, 160, "middle rewrite baseline")
+
+            let validated = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL,
+                forceFullValidation: true
+            )
+            try expectEqual(validated.totals.tokens, 160, "full validation baseline")
+            try expectEqual(
+                try requireCacheStats(cacheURL).generation,
+                initialStats.generation,
+                "recording a strong validation hash does not rewrite accounting payloads"
+            )
+
+            let originalAttributes = try FileManager.default.attributesOfItem(atPath: log.path)
+            let originalModificationDate = originalAttributes[.modificationDate] as? Date
+            var rewrittenLines = initialLines
+            rewrittenLines[4] = tokenCount(
+                timestamp: "2026-07-13T11:32:00Z",
+                cumulative: vector(total: 190),
+                last: vector(total: 90)
+            )
+            let originalSize = try Data(contentsOf: log).count
+            try (rewrittenLines.joined(separator: "\n") + "\n").write(
+                to: log,
+                atomically: true,
+                encoding: .utf8
+            )
+            try expectEqual(try Data(contentsOf: log).count, originalSize, "middle rewrite size")
+            if let originalModificationDate {
+                try FileManager.default.setAttributes(
+                    [.modificationDate: originalModificationDate],
+                    ofItemAtPath: log.path
+                )
+            }
+
+            let rewritten = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL,
+                forceFullValidation: true
+            )
+            try expectEqual(
+                rewritten.totals.tokens,
+                190,
+                "strong validation detects a same-size same-mtime middle rewrite"
+            )
+        }
+    }
+
+    private static func checkFirstFullValidationDoesNotTrustMissingHash() throws {
+        try withFixtureHome("first-validation-middle-rewrite") { home in
+            let cacheURL = home.appendingPathComponent("fixture-cache/codex-incremental.sqlite3")
+            let initialLines = [
+                String(repeating: "leading-padding-", count: 400),
+                sessionMeta(id: "first-validation", timestamp: "2026-07-13T11:30:00Z"),
+                turnContext(model: "gpt-5", timestamp: "2026-07-13T11:30:01Z"),
+                tokenCount(timestamp: "2026-07-13T11:31:00Z", cumulative: vector(total: 100), last: vector(total: 100)),
+                tokenCount(timestamp: "2026-07-13T11:32:00Z", cumulative: vector(total: 160), last: vector(total: 60)),
+                String(repeating: "trailing-padding-", count: 400)
+            ]
+            let log = try writeSession(home: home, filename: "first-validation.jsonl", lines: initialLines)
+            let initial = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL
+            )
+            try expectEqual(initial.totals.tokens, 160, "first validation baseline")
+
+            let originalAttributes = try FileManager.default.attributesOfItem(atPath: log.path)
+            let originalModificationDate = originalAttributes[.modificationDate] as? Date
+            let originalSize = try Data(contentsOf: log).count
+            var rewrittenLines = initialLines
+            rewrittenLines[4] = tokenCount(
+                timestamp: "2026-07-13T11:32:00Z",
+                cumulative: vector(total: 190),
+                last: vector(total: 90)
+            )
+            try (rewrittenLines.joined(separator: "\n") + "\n").write(
+                to: log,
+                atomically: true,
+                encoding: .utf8
+            )
+            try expectEqual(try Data(contentsOf: log).count, originalSize, "first validation rewrite size")
+            if let originalModificationDate {
+                try FileManager.default.setAttributes(
+                    [.modificationDate: originalModificationDate],
+                    ofItemAtPath: log.path
+                )
+            }
+
+            let validated = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL,
+                forceFullValidation: true
+            )
+            try expectEqual(
+                validated.totals.tokens,
+                190,
+                "first validation rescans instead of trusting a missing strong-hash baseline"
+            )
+        }
+    }
+
+    private static func checkFullValidationRescansRewriteThenAppend() throws {
+        try withFixtureHome("full-validation-rewrite-append") { home in
+            let cacheURL = home.appendingPathComponent("fixture-cache/codex-incremental.sqlite3")
+            let freshCacheURL = home.appendingPathComponent("fresh-cache/codex-incremental.sqlite3")
+            let initialLines = [
+                String(repeating: "leading-padding-", count: 400),
+                sessionMeta(id: "rewrite-append", timestamp: "2026-07-13T11:30:00Z"),
+                turnContext(model: "gpt-5", timestamp: "2026-07-13T11:30:01Z"),
+                tokenCount(timestamp: "2026-07-13T11:31:00Z", cumulative: vector(total: 100), last: vector(total: 100)),
+                tokenCount(timestamp: "2026-07-13T11:32:00Z", cumulative: vector(total: 160), last: vector(total: 60)),
+                String(repeating: "trailing-padding-", count: 400)
+            ]
+            let log = try writeSession(home: home, filename: "rewrite-append.jsonl", lines: initialLines)
+            _ = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home, cacheURL: cacheURL)
+            _ = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL,
+                forceFullValidation: true
+            )
+
+            let originalAttributes = try FileManager.default.attributesOfItem(atPath: log.path)
+            let originalModificationDate = originalAttributes[.modificationDate] as? Date
+            let originalSize = try Data(contentsOf: log).count
+            var rewrittenLines = initialLines
+            rewrittenLines[4] = tokenCount(
+                timestamp: "2026-07-13T11:32:00Z",
+                cumulative: vector(total: 190),
+                last: vector(total: 90)
+            )
+            try (rewrittenLines.joined(separator: "\n") + "\n").write(
+                to: log,
+                atomically: true,
+                encoding: .utf8
+            )
+            try expectEqual(try Data(contentsOf: log).count, originalSize, "rewrite-append prefix size")
+            if let originalModificationDate {
+                try FileManager.default.setAttributes(
+                    [.modificationDate: originalModificationDate],
+                    ofItemAtPath: log.path
+                )
+            }
+            try appendLine(
+                turnContext(model: "gpt-5", timestamp: "2026-07-14T00:00:00Z"),
+                to: log
+            )
+            try appendLine(
+                tokenCount(
+                    timestamp: "2026-07-14T00:01:00Z",
+                    cumulative: vector(total: 230),
+                    last: vector(total: 40)
+                ),
+                to: log
+            )
+
+            let validated = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL,
+                forceFullValidation: true
+            )
+            try expectEqual(dailyTokens(validated, date: "2026-07-13"), 190, "rewrite-append corrected prior day")
+            try expectEqual(dailyTokens(validated, date: "2026-07-14"), 40, "rewrite-append keeps only the new-day delta")
+
+            let rebuilt = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: freshCacheURL
+            )
+            try expectEqual(
+                snapshotSignature(validated),
+                snapshotSignature(rebuilt),
+                "forced rewrite-append validation matches a clean rebuild"
+            )
+        }
+    }
+
+    private static func checkCorruptIncrementalCacheSelfHeals() throws {
+        try withFixtureHome("corrupt-incremental-cache") { home in
+            let cacheURL = home.appendingPathComponent("fixture-cache/codex-incremental.sqlite3")
+            try FileManager.default.createDirectory(
+                at: cacheURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try Data("not-a-sqlite-database".utf8).write(to: cacheURL)
+            try writeSession(
+                home: home,
+                filename: "recoverable.jsonl",
+                lines: [
+                    sessionMeta(id: "recoverable", timestamp: "2026-07-13T12:00:00Z"),
+                    turnContext(model: "gpt-5", timestamp: "2026-07-13T12:00:01Z"),
+                    tokenCount(
+                        timestamp: "2026-07-13T12:01:00Z",
+                        cumulative: vector(total: 140),
+                        last: vector(total: 140)
+                    )
+                ]
+            )
+
+            let snapshot = UsageCollector.collectCodexWithIncrementalFallbackForTests(
+                homeURL: home,
+                cacheURL: cacheURL
+            )
+            try expectEqual(snapshot.totals.tokens, 140, "corrupt cache rebuild preserves accounting")
+            try expectEqual(snapshot.sources["Codex"]?.status, "ok", "corrupt cache rebuild status")
+            let stats = try requireCacheStats(cacheURL)
+            try expectEqual(stats.sessions, 1, "corrupt cache is replaced with a valid incremental store")
+        }
+    }
+
+    private static func checkLateSessionMetadataForcesFullRescan() throws {
+        try withFixtureHome("late-session-metadata") { home in
+            let cacheURL = home.appendingPathComponent("fixture-cache/codex-incremental.sqlite3")
+            try writeSimpleParent(home: home, filename: "99-parent.jsonl", id: "late-meta-parent")
+            let child = try writeSession(
+                home: home,
+                filename: "00-child.jsonl",
+                lines: ["{\"type\":\"event_msg\",\"payload\":{\"type\":\"noop\"}}"]
+            )
+
+            let beforeMetadata = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL
+            )
+            try expectEqual(beforeMetadata.totals.tokens, 300, "leading child log is initially empty")
+
+            for line in replayChildLines(
+                id: "late-meta-child",
+                parentID: "late-meta-parent",
+                includeSecondParentMetadata: false,
+                terminalTotals: [360]
+            ) {
+                try appendLine(line, to: child)
+            }
+            let afterMetadata = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL
+            )
+            try expectEqual(
+                afterMetadata.totals.tokens,
+                360,
+                "an appended first session_meta forces a full fork-aware rescan"
+            )
+            try expectEqual(
+                afterMetadata.sources["Codex"]?.inheritedTokens,
+                300,
+                "late metadata restores the parent fork anchor"
+            )
+        }
+    }
+
+    private static func checkCorruptIncrementalPayloadSelfHeals() throws {
+        try withFixtureHome("corrupt-incremental-payload") { home in
+            let cacheURL = home.appendingPathComponent("fixture-cache/codex-incremental.sqlite3")
+            try writeSession(
+                home: home,
+                filename: "payload.jsonl",
+                lines: [
+                    sessionMeta(id: "payload-session", timestamp: "2026-07-13T13:00:00Z"),
+                    turnContext(model: "gpt-5", timestamp: "2026-07-13T13:00:01Z"),
+                    tokenCount(
+                        timestamp: "2026-07-13T13:01:00Z",
+                        cumulative: vector(total: 175),
+                        last: vector(total: 175)
+                    )
+                ]
+            )
+            let initial = UsageCollector.collectCodexUsageSnapshotForTests(
+                homeURL: home,
+                cacheURL: cacheURL
+            )
+            try expectEqual(initial.totals.tokens, 175, "payload corruption fixture baseline")
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+            process.arguments = [
+                cacheURL.path,
+                "UPDATE codex_sessions SET diagnostics = X'00'"
+            ]
+            process.standardOutput = Pipe()
+            process.standardError = Pipe()
+            try process.run()
+            process.waitUntilExit()
+            try expectEqual(process.terminationStatus, 0, "fixture corrupts one cache payload")
+
+            let healed = UsageCollector.collectCodexWithIncrementalFallbackForTests(
+                homeURL: home,
+                cacheURL: cacheURL
+            )
+            try expectEqual(healed.totals.tokens, 175, "payload corruption rebuild preserves accounting")
+            try expectEqual(healed.sources["Codex"]?.status, "ok", "payload corruption rebuild status")
+            try expectEqual(
+                try requireCacheStats(cacheURL).sessions,
+                1,
+                "payload corruption is replaced instead of repeatedly falling back"
+            )
         }
     }
 
@@ -745,10 +1069,11 @@ struct CodexCumulativeFixtureCheck {
         snapshot.daily.first(where: { $0.date == date })?.totalTokens
     }
 
-    private static func cacheVersion(at url: URL) throws -> Int? {
-        let data = try Data(contentsOf: url)
-        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        return object?["version"] as? Int
+    private static func requireCacheStats(_ url: URL) throws -> CodexIncrementalCacheStats {
+        guard let stats = UsageCollector.codexIncrementalCacheStatsForTests(databaseURL: url) else {
+            throw FixtureFailure("incremental cache stats are available")
+        }
+        return stats
     }
 
     private static func snapshotSignature(_ snapshot: UsageSnapshot) -> SnapshotSignature {

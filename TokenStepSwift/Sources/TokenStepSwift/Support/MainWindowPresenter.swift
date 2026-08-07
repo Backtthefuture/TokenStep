@@ -14,13 +14,15 @@ final class MainWindowNavigation: ObservableObject {
 }
 
 @MainActor
-final class MainWindowPresenter {
+final class MainWindowPresenter: NSObject, NSWindowDelegate {
     static let shared = MainWindowPresenter()
 
     private var window: NSWindow?
+    private weak var appState: AppState?
     private let navigation = MainWindowNavigation()
 
     func show(appState: AppState, section: AppSection? = nil) {
+        self.appState = appState
         if let section {
             navigation.select(section)
         }
@@ -31,6 +33,7 @@ final class MainWindowPresenter {
         closeTransientPanels(except: window)
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
+        appState.setForegroundRefreshSurface("main-window", visible: true)
     }
 
     private func makeWindow(appState: AppState) -> NSWindow {
@@ -46,12 +49,25 @@ final class MainWindowPresenter {
         window.titlebarSeparatorStyle = .none
         window.toolbarStyle = .unifiedCompact
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.minSize = NSSize(width: 1080, height: 720)
         window.maxSize = NSSize(width: 1440, height: 980)
         window.setContentSize(NSSize(width: 1240, height: 820))
         window.center()
         window.setFrameAutosaveName("TokenStepMainWindow.v2")
         return window
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        appState?.setForegroundRefreshSurface("main-window", visible: false)
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        appState?.setForegroundRefreshSurface("main-window", visible: false)
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        appState?.setForegroundRefreshSurface("main-window", visible: true)
     }
 
     private func closeTransientPanels(except mainWindow: NSWindow) {
