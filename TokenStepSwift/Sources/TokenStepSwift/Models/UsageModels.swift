@@ -785,6 +785,29 @@ enum TokenStepLanguage: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum AgentWorkRankVisibility: String, Codable, CaseIterable, Identifiable {
+    case automatic
+    case visible
+    case hidden
+
+    var id: String { rawValue }
+
+    var readsLocalIdentity: Bool {
+        self != .hidden
+    }
+
+    func shouldShow(hasLocalIdentity: Bool) -> Bool {
+        switch self {
+        case .automatic:
+            return hasLocalIdentity
+        case .visible:
+            return true
+        case .hidden:
+            return false
+        }
+    }
+}
+
 struct TokenStepSettings: Codable {
     var dailyGoalTokens: Int
     var refreshIntervalSeconds: Int
@@ -796,7 +819,7 @@ struct TokenStepSettings: Codable {
     var tokenIslandEnabled: Bool
     var tokenIslandPlacement: TokenIslandDisplayPlacement
     var showCodexQuota: Bool
-    var showAgentWorkRank: Bool
+    var agentWorkRankVisibility: AgentWorkRankVisibility
     var showExperimentalAgentSources: Bool
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
@@ -812,7 +835,8 @@ struct TokenStepSettings: Codable {
         case tokenIslandEnabled = "token_island_enabled"
         case tokenIslandPlacement = "token_island_placement"
         case showCodexQuota = "show_codex_quota"
-        case showAgentWorkRank = "show_agent_work_rank"
+        case agentWorkRankVisibility = "agent_work_rank_visibility"
+        case legacyShowAgentWorkRank = "show_agent_work_rank"
         case showExperimentalAgentSources = "show_experimental_agent_sources"
         case language
         case skippedUpdateVersion = "skipped_update_version"
@@ -829,7 +853,7 @@ struct TokenStepSettings: Codable {
         tokenIslandEnabled: false,
         tokenIslandPlacement: .menuBar,
         showCodexQuota: false,
-        showAgentWorkRank: false,
+        agentWorkRankVisibility: .automatic,
         showExperimentalAgentSources: false,
         language: .system,
         skippedUpdateVersion: nil
@@ -846,7 +870,7 @@ struct TokenStepSettings: Codable {
         tokenIslandEnabled: Bool,
         tokenIslandPlacement: TokenIslandDisplayPlacement,
         showCodexQuota: Bool,
-        showAgentWorkRank: Bool,
+        agentWorkRankVisibility: AgentWorkRankVisibility,
         showExperimentalAgentSources: Bool,
         language: TokenStepLanguage,
         skippedUpdateVersion: String?
@@ -861,7 +885,7 @@ struct TokenStepSettings: Codable {
         self.tokenIslandEnabled = tokenIslandEnabled
         self.tokenIslandPlacement = tokenIslandPlacement
         self.showCodexQuota = showCodexQuota
-        self.showAgentWorkRank = showAgentWorkRank
+        self.agentWorkRankVisibility = agentWorkRankVisibility
         self.showExperimentalAgentSources = showExperimentalAgentSources
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
@@ -888,9 +912,33 @@ struct TokenStepSettings: Codable {
             tokenIslandPlacement = defaults.tokenIslandPlacement
         }
         showCodexQuota = try container.decodeIfPresent(Bool.self, forKey: .showCodexQuota) ?? defaults.showCodexQuota
-        showAgentWorkRank = try container.decodeIfPresent(Bool.self, forKey: .showAgentWorkRank) ?? defaults.showAgentWorkRank
+        if let visibility = try container.decodeIfPresent(AgentWorkRankVisibility.self, forKey: .agentWorkRankVisibility) {
+            agentWorkRankVisibility = visibility
+        } else if let legacyVisible = try container.decodeIfPresent(Bool.self, forKey: .legacyShowAgentWorkRank) {
+            agentWorkRankVisibility = legacyVisible ? .visible : .automatic
+        } else {
+            agentWorkRankVisibility = defaults.agentWorkRankVisibility
+        }
         showExperimentalAgentSources = try container.decodeIfPresent(Bool.self, forKey: .showExperimentalAgentSources) ?? defaults.showExperimentalAgentSources
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dailyGoalTokens, forKey: .dailyGoalTokens)
+        try container.encode(refreshIntervalSeconds, forKey: .refreshIntervalSeconds)
+        try container.encode(historyDays, forKey: .historyDays)
+        try container.encode(theme, forKey: .theme)
+        try container.encode(autoUpdateEnabled, forKey: .autoUpdateEnabled)
+        try container.encode(askBeforeDownloadingUpdates, forKey: .askBeforeDownloadingUpdates)
+        try container.encode(requireVerifiedUpdates, forKey: .requireVerifiedUpdates)
+        try container.encode(tokenIslandEnabled, forKey: .tokenIslandEnabled)
+        try container.encode(tokenIslandPlacement, forKey: .tokenIslandPlacement)
+        try container.encode(showCodexQuota, forKey: .showCodexQuota)
+        try container.encode(agentWorkRankVisibility, forKey: .agentWorkRankVisibility)
+        try container.encode(showExperimentalAgentSources, forKey: .showExperimentalAgentSources)
+        try container.encode(language, forKey: .language)
+        try container.encodeIfPresent(skippedUpdateVersion, forKey: .skippedUpdateVersion)
     }
 }

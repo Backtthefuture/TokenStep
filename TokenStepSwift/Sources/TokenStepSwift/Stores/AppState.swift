@@ -120,6 +120,10 @@ final class AppState: ObservableObject {
         "\(settings.theme.id)-\(settings.language.resolved.id)"
     }
 
+    var shouldShowAgentWorkRank: Bool {
+        settings.agentWorkRankVisibility.shouldShow(hasLocalIdentity: agentWorkRankIdentity != nil)
+    }
+
     func load() {
         defer { MemoryPressure.relieveAllocatorPressure() }
         let loadedSettings = DataService.loadSettings()
@@ -132,8 +136,14 @@ final class AppState: ObservableObject {
             codexQuota = .unavailable
             claudeQuota = .unavailable
         }
-        if !loadedSettings.showAgentWorkRank {
+        if !loadedSettings.agentWorkRankVisibility.readsLocalIdentity {
             clearTokenRankState()
+        } else {
+            agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
+            if loadedSettings.agentWorkRankVisibility == .automatic,
+               agentWorkRankIdentity == nil {
+                clearTokenRankState()
+            }
         }
         autostartEnabled = AutostartService.isEnabled
     }
@@ -296,10 +306,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    func setAgentWorkRankVisible(_ visible: Bool) {
-        settings.showAgentWorkRank = visible
+    func setAgentWorkRankVisibility(_ visibility: AgentWorkRankVisibility) {
+        settings.agentWorkRankVisibility = visibility
         saveSettingsAndReload()
-        if settings.showAgentWorkRank {
+        if shouldShowAgentWorkRank {
             refreshTokenRank(force: true)
         } else {
             clearTokenRankState()
@@ -313,7 +323,12 @@ final class AppState: ObservableObject {
     }
 
     func refreshTokenRank(force: Bool = false) {
-        guard settings.showAgentWorkRank else {
+        guard settings.agentWorkRankVisibility.readsLocalIdentity else {
+            clearTokenRankState()
+            return
+        }
+        agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
+        guard shouldShowAgentWorkRank else {
             clearTokenRankState()
             return
         }
@@ -332,14 +347,14 @@ final class AppState: ObservableObject {
             }
             do {
                 let leaderboard = try await AgentWorkRankService.fetchLeaderboard()
-                guard settings.showAgentWorkRank else {
+                guard shouldShowAgentWorkRank else {
                     clearTokenRankState()
                     return
                 }
                 tokenRank = leaderboard
                 tokenRankError = nil
             } catch {
-                guard settings.showAgentWorkRank else {
+                guard shouldShowAgentWorkRank else {
                     clearTokenRankState()
                     return
                 }

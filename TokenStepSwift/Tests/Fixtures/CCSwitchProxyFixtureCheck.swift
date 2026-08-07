@@ -491,7 +491,26 @@ struct CCSwitchProxyFixtureCheck {
             {"show_token_rank":true,"token_rank_user_id":"168066"}
             """.utf8)
         )
-        try assertEqual(legacySettings.showAgentWorkRank, false, "legacy rank stays disabled")
+        try assertEqual(legacySettings.agentWorkRankVisibility, .automatic, "legacy rank uses automatic detection")
+
+        let hiddenSettings = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: Data("""
+            {"agent_work_rank_visibility":"hidden","show_agent_work_rank":true}
+            """.utf8)
+        )
+        try assertEqual(hiddenSettings.agentWorkRankVisibility, .hidden, "explicit hidden rank state")
+        try assertEqual(AgentWorkRankVisibility.automatic.readsLocalIdentity, true, "automatic reads identity")
+        try assertEqual(AgentWorkRankVisibility.automatic.shouldShow(hasLocalIdentity: false), false, "automatic hides without identity")
+        try assertEqual(AgentWorkRankVisibility.automatic.shouldShow(hasLocalIdentity: true), true, "automatic shows with identity")
+        try assertEqual(AgentWorkRankVisibility.hidden.readsLocalIdentity, false, "hidden skips identity")
+        try assertEqual(AgentWorkRankVisibility.hidden.shouldShow(hasLocalIdentity: true), false, "hidden stays hidden")
+
+        let encodedHidden = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(hiddenSettings)
+        ) as? [String: Any]
+        try assertEqual(encodedHidden?["agent_work_rank_visibility"] as? String, "hidden", "new rank visibility encoding")
+        try assertEqual(encodedHidden?["show_agent_work_rank"] == nil, true, "legacy rank key is not encoded")
     }
 
     private static func runCodexArchivedSessionChecks() throws {
