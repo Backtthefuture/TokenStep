@@ -15,7 +15,11 @@ enum TokenStepHelper {
             switch command {
             case "collect":
                 let historyDays = arguments.first.flatMap(Int.init) ?? DataService.loadSettings().historyDays
-                try DataService.runCollector(historyDays: historyDays)
+                let outcome = try DataService.runCollector(
+                    historyDays: historyDays,
+                    force: arguments.contains("--force")
+                )
+                FileHandle.standardOutput.write(Data("\(outcome.rawValue)\n".utf8))
             case "install":
                 try UpdateInstaller(arguments: arguments).run()
             default:

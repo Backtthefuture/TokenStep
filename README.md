@@ -22,7 +22,7 @@ TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claud
 
 下载最新版 DMG，打开后把 `TokenStep.app` 拖进「应用程序」即可使用：
 
-[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.1.47.dmg)
+[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.1.48.dmg)
 
 也可以从 Release 页面查看所有版本：
 
@@ -55,7 +55,7 @@ TokenStep 适合这些人：
 - 按客户端、按模型查看用量统计。
 - 粗略估算 Token 消耗金额。
 - 每日目标可设置，默认每天一个亿。
-- 自动刷新，默认 5 分钟，兼顾及时性和常驻内存/电量占用。
+- 打开面板时按设置的新鲜度刷新；后台在接电时最低 15 分钟、电池或低电量模式下最低 30 分钟刷新，并跳过未变化的数据。
 - 开机启动，可在设置里关闭。
 - 多种主题色，菜单栏、圆环、活动墙和按钮会一起变化。
 - 一键截图分享当前页面。
@@ -66,7 +66,7 @@ TokenStep 适合这些人：
 
 ## 当前支持
 
-- Codex：优先读取 Codex 本地 SQLite token 汇总，必要时回退 JSONL。
+- Codex：读取本地 JSONL 用量元数据并维护逐会话增量缓存；缓存异常时自动重建，必要时回退 Codex 本地 SQLite 汇总。
 - Claude Code：读取 `~/.claude/projects/**/*.jsonl` 里的 usage 元数据。
 - CC Switch：实验支持，读取本机 `proxy_request_logs` 中成功且 token 数大于 0 的请求行。
 - 额度显示：Codex 读取本机 Codex 账户限额；Claude Code 会在本机读取 Claude Code 钥匙串凭证，并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度。
@@ -89,7 +89,7 @@ TokenStep 默认只做本地统计。
 
 ## 安装方式
 
-1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.1.47.dmg)。
+1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.1.48.dmg)。
 2. 打开 DMG。
 3. 把 `TokenStep.app` 拖到「应用程序」。
 4. 启动 TokenStep。
@@ -149,7 +149,7 @@ TokenStepSwift/dist/TokenStep.app
 Developer ID 签名：
 
 ```bash
-TOKENSTEP_VERSION=0.1.47 \
+TOKENSTEP_VERSION=0.1.48 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 ./script/package_release.sh
 ```
@@ -157,7 +157,7 @@ CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 签名 + Apple 公证：
 
 ```bash
-TOKENSTEP_VERSION=0.1.47 \
+TOKENSTEP_VERSION=0.1.48 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
 ./script/package_release.sh --notarize

@@ -734,6 +734,25 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(source?.dedupedRecords, 1, "shared-session proxy record is deduplicated")
         try assertEqual(snapshot.totals.tokens, 35, "shared-session request counts once")
         try assertEqual(snapshot.totals.cost, 0.45, "shared-session proxy cost enriches native record")
+
+        let incremental = UsageCollector.collectIncrementalCodexAndProxySnapshotForTests(
+            codexRoots: [root],
+            cacheURL: root.appendingPathComponent("incremental-cache.sqlite3"),
+            ccSwitchDatabaseURL: database
+        )
+        let incrementalSource = incremental.sources["CC Switch Proxy"]
+        try assertEqual(
+            incrementalSource?.status,
+            "all_deduped",
+            "incremental shared-session Codex source status"
+        )
+        try assertEqual(
+            incrementalSource?.dedupedRecords,
+            1,
+            "incremental cache retains request-level details for proxy dedupe"
+        )
+        try assertEqual(incremental.totals.tokens, 35, "incremental shared-session request counts once")
+        try assertEqual(incremental.totals.cost, 0.45, "incremental proxy cost enriches native record")
     }
 
     private static func codexLines(sessionID: String, totalTokens: Int) -> [String] {

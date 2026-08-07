@@ -26,7 +26,14 @@ final class AppState: ObservableObject {
     @Published var lastError: String?
 
     private var timer: Timer?
+    private var foregroundTimer: Timer?
+    private var foregroundRefreshSurfaces = Set<String>()
     private var pendingRefreshAfterCurrent = false
+    private var pendingForcedRefresh = false
+    private var lastQuotaRefreshAttemptAt: Date?
+    private var lastRankRefreshAttemptAt: Date?
+    private var lastAutomaticUsageRefreshAttemptAt: Date?
+    private var lastUsageObservedAt: Date?
 
     init() {
         load()
@@ -40,6 +47,7 @@ final class AppState: ObservableObject {
 
     deinit {
         timer?.invalidate()
+        foregroundTimer?.invalidate()
     }
 
     var today: DailyUsage {
@@ -148,34 +156,88 @@ final class AppState: ObservableObject {
         autostartEnabled = AutostartService.isEnabled
     }
 
-    func refresh() {
+    func refresh(forceCollection: Bool = true) {
         guard !isRefreshing else {
-            pendingRefreshAfterCurrent = true
+            if forceCollection {
+                pendingRefreshAfterCurrent = true
+                pendingForcedRefresh = true
+            }
             return
+        }
+        let refreshStartedAt = Date()
+        if !forceCollection,
+           EnergyRefreshPolicy.isFresh(
+               lastAttemptAt: lastAutomaticUsageRefreshAttemptAt,
+               ttl: EnergyRefreshPolicy.automaticRetryTTL(
+                   requestedSeconds: settings.refreshIntervalSeconds
+               ),
+               now: refreshStartedAt
+           ) {
+            return
+        }
+        if !forceCollection {
+            lastAutomaticUsageRefreshAttemptAt = refreshStartedAt
         }
         isRefreshing = true
         lastError = nil
         let historyDays = settings.historyDays
         Task {
+            var outcome: CollectionRunOutcome = .unchanged
+            var collectionSucceeded = false
             do {
-                try await Task.detached(priority: .utility) {
-                    try DataService.runCollectorInHelper(historyDays: historyDays)
+                outcome = try await Task.detached(priority: .utility) {
+                    try DataService.runCollectorInHelper(
+                        historyDays: historyDays,
+                        force: forceCollection
+                    )
                 }.value
+                collectionSucceeded = true
             } catch {
                 lastError = error.localizedDescription
             }
-            load()
+            if outcome != .unchanged {
+                load()
+            }
+            if collectionSucceeded, outcome != .updatedWhileSourcesChanged {
+                lastUsageObservedAt = Date()
+            }
             isRefreshing = false
-            refreshCodexQuota()
-            refreshTokenRank(force: true)
             if pendingRefreshAfterCurrent {
+                let force = pendingForcedRefresh
                 pendingRefreshAfterCurrent = false
-                refresh()
+                pendingForcedRefresh = false
+                refresh(forceCollection: force)
             }
         }
     }
 
-    func refreshCodexQuota() {
+    func refreshForForeground(now: Date = Date()) {
+        let snapshotDate = UsageSnapshotRefreshPolicy.generatedDate(snapshot.generatedAt)
+        let freshestObservation = [snapshotDate, lastUsageObservedAt]
+            .compactMap { $0 }
+            .max()
+        if EnergyRefreshPolicy.shouldRefreshForForeground(
+            generatedAt: freshestObservation,
+            requestedSeconds: settings.refreshIntervalSeconds,
+            now: now
+        ) {
+            refresh(forceCollection: false)
+        }
+        refreshCodexQuota(now: now)
+        refreshTokenRank()
+    }
+
+    func setForegroundRefreshSurface(_ identifier: String, visible: Bool) {
+        if visible {
+            foregroundRefreshSurfaces.insert(identifier)
+            refreshForForeground()
+        } else {
+            foregroundRefreshSurfaces.remove(identifier)
+        }
+        configureForegroundTimer()
+    }
+
+    func refreshCodexQuota(force: Bool = false, now: Date = Date()) {
         guard settings.showCodexQuota else {
             codexQuota = .unavailable
             claudeQuota = .unavailable
@@ -183,6 +245,15 @@ final class AppState: ObservableObject {
             return
         }
         guard !isRefreshingCodexQuota else { return }
+        if !force,
+           EnergyRefreshPolicy.isFresh(
+               lastAttemptAt: lastQuotaRefreshAttemptAt,
+               ttl: EnergyRefreshPolicy.quotaTTL,
+               now: now
+           ) {
+            return
+        }
+        lastQuotaRefreshAttemptAt = now
         isRefreshingCodexQuota = true
         Task {
             let quotas = await Task.detached(priority: .utility) {
@@ -268,6 +339,7 @@ final class AppState: ObservableObject {
         settings.refreshIntervalSeconds = seconds
         saveSettingsAndReload()
         configureTimer()
+        configureForegroundTimer()
     }
 
     func setTheme(_ theme: TokenStepTheme) {
@@ -298,7 +370,7 @@ final class AppState: ObservableObject {
         settings.showCodexQuota = visible
         saveSettingsAndReload()
         if visible {
-            refreshCodexQuota()
+            refreshCodexQuota(force: true)
         } else {
             codexQuota = .unavailable
             claudeQuota = .unavailable
@@ -322,7 +394,7 @@ final class AppState: ObservableObject {
         refresh()
     }
 
-    func refreshTokenRank(force: Bool = false) {
+    func refreshTokenRank(force: Bool = false, now: Date = Date()) {
         guard settings.agentWorkRankVisibility.readsLocalIdentity else {
             clearTokenRankState()
             return
@@ -333,11 +405,20 @@ final class AppState: ObservableObject {
             return
         }
         guard !isRefreshingTokenRank else { return }
-        if !force,
-           let fetchedAt = tokenRank?.fetchedAt,
-           Date().timeIntervalSince(fetchedAt) < AgentWorkRankService.cacheTTL {
-            return
+        if !force {
+            if EnergyRefreshPolicy.isFresh(
+                lastAttemptAt: lastRankRefreshAttemptAt,
+                ttl: EnergyRefreshPolicy.rankTTL,
+                now: now
+            ) {
+                return
+            }
+            if let fetchedAt = tokenRank?.fetchedAt,
+               now.timeIntervalSince(fetchedAt) < AgentWorkRankService.cacheTTL {
+                return
+            }
         }
+        lastRankRefreshAttemptAt = now
 
         agentWorkRankIdentity = AgentWorkRankService.loadLocalIdentity()
         isRefreshingTokenRank = true
@@ -496,13 +577,46 @@ final class AppState: ObservableObject {
     private func configureTimer() {
         timer?.invalidate()
         timer = nil
-        guard settings.refreshIntervalSeconds > 0 else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(settings.refreshIntervalSeconds), repeats: true) { [weak self] _ in
+        guard let interval = EnergyRefreshPolicy.backgroundInterval(
+            requestedSeconds: settings.refreshIntervalSeconds,
+            powerSource: TokenStepPowerState.source,
+            lowPowerMode: TokenStepPowerState.lowPowerModeEnabled
+        ) else {
+            return
+        }
+        timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(interval), repeats: false) { [weak self] _ in
             Task { @MainActor in
-                self?.refresh()
+                guard let self else { return }
+                self.refresh(forceCollection: false)
+                self.refreshCodexQuota()
+                self.refreshTokenRank()
+                self.configureTimer()
             }
         }
-        timer?.tolerance = min(TimeInterval(settings.refreshIntervalSeconds) * 0.1, 30)
+        timer?.tolerance = min(TimeInterval(interval) * 0.1, 60)
+    }
+
+    private func configureForegroundTimer() {
+        foregroundTimer?.invalidate()
+        foregroundTimer = nil
+        guard !foregroundRefreshSurfaces.isEmpty,
+              let interval = EnergyRefreshPolicy.foregroundTickInterval(
+                  requestedSeconds: settings.refreshIntervalSeconds
+              )
+        else {
+            return
+        }
+        foregroundTimer = Timer.scheduledTimer(
+            withTimeInterval: TimeInterval(interval),
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.refreshForForeground()
+                self.configureForegroundTimer()
+            }
+        }
+        foregroundTimer?.tolerance = min(TimeInterval(interval) * 0.1, 10)
     }
 
     private func refreshIfSnapshotIsStale() {
@@ -522,7 +636,7 @@ final class AppState: ObservableObject {
                     + "\(UsageCollector.codexAccountingRevision); starting immediate recalibration."
             )
         }
-        refresh()
+        refresh(forceCollection: reason != .stale)
     }
 
     private func scheduleDeferredUpdateCheck() {
@@ -604,8 +718,7 @@ enum UsageSnapshotRefreshPolicy {
         guard refreshIntervalSeconds > 0 else {
             return snapshot.generatedAt == nil ? .missingSnapshotTimestamp : nil
         }
-        guard let generatedAt = snapshot.generatedAt,
-              let generatedDate = parseGeneratedAt(generatedAt)
+        guard let generatedDate = generatedDate(snapshot.generatedAt)
         else {
             return .missingSnapshotTimestamp
         }
@@ -615,7 +728,8 @@ enum UsageSnapshotRefreshPolicy {
         return nil
     }
 
-    private static func parseGeneratedAt(_ value: String) -> Date? {
+    static func generatedDate(_ value: String?) -> Date? {
+        guard let value else { return nil }
         if let date = generatedAtISOWithFractional.date(from: value) {
             return date
         }

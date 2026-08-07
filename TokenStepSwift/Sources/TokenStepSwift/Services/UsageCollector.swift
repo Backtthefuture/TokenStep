@@ -1,4 +1,35 @@
+import CryptoKit
 import Foundation
+import SQLite3
+
+struct UsageCollectionFileState: Codable, Equatable {
+    var path: String
+    var size: UInt64
+    var modificationTime: TimeInterval
+}
+
+struct UsageCollectionState: Codable, Equatable {
+    var schemaVersion = 2
+    var historyDays: Int
+    var includesExperimentalAgentSources: Bool
+    var windowDay: String
+    var files: [UsageCollectionFileState]
+}
+
+struct CodexIncrementalCacheStats: Equatable {
+    var generation: Int
+    var sessions: Int
+    var records: Int
+    var lastLogicalWriteBytes: Int
+}
+
+struct CodexAccountingComparisonDiagnostics {
+    var incrementalSnapshot: UsageSnapshot
+    var referenceSnapshot: UsageSnapshot
+    var mismatchedPathHashes: [String]
+    var incrementalRecordCount: Int
+    var referenceRecordCount: Int
+}
 
 enum UsageCollector {
     static let codexAccountingRevision = 8
@@ -14,18 +45,27 @@ enum UsageCollector {
         includeExperimentalAgentSources: Bool = false,
         zCodeDatabaseURL: URL? = nil,
         hermesDatabaseURL: URL? = nil,
-        workBuddyRootURLs: [URL]? = nil
+        workBuddyRootURLs: [URL]? = nil,
+        forceFullValidation: Bool = false
     ) -> UsageSnapshot {
         let cacheLoad = loadCache()
         var cache = cacheLoad.cache
         var livePaths = Set<String>()
         let sourceCutoff = sourceFileCutoffDate(historyDays: historyDays)
-        var codex = collectCodex(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
-        codex.source.recalibratedFromRevision = cacheLoad.recalibratedFromRevision
-        let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         var ccSwitch = includeCCSwitchProxyUsage
             ? collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let codexOutcome = collectCodex(
+            cache: &cache,
+            livePaths: &livePaths,
+            modifiedSince: sourceCutoff,
+            databaseURL: AppPaths.codexIncrementalCacheSQLite,
+            forceFullValidation: forceFullValidation,
+            requiresDetailedRecords: !ccSwitch.records.isEmpty
+        )
+        var codex = codexOutcome.result
+        codex.source.recalibratedFromRevision = cacheLoad.recalibratedFromRevision
+        let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         let zCode = includeExperimentalAgentSources
             ? collectZCodeUsage(databaseURL: zCodeDatabaseURL)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
@@ -35,7 +75,11 @@ enum UsageCollector {
         let workBuddy = includeExperimentalAgentSources
             ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs, modifiedSince: sourceCutoff)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        cache.files = cache.files.filter { livePaths.contains($0.key) }
+        if codexOutcome.usedIncrementalStore {
+            cache.files = cache.files.filter { $0.value.tool != "Codex" && livePaths.contains($0.key) }
+        } else {
+            cache.files = cache.files.filter { livePaths.contains($0.key) }
+        }
         saveCache(cache)
 
         let nativeRecords = codex.records + claude.records
@@ -64,6 +108,175 @@ enum UsageCollector {
         )
     }
 
+    static func collectionState(
+        historyDays: Int,
+        includeExperimentalAgentSources: Bool,
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        now: Date = Date()
+    ) -> UsageCollectionState {
+        let cutoff = sourceFileCutoffDate(historyDays: historyDays)
+        var urls = defaultCodexSessionRoots(homeURL: homeURL)
+            .flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) }
+        urls.append(contentsOf: jsonlFiles(
+            under: homeURL.appendingPathComponent(".claude/projects", isDirectory: true),
+            modifiedSince: cutoff
+        ))
+
+        let databases = [
+            homeURL.appendingPathComponent(".codex/state_5.sqlite"),
+            homeURL.appendingPathComponent(".codex/sqlite/state_5.sqlite"),
+            homeURL.appendingPathComponent(".cc-switch/cc-switch.db")
+        ]
+        urls.append(contentsOf: existingDatabaseFiles(databases))
+
+        if includeExperimentalAgentSources {
+            urls.append(contentsOf: existingDatabaseFiles([
+                homeURL.appendingPathComponent(".zcode/cli/db/db.sqlite"),
+                homeURL.appendingPathComponent(".hermes/state.db")
+            ]))
+            urls.append(contentsOf: [
+                homeURL.appendingPathComponent(".workbuddy/projects", isDirectory: true),
+                homeURL.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
+            ].flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) })
+        }
+
+        let files = Dictionary(grouping: urls, by: \.path)
+            .compactMap { _, duplicates in duplicates.first.flatMap(collectionFileState) }
+            .sorted { $0.path < $1.path }
+        return UsageCollectionState(
+            historyDays: historyDays,
+            includesExperimentalAgentSources: includeExperimentalAgentSources,
+            windowDay: dayFormatter.string(from: now),
+            files: files
+        )
+    }
+
+    static func codexIncrementalCacheStatsForTests(databaseURL: URL) -> CodexIncrementalCacheStats? {
+        try? CodexIncrementalStore(url: databaseURL).stats()
+    }
+
+    static func codexCollectionStateForTests(
+        homeURL: URL
+    ) -> [UsageCollectionFileState] {
+        defaultCodexSessionRoots(homeURL: homeURL)
+            .flatMap { jsonlFiles(under: $0, modifiedSince: nil) }
+            .compactMap(collectionFileState)
+            .sorted { $0.path < $1.path }
+    }
+
+    static func compareIncrementalCodexAccountingForTests(
+        homeURL: URL,
+        databaseURL: URL
+    ) throws -> CodexAccountingComparisonDiagnostics {
+        let incremental = try collectCodexIncrementally(
+            modifiedSince: nil,
+            databaseURL: databaseURL,
+            forceFullValidation: false,
+            homeURL: homeURL,
+            requiresDetailedRecords: true
+        )
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        let reference = collectCodexFromJSONL(
+            cache: &cache,
+            livePaths: &livePaths,
+            modifiedSince: nil,
+            homeURL: homeURL
+        )
+
+        return try accountingComparisonDiagnostics(
+            incremental: incremental,
+            reference: reference
+        )
+    }
+
+    static func compareLegacyMigrationCodexAccountingForTests(
+        homeURL: URL,
+        databaseURL: URL
+    ) throws -> CodexAccountingComparisonDiagnostics {
+        var legacyCache = CollectorCache()
+        var livePaths = Set<String>()
+        let reference = collectCodexFromJSONL(
+            cache: &legacyCache,
+            livePaths: &livePaths,
+            modifiedSince: nil,
+            homeURL: homeURL
+        )
+        let incremental = try collectCodexIncrementally(
+            modifiedSince: nil,
+            databaseURL: databaseURL,
+            forceFullValidation: false,
+            homeURL: homeURL,
+            requiresDetailedRecords: true,
+            legacyCache: legacyCache
+        )
+        return try accountingComparisonDiagnostics(
+            incremental: incremental,
+            reference: reference
+        )
+    }
+
+    private static func accountingComparisonDiagnostics(
+        incremental: CollectorResult,
+        reference: CollectorResult
+    ) throws -> CodexAccountingComparisonDiagnostics {
+        let incrementalByPath = Dictionary(grouping: incremental.records) {
+            $0.sourcePath ?? "<missing>"
+        }
+        let referenceByPath = Dictionary(grouping: reference.records) {
+            $0.sourcePath ?? "<missing>"
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let paths = Set(incrementalByPath.keys).union(referenceByPath.keys)
+        let mismatches = try paths.compactMap { path -> String? in
+            let incrementalData = try encoder.encode(incrementalByPath[path] ?? [])
+            let referenceData = try encoder.encode(referenceByPath[path] ?? [])
+            return incrementalData == referenceData ? nil : anonymousPathHash(path)
+        }.sorted()
+
+        return CodexAccountingComparisonDiagnostics(
+            incrementalSnapshot: aggregate(
+                records: incremental.records,
+                sources: ["Codex": incremental.source]
+            ),
+            referenceSnapshot: aggregate(
+                records: reference.records,
+                sources: ["Codex": reference.source]
+            ),
+            mismatchedPathHashes: mismatches,
+            incrementalRecordCount: incremental.records.count,
+            referenceRecordCount: reference.records.count
+        )
+    }
+
+    private static func anonymousPathHash(_ path: String) -> String {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in path.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return String(format: "%016llx", hash)
+    }
+
+    private static func existingDatabaseFiles(_ databases: [URL]) -> [URL] {
+        databases.flatMap { database in
+            [
+                database,
+                URL(fileURLWithPath: database.path + "-wal")
+            ].filter { FileManager.default.fileExists(atPath: $0.path) }
+        }
+    }
+
+    private static func collectionFileState(_ url: URL) -> UsageCollectionFileState? {
+        guard let metadata = fileMetadata(for: url) else { return nil }
+        return UsageCollectionFileState(
+            path: url.standardizedFileURL.path,
+            size: metadata.size,
+            modificationTime: metadata.modificationTime
+        )
+    }
+
     static func collectCCSwitchProxyUsageSnapshot(databaseURL: URL) -> UsageSnapshot {
         let result = collectCCSwitchProxyUsage(databaseURL: databaseURL)
         return aggregate(
@@ -79,8 +292,30 @@ enum UsageCollector {
         return aggregate(records: result.records, sources: ["Claude Code": result.source])
     }
 
-    static func collectCodexUsageSnapshotForTests(homeURL: URL, cacheURL: URL? = nil) -> UsageSnapshot {
-        var cache = cacheURL.map(loadCurrentCache(at:)) ?? CollectorCache()
+    static func collectCodexUsageSnapshotForTests(
+        homeURL: URL,
+        cacheURL: URL? = nil,
+        forceFullValidation: Bool = false,
+        requiresDetailedRecords: Bool = false
+    ) -> UsageSnapshot {
+        if let cacheURL {
+            do {
+                let result = try collectCodexIncrementally(
+                modifiedSince: nil,
+                databaseURL: cacheURL,
+                forceFullValidation: forceFullValidation,
+                homeURL: homeURL,
+                requiresDetailedRecords: requiresDetailedRecords
+                )
+                return aggregate(records: result.records, sources: ["Codex": result.source])
+            } catch {
+                return aggregate(
+                    records: [],
+                    sources: ["Codex": SourceInfo(status: "incremental_cache_error", files: 0, records: 0)]
+                )
+            }
+        }
+        var cache = CollectorCache()
         var livePaths = Set<String>()
         let result = collectCodexFromJSONL(
             cache: &cache,
@@ -88,11 +323,63 @@ enum UsageCollector {
             modifiedSince: nil,
             homeURL: homeURL
         )
-        if let cacheURL {
-            cache.files = cache.files.filter { livePaths.contains($0.key) }
-            saveCache(cache, to: cacheURL)
-        }
         return aggregate(records: result.records, sources: ["Codex": result.source])
+    }
+
+    static func collectIncrementalCodexAndProxySnapshotForTests(
+        codexRoots: [URL],
+        cacheURL: URL,
+        ccSwitchDatabaseURL: URL
+    ) -> UsageSnapshot {
+        let codex: CollectorResult
+        do {
+            codex = try collectCodexIncrementally(
+                modifiedSince: nil,
+                databaseURL: cacheURL,
+                forceFullValidation: false,
+                requiresDetailedRecords: true,
+                roots: codexRoots
+            )
+        } catch {
+            codex = CollectorResult(
+                records: [],
+                source: SourceInfo(status: "incremental_cache_error", files: 0, records: 0)
+            )
+        }
+        var proxy = collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
+        let deduped = deduplicateCrossSource(
+            nativeRecords: codex.records,
+            proxyRecords: proxy.records
+        )
+        proxy.source = sourceInfo(proxy.source, annotatedWith: deduped)
+        return aggregate(
+            records: deduped.records,
+            sources: [
+                "Codex": codex.source,
+                ccSwitchSourceName: proxy.source
+            ]
+        )
+    }
+
+    static func collectCodexWithIncrementalFallbackForTests(
+        homeURL: URL,
+        cacheURL: URL
+    ) -> UsageSnapshot {
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        let outcome = collectCodex(
+            cache: &cache,
+            livePaths: &livePaths,
+            modifiedSince: nil,
+            databaseURL: cacheURL,
+            forceFullValidation: false,
+            requiresDetailedRecords: false,
+            homeURL: homeURL
+        )
+        return aggregate(
+            records: outcome.result.records,
+            sources: ["Codex": outcome.result.source]
+        )
     }
 
     static func collectorCacheRecalibrationRevisionForTests(cacheURL: URL) -> Int? {
@@ -157,12 +444,337 @@ enum UsageCollector {
         )
     }
 
-    private static func collectCodex(cache: inout CollectorCache, livePaths: inout Set<String>, modifiedSince cutoffDate: Date?) -> CollectorResult {
-        let jsonlResult = collectCodexFromJSONL(cache: &cache, livePaths: &livePaths, modifiedSince: cutoffDate)
-        if jsonlResult.source.status == "ok" {
-            return jsonlResult
+    private static func collectCodex(
+        cache: inout CollectorCache,
+        livePaths: inout Set<String>,
+        modifiedSince cutoffDate: Date?,
+        databaseURL: URL,
+        forceFullValidation: Bool,
+        requiresDetailedRecords: Bool,
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> CodexCollectionOutcome {
+        func runIncremental() throws -> CollectorResult {
+            try collectCodexIncrementally(
+                modifiedSince: cutoffDate,
+                databaseURL: databaseURL,
+                forceFullValidation: forceFullValidation,
+                homeURL: homeURL,
+                requiresDetailedRecords: requiresDetailedRecords,
+                legacyCache: cache
+            )
         }
-        return collectCodexFromSQLite() ?? jsonlResult
+
+        do {
+            let incremental = try runIncremental()
+            if incremental.source.status == "ok" {
+                return CodexCollectionOutcome(result: incremental, usedIncrementalStore: true)
+            }
+        } catch {
+            if let cacheError = error as? CodexIncrementalStoreError,
+               cacheError.shouldRebuildCache {
+                CodexIncrementalStore.discardDatabase(at: databaseURL)
+                if let rebuilt = try? runIncremental(), rebuilt.source.status == "ok" {
+                    return CodexCollectionOutcome(result: rebuilt, usedIncrementalStore: true)
+                }
+            }
+        }
+
+        let jsonlResult = collectCodexFromJSONL(
+            cache: &cache,
+            livePaths: &livePaths,
+            modifiedSince: cutoffDate,
+            homeURL: homeURL
+        )
+        if jsonlResult.source.status == "ok" {
+            return CodexCollectionOutcome(result: jsonlResult, usedIncrementalStore: false)
+        }
+        return CodexCollectionOutcome(
+            result: collectCodexFromSQLite() ?? jsonlResult,
+            usedIncrementalStore: false
+        )
+    }
+
+    private static func collectCodexIncrementally(
+        modifiedSince cutoffDate: Date?,
+        databaseURL: URL,
+        forceFullValidation: Bool,
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        requiresDetailedRecords: Bool = false,
+        legacyCache: CollectorCache? = nil,
+        roots: [URL]? = nil
+    ) throws -> CollectorResult {
+        let paths = (roots ?? defaultCodexSessionRoots(homeURL: homeURL))
+            .flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
+            .sorted { $0.path < $1.path }
+        guard !paths.isEmpty else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+
+        let store = try CodexIncrementalStore(url: databaseURL)
+        let storedMetadata = try store.metadataByPath()
+        let currentPaths = Set(paths.map(\.path))
+        let deletedPaths = Set(storedMetadata.keys).subtracting(currentPaths)
+        var fullyAffectedParentIDs = Set(
+            deletedPaths.compactMap { storedMetadata[$0]?.sessionID }
+        )
+        var appendedParentAnchorThresholds = [String: TimeInterval]()
+        var stagedPaths = Set<String>()
+        try store.beginStaging()
+        var committed = false
+        defer {
+            if !committed {
+                store.abortStaging()
+            }
+        }
+
+        func validatedScan(
+            at path: URL,
+            metadata: (size: UInt64, modificationTime: TimeInterval)
+        ) throws -> PendingCodexSession {
+            if !forceFullValidation,
+               let legacyCache,
+               let scan = cachedCodexScan(for: path, cache: legacyCache),
+               let fingerprint = contentFingerprint(for: path, size: metadata.size) {
+                return PendingCodexSession(
+                    path: path,
+                    metadata: metadata,
+                    fingerprint: fingerprint,
+                    scan: scan
+                )
+            }
+
+            guard var stable = stableCodexScan(at: path) else {
+                throw CodexIncrementalStoreError.unstableSource(path.path)
+            }
+            if !stable.isStable, let retry = stableCodexScan(at: path) {
+                stable = retry
+            }
+            guard stable.isStable,
+                  let fingerprint = contentFingerprint(for: path, size: stable.metadata.size)
+            else {
+                throw CodexIncrementalStoreError.unstableSource(path.path)
+            }
+            return PendingCodexSession(
+                path: path,
+                metadata: stable.metadata,
+                fingerprint: fingerprint,
+                scan: stable.scan
+            )
+        }
+
+        for path in paths {
+            guard let metadata = fileMetadata(for: path) else { continue }
+            let stored = storedMetadata[path.path]
+            var validatedFullFingerprint: String?
+            let metadataMatches = stored?.size == metadata.size
+                && abs((stored?.modificationTime ?? -1) - metadata.modificationTime) < 0.001
+            if metadataMatches {
+                if !forceFullValidation {
+                    continue
+                }
+                let fingerprint = contentFingerprint(for: path, size: metadata.size)
+                if fingerprint == stored?.fingerprint {
+                    guard let fullFingerprint = fullContentFingerprint(
+                        for: path,
+                        size: metadata.size
+                    ),
+                    let afterValidation = fileMetadata(for: path),
+                    UsageCollector.metadata(metadata, matches: afterValidation)
+                    else {
+                        throw CodexIncrementalStoreError.unstableSource(path.path)
+                    }
+                    if fullFingerprint == stored?.validationFingerprint {
+                        continue
+                    }
+                    validatedFullFingerprint = fullFingerprint
+                }
+            }
+
+            if !forceFullValidation,
+               let stored,
+               metadata.size > stored.size,
+               contentFingerprint(for: path, size: stored.size) == stored.fingerprint,
+               let cachedSession = try store.session(path: path.path),
+               let appended = incrementalCodexAppend(at: path, cached: cachedSession) {
+                try store.stage(session: appended)
+                if let earliestNewAnchor = appended.anchors
+                    .dropFirst(cachedSession.anchors.count)
+                    .first?.timestamp {
+                    appendedParentAnchorThresholds[appended.sessionID] = min(
+                        appendedParentAnchorThresholds[appended.sessionID] ?? earliestNewAnchor,
+                        earliestNewAnchor
+                    )
+                }
+                continue
+            }
+
+            var pending = try validatedScan(at: path, metadata: metadata)
+            if validatedFullFingerprint != nil {
+                pending.validationFingerprint = validatedFullFingerprint
+            } else if forceFullValidation, stored != nil, metadataMatches {
+                guard let fullFingerprint = fullContentFingerprint(
+                    for: path,
+                    size: pending.metadata.size
+                ),
+                let afterValidation = fileMetadata(for: path),
+                UsageCollector.metadata(pending.metadata, matches: afterValidation)
+                else {
+                    throw CodexIncrementalStoreError.unstableSource(path.path)
+                }
+                pending.validationFingerprint = fullFingerprint
+            }
+            try store.stage(
+                scan: pending,
+                anchors: codexAnchors(for: pending.scan),
+                createdAtEpoch: pending.scan.createdAt.flatMap(parseISO)?.timeIntervalSince1970
+            )
+            stagedPaths.insert(path.path)
+            fullyAffectedParentIDs.insert(pending.scan.canonicalSessionID)
+            if let previousID = stored?.sessionID {
+                fullyAffectedParentIDs.insert(previousID)
+            }
+        }
+
+        func stageChild(at childPath: String) throws {
+            guard currentPaths.contains(childPath), !stagedPaths.contains(childPath) else { return }
+            let url = URL(fileURLWithPath: childPath)
+            guard let metadata = fileMetadata(for: url) else {
+                throw CodexIncrementalStoreError.unstableSource(childPath)
+            }
+            var pending = try validatedScan(at: url, metadata: metadata)
+            if let stored = storedMetadata[childPath],
+               stored.size == metadata.size,
+               abs(stored.modificationTime - metadata.modificationTime) < 0.001,
+               contentFingerprint(for: url, size: metadata.size) == stored.fingerprint {
+                pending.validationFingerprint = stored.validationFingerprint
+            }
+            try store.stage(
+                scan: pending,
+                anchors: codexAnchors(for: pending.scan),
+                createdAtEpoch: pending.scan.createdAt.flatMap(parseISO)?.timeIntervalSince1970
+            )
+            stagedPaths.insert(childPath)
+        }
+
+        for parentID in fullyAffectedParentIDs {
+            for childPath in try store.childPaths(parentSessionID: parentID) {
+                try stageChild(at: childPath)
+            }
+        }
+        for (parentID, earliestNewAnchor) in appendedParentAnchorThresholds
+        where !fullyAffectedParentIDs.contains(parentID) {
+            for childPath in try store.childPaths(
+                parentSessionID: parentID,
+                createdAtOnOrAfter: earliestNewAnchor
+            ) {
+                try stageChild(at: childPath)
+            }
+        }
+
+        for stagedPath in try store.stagedScanPaths() {
+            guard let item = try store.stagedScan(path: stagedPath) else {
+                throw CodexIncrementalStoreError.sqlite("missing staged scan for \(stagedPath)")
+            }
+            let parentAnchors: [CodexAnchor]?
+            if let parentID = item.scan.parentSessionID {
+                if let pendingParent = try store.stagedAnchors(sessionID: parentID) {
+                    parentAnchors = pendingParent
+                } else {
+                    parentAnchors = try store.anchors(sessionID: parentID)
+                }
+            } else {
+                parentAnchors = nil
+            }
+            let childCreatedAt = item.scan.createdAt.flatMap(parseISO)?.timeIntervalSince1970
+            let parentAnchor = childCreatedAt.flatMap { timestamp in
+                parentAnchors.flatMap { codexAnchor(atOrBefore: timestamp, anchors: $0) }
+            }
+            var seenRequestIDs = Set<String>()
+            let result = codexDeltaRecords(
+                from: item.scan,
+                parentAnchor: parentAnchor,
+                seenRequestIDs: &seenRequestIDs
+            )
+            let candidate = CodexCachedSession(
+                    path: item.path.path,
+                    size: item.metadata.size,
+                    modificationTime: item.metadata.modificationTime,
+                    fingerprint: item.fingerprint,
+                    validationFingerprint: item.validationFingerprint,
+                    sessionID: item.scan.canonicalSessionID,
+                    createdAtEpoch: childCreatedAt,
+                    parentSessionID: item.scan.parentSessionID,
+                    anchors: try store.stagedAnchors(
+                        sessionID: item.scan.canonicalSessionID
+                    ) ?? [],
+                    records: result.records,
+                    summaryRecords: summarizeCodexRecords(result.records),
+                    cursor: CodexSessionCursor(
+                        currentModel: item.scan.finalModel ?? item.scan.events.last?.model ?? "unknown",
+                        relevantLineNumber: item.scan.relevantLineCount ?? item.scan.events.count,
+                        hasCumulativeSchema: result.cursor.hasCumulativeSchema,
+                        previousCumulative: result.cursor.previousCumulative,
+                        epoch: result.cursor.epoch
+                    ),
+                    diagnostics: result.diagnostics
+                )
+            if let existing = try store.session(path: item.path.path),
+               candidate.hasSameStoredAccounting(as: existing) {
+                if let validationFingerprint = candidate.validationFingerprint,
+                   validationFingerprint != existing.validationFingerprint {
+                    try store.updateValidationFingerprint(
+                        validationFingerprint,
+                        path: item.path.path
+                    )
+                }
+            } else {
+                try store.stage(session: candidate)
+            }
+        }
+
+        try store.commitStaged(deletedPaths: deletedPaths)
+        committed = true
+        let cachedSessionCount = try store.sessionCount()
+        guard cachedSessionCount == paths.count else {
+            throw CodexIncrementalStoreError.incompleteCache(
+                expected: paths.count,
+                actual: cachedSessionCount
+            )
+        }
+
+        var seenRequestIDs = Set<String>()
+        var records = [UsageRecord]()
+        var summaries = [CodexSummaryKey: CodexSummaryAccumulator]()
+        var diagnostics = CodexCollectionDiagnostics()
+        var sourceRecordCount = 0
+        try store.forEachContribution(detailed: requiresDetailedRecords) { contribution in
+            sourceRecordCount += contribution.recordCount
+            diagnostics.add(contribution.diagnostics)
+            for record in contribution.records {
+                if let requestID = record.requestID,
+                   !seenRequestIDs.insert(requestID).inserted {
+                    diagnostics.duplicateRecords += 1
+                    continue
+                }
+                if requiresDetailedRecords {
+                    records.append(record)
+                } else {
+                    addCodexSummary(record, to: &summaries)
+                }
+            }
+        }
+        if !requiresDetailedRecords {
+            records = codexSummaryRecords(summaries)
+        }
+        return codexCollectorResult(
+            records: records,
+            diagnostics: diagnostics,
+            fileCount: paths.count,
+            sourceRecordCount: sourceRecordCount
+        )
     }
 
     private static func collectCodexFromSQLite() -> CollectorResult? {
@@ -261,11 +873,12 @@ enum UsageCollector {
             scans.map { ($0.canonicalSessionID, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        let anchorsBySessionID = scansBySessionID.mapValues(codexAnchors)
         var records: [UsageRecord] = []
         var diagnostics = CodexCollectionDiagnostics()
         var seenRequestIDs = Set<String>()
         for scan in scans.sorted(by: { $0.sourcePath < $1.sourcePath }) {
-            let parentAnchor = codexForkAnchor(for: scan, scansBySessionID: scansBySessionID)
+            let parentAnchor = codexForkAnchor(for: scan, anchorsBySessionID: anchorsBySessionID)
             let result = codexDeltaRecords(
                 from: scan,
                 parentAnchor: parentAnchor,
@@ -275,20 +888,32 @@ enum UsageCollector {
             diagnostics.add(result.diagnostics)
         }
 
+        return codexCollectorResult(
+            records: records,
+            diagnostics: diagnostics,
+            fileCount: paths.count
+        )
+    }
+
+    private static func codexCollectorResult(
+        records: [UsageRecord],
+        diagnostics: CodexCollectionDiagnostics,
+        fileCount: Int,
+        sourceRecordCount: Int? = nil
+    ) -> CollectorResult {
         let breakdown = records.reduce(into: TokenUsageCounts()) { partial, record in
             partial.add(record.usage)
         }
-
         return CollectorResult(
             records: records,
             source: SourceInfo(
                 status: records.isEmpty ? "missing" : "ok",
-                files: paths.count,
-                records: records.count,
+                files: fileCount,
+                records: sourceRecordCount ?? records.count,
                 rawRecords: diagnostics.rawRecords,
                 dedupedRecords: diagnostics.duplicateRecords + diagnostics.inheritedRecords,
                 skippedRecords: diagnostics.skippedRecords,
-                strategy: "total_token_usage_delta_v6_with_legacy_fallback",
+                strategy: "total_token_usage_delta_v6_with_incremental_cache",
                 exactRecords: diagnostics.exactRecords,
                 legacyRecords: diagnostics.legacyRecords,
                 duplicateRecords: diagnostics.duplicateRecords,
@@ -296,7 +921,7 @@ enum UsageCollector {
                 inheritedRecords: diagnostics.inheritedRecords,
                 inheritedTokens: diagnostics.inheritedTokens,
                 unknownBreakdownRecords: diagnostics.unknownBreakdownRecords,
-                accountingRevision: CollectorCache.currentVersion,
+                accountingRevision: codexAccountingRevision,
                 tokenBreakdown: SourceTokenBreakdown(
                     processedTokens: breakdown.totalTokens,
                     inputTokens: breakdown.inputTokens,
@@ -314,6 +939,47 @@ enum UsageCollector {
         )
     }
 
+    private static func summarizeCodexRecords(_ records: [UsageRecord]) -> [UsageRecord] {
+        var summaries = [CodexSummaryKey: CodexSummaryAccumulator]()
+        for record in records {
+            addCodexSummary(record, to: &summaries)
+        }
+        return codexSummaryRecords(summaries)
+    }
+
+    private static func addCodexSummary(
+        _ record: UsageRecord,
+        to summaries: inout [CodexSummaryKey: CodexSummaryAccumulator]
+    ) {
+        let hour = record.timestampEpoch.map(hour(fromEpoch:))
+            ?? hour(fromISO: record.timestamp)
+        let key = CodexSummaryKey(date: record.date, model: record.model, hour: hour)
+        summaries[key, default: CodexSummaryAccumulator()].add(record)
+    }
+
+    private static func codexSummaryRecords(
+        _ summaries: [CodexSummaryKey: CodexSummaryAccumulator]
+    ) -> [UsageRecord] {
+        summaries.map { key, value in
+            UsageRecord(
+                date: key.date,
+                timestamp: value.timestamp,
+                timestampEpoch: value.timestampEpoch,
+                tool: "Codex",
+                model: key.model,
+                usage: value.usage,
+                source: .nativeCodex,
+                dataSource: "codex_incremental_summary",
+                modelRequestCount: value.modelRequestCount,
+                toolCallCount: value.toolCallCount
+            )
+        }.sorted {
+            if $0.date != $1.date { return $0.date < $1.date }
+            if $0.model != $1.model { return $0.model < $1.model }
+            return ($0.timestampEpoch ?? -1) < ($1.timestampEpoch ?? -1)
+        }
+    }
+
     private static func stableCodexScan(
         at path: URL
     ) -> (scan: CodexSessionScan, isStable: Bool, metadata: (size: UInt64, modificationTime: TimeInterval))? {
@@ -324,6 +990,246 @@ enum UsageCollector {
             return nil
         }
         return (scan, metadata(before, matches: after), after)
+    }
+
+    private static func incrementalCodexAppend(
+        at path: URL,
+        cached: CodexCachedSession
+    ) -> CodexCachedSession? {
+        guard let tail = scanCodexSessionTail(
+            at: path,
+            fromOffset: cached.size,
+            cursor: cached.cursor
+        ) else {
+            return nil
+        }
+
+        var records = cached.records
+        var diagnostics = cached.diagnostics
+        var cursor = cached.cursor
+        diagnostics.rawRecords += tail.events.count
+        var seenRequestIDs = Set(records.compactMap(\.requestID))
+        let scan = CodexSessionScan(
+            canonicalSessionID: cached.sessionID,
+            createdAt: cached.createdAtEpoch.map { isoFormatter.string(from: Date(timeIntervalSince1970: $0)) },
+            parentSessionID: cached.parentSessionID,
+            sourcePath: cached.path,
+            events: tail.events,
+            finalModel: tail.currentModel,
+            relevantLineCount: tail.relevantLineNumber
+        )
+
+        if cursor.hasCumulativeSchema {
+            var previous = cursor.previousCumulative
+            var epoch = cursor.epoch
+            for index in tail.events.indices {
+                let event = tail.events[index]
+                guard event.cumulativePresent else {
+                    diagnostics.skippedRecords += 1
+                    continue
+                }
+                guard let current = event.cumulative,
+                      current.totalTokens > 0,
+                      let day = dayString(for: event)
+                else {
+                    diagnostics.skippedRecords += 1
+                    continue
+                }
+
+                let deltaTotal: Int
+                let isReset: Bool
+                if let previous {
+                    if current.totalTokens == previous.totalTokens {
+                        diagnostics.duplicateRecords += 1
+                        continue
+                    }
+                    if current.totalTokens > previous.totalTokens {
+                        deltaTotal = current.totalTokens - previous.totalTokens
+                        isReset = false
+                    } else if isCodexContextWindowSentinel(event) {
+                        diagnostics.skippedRecords += 1
+                        continue
+                    } else if isCredibleCodexReset(
+                        at: index,
+                        events: tail.events,
+                        current: current,
+                        previous: previous
+                    ) {
+                        epoch += 1
+                        diagnostics.counterResets += 1
+                        deltaTotal = current.totalTokens
+                        isReset = true
+                    } else {
+                        // Re-read the complete session so an ambiguous reset can be
+                        // reconsidered when a following cumulative event arrives.
+                        return nil
+                    }
+                } else {
+                    deltaTotal = current.totalTokens
+                    isReset = false
+                }
+
+                guard deltaTotal > 0 else { continue }
+                let componentResult = codexIncrementUsage(
+                    current: current,
+                    previous: isReset ? nil : previous,
+                    last: event.last,
+                    total: deltaTotal
+                )
+                let requestID = "codex:cumulative:\(cached.sessionID):\(epoch):\(current.totalTokens)"
+                guard seenRequestIDs.insert(requestID).inserted else {
+                    diagnostics.duplicateRecords += 1
+                    previous = current
+                    continue
+                }
+                records.append(
+                    codexUsageRecord(
+                        scan: scan,
+                        event: event,
+                        day: day,
+                        usage: componentResult.usage,
+                        requestID: requestID,
+                        dataSource: componentResult.hasKnownBreakdown
+                            ? "codex_total_usage_delta"
+                            : "codex_total_usage_delta_unknown_breakdown"
+                    )
+                )
+                diagnostics.exactRecords += 1
+                if !componentResult.hasKnownBreakdown {
+                    diagnostics.unknownBreakdownRecords += 1
+                }
+                previous = current
+            }
+            cursor.previousCumulative = previous
+            cursor.epoch = epoch
+        } else {
+            guard !tail.events.contains(where: \.cumulativePresent) else {
+                return nil
+            }
+            for event in tail.events {
+                guard let usage = event.last,
+                      usage.totalTokens > 0,
+                      let timestamp = event.timestamp,
+                      let day = dayString(for: event)
+                else {
+                    diagnostics.skippedRecords += 1
+                    continue
+                }
+                let requestID = "codex:legacy:\(cached.sessionID):\(timestamp):\(usage.fingerprint)"
+                guard seenRequestIDs.insert(requestID).inserted else {
+                    diagnostics.duplicateRecords += 1
+                    continue
+                }
+                records.append(
+                    codexUsageRecord(
+                        scan: scan,
+                        event: event,
+                        day: day,
+                        usage: usage,
+                        requestID: requestID,
+                        dataSource: "codex_last_usage_legacy_estimate"
+                    )
+                )
+                diagnostics.legacyRecords += 1
+                if !isCodexBreakdownConsistent(usage, total: usage.totalTokens) {
+                    diagnostics.unknownBreakdownRecords += 1
+                }
+            }
+        }
+
+        cursor.currentModel = tail.currentModel
+        cursor.relevantLineNumber = tail.relevantLineNumber
+        return CodexCachedSession(
+            path: cached.path,
+            size: tail.processedSize,
+            modificationTime: tail.modificationTime,
+            fingerprint: tail.fingerprint,
+            validationFingerprint: nil,
+            sessionID: cached.sessionID,
+            createdAtEpoch: cached.createdAtEpoch,
+            parentSessionID: cached.parentSessionID,
+            anchors: (cached.anchors + codexAnchors(for: scan))
+                .sorted { $0.timestamp < $1.timestamp },
+            records: records,
+            summaryRecords: summarizeCodexRecords(records),
+            cursor: cursor,
+            diagnostics: diagnostics
+        )
+    }
+
+    private static func scanCodexSessionTail(
+        at path: URL,
+        fromOffset offset: UInt64,
+        cursor: CodexSessionCursor
+    ) -> CodexSessionTail? {
+        guard let metadata = fileMetadata(for: path), metadata.size > offset else { return nil }
+
+        do {
+            if offset > 0 {
+                let handle = try FileHandle(forReadingFrom: path)
+                defer { try? handle.close() }
+                try handle.seek(toOffset: offset - 1)
+                guard try handle.read(upToCount: 1)?.first == 0x0A else { return nil }
+            }
+
+            var currentModel = cursor.currentModel
+            var relevantLineNumber = cursor.relevantLineNumber
+            var events = [CodexTokenEvent]()
+            var encounteredSessionMetadata = false
+            let processedSize = try forEachCompleteLine(
+                in: path,
+                fromOffset: offset,
+                matchingAny: ["session_meta", "turn_context", "token_count"]
+            ) { line in
+                autoreleasepool {
+                    relevantLineNumber += 1
+                    guard line.utf8.count <= maxRelevantLineBytes,
+                          let obj = jsonObject(line)
+                    else { return }
+                    let type = obj["type"] as? String
+                    let payload = obj["payload"] as? [String: Any]
+                    if type == "session_meta" {
+                        encounteredSessionMetadata = true
+                        return
+                    }
+                    if type == "turn_context" {
+                        currentModel = modelKey(payload?["model"] as? String ?? currentModel)
+                    }
+                    guard type == "event_msg",
+                          payload?["type"] as? String == "token_count",
+                          let info = payload?["info"] as? [String: Any]
+                    else { return }
+                    let timestamp = nonEmptyString(obj["timestamp"] as? String)
+                    events.append(
+                        CodexTokenEvent(
+                            timestamp: timestamp,
+                            timestampEpoch: timestamp.flatMap(parseISO)?.timeIntervalSince1970,
+                            model: currentModel,
+                            cumulativePresent: info.keys.contains("total_token_usage"),
+                            cumulative: (info["total_token_usage"] as? [String: Any]).map(normalizeCodexUsage),
+                            last: (info["last_token_usage"] as? [String: Any]).map(normalizeCodexUsage),
+                            modelContextWindow: integerValue(info["model_context_window"] as Any),
+                            lineNumber: relevantLineNumber
+                        )
+                    )
+                }
+            }
+
+            guard processedSize > offset, !encounteredSessionMetadata else { return nil }
+            guard let finalMetadata = fileMetadata(for: path),
+                  let fingerprint = contentFingerprint(for: path, size: processedSize)
+            else { return nil }
+            return CodexSessionTail(
+                events: events,
+                currentModel: currentModel,
+                relevantLineNumber: relevantLineNumber,
+                processedSize: processedSize,
+                modificationTime: finalMetadata.modificationTime,
+                fingerprint: fingerprint
+            )
+        } catch {
+            return nil
+        }
     }
 
     private static func scanCodexSessionFile(at path: URL) -> CodexSessionScan? {
@@ -360,12 +1266,14 @@ enum UsageCollector {
                         return
                     }
 
+                    let timestamp = nonEmptyString(obj["timestamp"] as? String)
                     let cumulativePresent = info.keys.contains("total_token_usage")
                     let cumulative = (info["total_token_usage"] as? [String: Any]).map(normalizeCodexUsage)
                     let last = (info["last_token_usage"] as? [String: Any]).map(normalizeCodexUsage)
                     events.append(
                         CodexTokenEvent(
-                            timestamp: nonEmptyString(obj["timestamp"] as? String),
+                            timestamp: timestamp,
+                            timestampEpoch: timestamp.flatMap(parseISO)?.timeIntervalSince1970,
                             model: currentModel,
                             cumulativePresent: cumulativePresent,
                             cumulative: cumulative,
@@ -385,7 +1293,9 @@ enum UsageCollector {
             createdAt: createdAt,
             parentSessionID: parentSessionID,
             sourcePath: path.path,
-            events: events
+            events: events,
+            finalModel: currentModel,
+            relevantLineCount: relevantLineNumber
         )
     }
 
@@ -404,31 +1314,58 @@ enum UsageCollector {
 
     private static func codexForkAnchor(
         for scan: CodexSessionScan,
-        scansBySessionID: [String: CodexSessionScan]
+        anchorsBySessionID: [String: [CodexAnchor]]
     ) -> TokenUsageCounts? {
         guard let parentID = scan.parentSessionID,
-              let parent = scansBySessionID[parentID],
-              let childCreatedAt = scan.createdAt.flatMap(parseISO)
+              let anchors = anchorsBySessionID[parentID],
+              let childCreatedAt = scan.createdAt.flatMap(parseISO)?.timeIntervalSince1970
         else {
             return nil
         }
-        return parent.events.last(where: { event in
+        return codexAnchor(atOrBefore: childCreatedAt, anchors: anchors)
+    }
+
+    private static func codexAnchors(for scan: CodexSessionScan) -> [CodexAnchor] {
+        scan.events.compactMap { event in
             guard event.cumulativePresent,
                   let usage = event.cumulative,
                   usage.totalTokens > 0,
-                  let timestamp = event.timestamp.flatMap(parseISO)
+                  let timestamp = event.timestampEpoch
+                    ?? event.timestamp.flatMap(parseISO)?.timeIntervalSince1970
             else {
-                return false
+                return nil
             }
-            return timestamp <= childCreatedAt
-        })?.cumulative
+            return CodexAnchor(timestamp: timestamp, usage: usage)
+        }.sorted { $0.timestamp < $1.timestamp }
+    }
+
+    private static func codexAnchor(
+        atOrBefore timestamp: TimeInterval,
+        anchors: [CodexAnchor]
+    ) -> TokenUsageCounts? {
+        var lower = 0
+        var upper = anchors.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if anchors[middle].timestamp <= timestamp {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        guard lower > 0 else { return nil }
+        return anchors[lower - 1].usage
     }
 
     private static func codexDeltaRecords(
         from scan: CodexSessionScan,
         parentAnchor: TokenUsageCounts?,
         seenRequestIDs: inout Set<String>
-    ) -> (records: [UsageRecord], diagnostics: CodexCollectionDiagnostics) {
+    ) -> (
+        records: [UsageRecord],
+        diagnostics: CodexCollectionDiagnostics,
+        cursor: CodexDeltaCursor
+    ) {
         var diagnostics = CodexCollectionDiagnostics(rawRecords: scan.events.count)
         var records: [UsageRecord] = []
         let hasCumulativeSchema = scan.events.contains { $0.cumulativePresent }
@@ -438,7 +1375,7 @@ enum UsageCollector {
                 guard let usage = event.last,
                       usage.totalTokens > 0,
                       let timestamp = event.timestamp,
-                      let day = dayString(fromISO: timestamp)
+                      let day = dayString(for: event)
                 else {
                     diagnostics.skippedRecords += 1
                     continue
@@ -463,7 +1400,15 @@ enum UsageCollector {
                     diagnostics.unknownBreakdownRecords += 1
                 }
             }
-            return (records, diagnostics)
+            return (
+                records,
+                diagnostics,
+                CodexDeltaCursor(
+                    hasCumulativeSchema: false,
+                    previousCumulative: nil,
+                    epoch: 0
+                )
+            )
         }
 
         var startIndex = 0
@@ -488,8 +1433,7 @@ enum UsageCollector {
             }
             guard let current = event.cumulative,
                   current.totalTokens > 0,
-                  let timestamp = event.timestamp,
-                  let day = dayString(fromISO: timestamp)
+                  let day = dayString(for: event)
             else {
                 diagnostics.skippedRecords += 1
                 continue
@@ -558,7 +1502,15 @@ enum UsageCollector {
             }
             previous = current
         }
-        return (records, diagnostics)
+        return (
+            records,
+            diagnostics,
+            CodexDeltaCursor(
+                hasCumulativeSchema: true,
+                previousCumulative: previous,
+                epoch: epoch
+            )
+        )
     }
 
     private static func codexUsageRecord(
@@ -572,6 +1524,7 @@ enum UsageCollector {
         UsageRecord(
             date: day,
             timestamp: event.timestamp,
+            timestampEpoch: event.timestampEpoch,
             tool: "Codex",
             model: event.model,
             usage: usage,
@@ -1524,7 +2477,8 @@ enum UsageCollector {
         for record in records {
             let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model)
             daily[record.date, default: DailyAccumulator(date: record.date)].add(record: record, cost: cost)
-            let recordHour = hour(fromISO: record.timestamp)
+            let recordHour = record.timestampEpoch.map(hour(fromEpoch:))
+                ?? hour(fromISO: record.timestamp)
             if let hour = recordHour {
                 rhythms[record.date, default: RhythmAccumulator(date: record.date)]
                     .add(tokens: record.usage.totalTokens, hour: hour)
@@ -1736,12 +2690,38 @@ enum UsageCollector {
 
         do {
             include(withUnsafeBytes(of: size.littleEndian) { Data($0) })
-            include(try handle.read(upToCount: chunkSize) ?? Data())
-            if size > UInt64(chunkSize) {
-                try handle.seek(toOffset: size - UInt64(chunkSize))
-                include(try handle.read(upToCount: chunkSize) ?? Data())
+            let leadingCount = min(chunkSize, Int(clamping: size))
+            include(try handle.read(upToCount: leadingCount) ?? Data())
+            if size > UInt64(leadingCount) {
+                let trailingCount = min(chunkSize, Int(clamping: size))
+                try handle.seek(toOffset: size - UInt64(trailingCount))
+                include(try handle.read(upToCount: trailingCount) ?? Data())
             }
             return String(format: "%016llx", hash)
+        } catch {
+            return nil
+        }
+    }
+
+    private static func fullContentFingerprint(for url: URL, size: UInt64) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        hasher.update(data: withUnsafeBytes(of: size.littleEndian) { Data($0) })
+        var remaining = size
+        do {
+            while remaining > 0 {
+                let requested = min(1_048_576, Int(clamping: remaining))
+                guard let chunk = try autoreleasepool(invoking: {
+                    try handle.read(upToCount: requested)
+                }), !chunk.isEmpty else {
+                    return nil
+                }
+                hasher.update(data: chunk)
+                remaining -= UInt64(chunk.count)
+            }
+            return hasher.finalize().map { String(format: "%02x", $0) }.joined()
         } catch {
             return nil
         }
@@ -1789,6 +2769,13 @@ enum UsageCollector {
                 at: url.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+               let existingSize = (attributes[.size] as? NSNumber)?.intValue,
+               existingSize == data.count,
+               let existing = try? Data(contentsOf: url),
+               existing == data {
+                return
+            }
             try data.write(to: url, options: .atomic)
         } catch {
             // Cache misses should never prevent the app from showing fresh usage.
@@ -1840,9 +2827,9 @@ enum UsageCollector {
             body(line)
         }
 
-        while true {
+        while try autoreleasepool(invoking: { () throws -> Bool in
             guard let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty else {
-                break
+                return false
             }
             buffer.append(chunk)
 
@@ -1870,13 +2857,82 @@ enum UsageCollector {
                 discardingOversizedLine = true
                 buffer.removeAll(keepingCapacity: true)
             }
-        }
+            return true
+        }) {}
 
         if !discardingOversizedLine,
            !buffer.isEmpty,
            buffer.count <= maxRelevantLineBytes {
             processLine(buffer)
         }
+    }
+
+    @discardableResult
+    private static func forEachCompleteLine(
+        in url: URL,
+        fromOffset offset: UInt64,
+        matchingAny markers: [String] = [],
+        _ body: (String) -> Void
+    ) throws -> UInt64 {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: offset)
+
+        let newline = Data([0x0A])
+        let markerData = markers.map { Data($0.utf8) }
+        var buffer = Data()
+        buffer.reserveCapacity(128 * 1024)
+        var discardingOversizedLine = false
+        var discardedIncompleteBytes = 0
+        var processedSize = offset
+
+        func processLine(_ lineData: Data) {
+            guard lineMatches(lineData, markers: markerData),
+                  let line = String(data: lineData, encoding: .utf8),
+                  !line.isEmpty
+            else {
+                return
+            }
+            body(line)
+        }
+
+        while try autoreleasepool(invoking: { () throws -> Bool in
+            guard let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty else {
+                return false
+            }
+            buffer.append(chunk)
+
+            var consumedEnd = buffer.startIndex
+            var lineStart = buffer.startIndex
+            var searchRange = buffer.startIndex..<buffer.endIndex
+            while let range = buffer.range(of: newline, options: [], in: searchRange) {
+                let lineEnd = range.lowerBound
+                if discardingOversizedLine {
+                    discardingOversizedLine = false
+                } else if lineEnd > lineStart {
+                    processLine(buffer.subdata(in: lineStart..<lineEnd))
+                }
+                consumedEnd = range.upperBound
+                lineStart = range.upperBound
+                searchRange = lineStart..<buffer.endIndex
+            }
+
+            if consumedEnd > buffer.startIndex {
+                let consumedBytes = buffer.distance(from: buffer.startIndex, to: consumedEnd)
+                processedSize += UInt64(discardedIncompleteBytes + consumedBytes)
+                discardedIncompleteBytes = 0
+                buffer.removeSubrange(buffer.startIndex..<consumedEnd)
+            }
+
+            if buffer.count > maxRelevantLineBytes {
+                discardingOversizedLine = true
+                discardedIncompleteBytes += buffer.count
+                buffer.removeAll(keepingCapacity: true)
+            }
+            return true
+        }) {}
+
+        return processedSize
     }
 
     private static func lineMatches(_ data: Data, markers: [Data]) -> Bool {
@@ -1995,6 +3051,17 @@ enum UsageCollector {
     private static func dayString(fromISO value: String) -> String? {
         guard let date = parseISO(value) else { return nil }
         return dayFormatter.string(from: date)
+    }
+
+    private static func dayString(for event: CodexTokenEvent) -> String? {
+        if let timestamp = event.timestampEpoch {
+            return dayFormatter.string(from: Date(timeIntervalSince1970: timestamp))
+        }
+        return event.timestamp.flatMap(dayString(fromISO:))
+    }
+
+    private static func hour(fromEpoch value: TimeInterval) -> Int {
+        calendar.component(.hour, from: Date(timeIntervalSince1970: value))
     }
 
     private static func hour(fromISO value: String?) -> Int? {
@@ -2265,6 +3332,797 @@ private struct CollectorResult {
     var source: SourceInfo
 }
 
+private struct CodexCollectionOutcome {
+    var result: CollectorResult
+    var usedIncrementalStore: Bool
+}
+
+private struct PendingCodexSession {
+    var path: URL
+    var metadata: (size: UInt64, modificationTime: TimeInterval)
+    var fingerprint: String
+    var validationFingerprint: String? = nil
+    var scan: CodexSessionScan
+}
+
+private struct StoredCodexSessionMetadata {
+    var size: UInt64
+    var modificationTime: TimeInterval
+    var fingerprint: String
+    var validationFingerprint: String?
+    var sessionID: String
+}
+
+private struct CodexCachedSession {
+    var path: String
+    var size: UInt64
+    var modificationTime: TimeInterval
+    var fingerprint: String
+    var validationFingerprint: String? = nil
+    var sessionID: String
+    var createdAtEpoch: TimeInterval?
+    var parentSessionID: String?
+    var anchors: [CodexAnchor]
+    var records: [UsageRecord]
+    var summaryRecords: [UsageRecord]
+    var cursor: CodexSessionCursor
+    var diagnostics: CodexCollectionDiagnostics
+
+    func hasSameStoredAccounting(as other: CodexCachedSession) -> Bool {
+        path == other.path
+            && size == other.size
+            && abs(modificationTime - other.modificationTime) < 0.001
+            && fingerprint == other.fingerprint
+            && sessionID == other.sessionID
+            && createdAtEpoch == other.createdAtEpoch
+            && parentSessionID == other.parentSessionID
+            && anchors == other.anchors
+            && records == other.records
+            && summaryRecords == other.summaryRecords
+            && cursor == other.cursor
+            && diagnostics == other.diagnostics
+    }
+}
+
+private struct CodexCachedContribution {
+    var records: [UsageRecord]
+    var recordCount: Int
+    var diagnostics: CodexCollectionDiagnostics
+}
+
+private struct CodexSummaryKey: Hashable {
+    var date: String
+    var model: String
+    var hour: Int?
+}
+
+private struct CodexSummaryAccumulator {
+    var timestamp: String?
+    var timestampEpoch: TimeInterval?
+    var usage = TokenUsageCounts()
+    var modelRequestCount = 0
+    var toolCallCount = 0
+
+    mutating func add(_ record: UsageRecord) {
+        timestamp = timestamp ?? record.timestamp
+        timestampEpoch = timestampEpoch ?? record.timestampEpoch
+        usage.add(record.usage)
+        modelRequestCount += max(0, record.modelRequestCount)
+        toolCallCount += max(0, record.toolCallCount)
+    }
+}
+
+private enum CodexIncrementalStoreError: LocalizedError {
+    case sqlite(String)
+    case corruptPayload(String)
+    case unstableSource(String)
+    case incompleteCache(expected: Int, actual: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case let .sqlite(message):
+            return "Incremental cache error: \(message)"
+        case let .corruptPayload(context):
+            return "Incremental cache payload is corrupt: \(context)"
+        case .unstableSource:
+            return "A Codex session changed while it was being collected."
+        case let .incompleteCache(expected, actual):
+            return "Incremental cache is incomplete (expected \(expected), got \(actual))."
+        }
+    }
+
+    var shouldRebuildCache: Bool {
+        switch self {
+        case .corruptPayload:
+            return true
+        case let .sqlite(message):
+            let normalized = message.lowercased()
+            return normalized.contains("not a database")
+                || normalized.contains("database disk image is malformed")
+                || normalized.contains("database malformed")
+        case .incompleteCache:
+            return true
+        case .unstableSource:
+            return false
+        }
+    }
+}
+
+private final class CodexIncrementalStore {
+    private static let schemaVersion: Int32 = 6
+    private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+    private var database: OpaquePointer?
+    private var stagingTransactionActive = false
+
+    static func discardDatabase(at url: URL) {
+        let fileManager = FileManager.default
+        for path in [url.path, url.path + "-wal", url.path + "-shm"] {
+            guard fileManager.fileExists(atPath: path) else { continue }
+            try? fileManager.removeItem(atPath: path)
+        }
+    }
+
+    init(url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+        guard sqlite3_open_v2(url.path, &database, flags, nil) == SQLITE_OK else {
+            let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "open failed"
+            if let database { sqlite3_close(database) }
+            database = nil
+            throw CodexIncrementalStoreError.sqlite(message)
+        }
+        do {
+            sqlite3_busy_timeout(database, 2_000)
+            try execute("PRAGMA journal_mode=WAL")
+            try execute("PRAGMA synchronous=NORMAL")
+            try migrateIfNeeded()
+        } catch {
+            if let database {
+                sqlite3_close(database)
+            }
+            database = nil
+            throw error
+        }
+    }
+
+    deinit {
+        if let database {
+            sqlite3_close(database)
+        }
+    }
+
+    func metadataByPath() throws -> [String: StoredCodexSessionMetadata] {
+        let statement = try prepare(
+            """
+            SELECT path, size, modification_time, fingerprint,
+                   validation_fingerprint, session_id
+            FROM codex_sessions
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        var result = [String: StoredCodexSessionMetadata]()
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let path = columnText(statement, index: 0),
+                  let fingerprint = columnText(statement, index: 3),
+                  let sessionID = columnText(statement, index: 5)
+            else { continue }
+            result[path] = StoredCodexSessionMetadata(
+                size: UInt64(max(0, sqlite3_column_int64(statement, 1))),
+                modificationTime: sqlite3_column_double(statement, 2),
+                fingerprint: fingerprint,
+                validationFingerprint: columnText(statement, index: 4),
+                sessionID: sessionID
+            )
+        }
+        try checkFinalStep(statement)
+        return result
+    }
+
+    func childPaths(parentSessionID: String) throws -> [String] {
+        let statement = try prepare(
+            "SELECT path FROM codex_sessions WHERE parent_session_id = ? ORDER BY path"
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(parentSessionID, to: statement, index: 1)
+        var result = [String]()
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let path = columnText(statement, index: 0) {
+                result.append(path)
+            }
+        }
+        try checkFinalStep(statement)
+        return result
+    }
+
+    func childPaths(
+        parentSessionID: String,
+        createdAtOnOrAfter timestamp: TimeInterval
+    ) throws -> [String] {
+        let statement = try prepare(
+            """
+            SELECT path FROM codex_sessions
+            WHERE parent_session_id = ?
+              AND (created_at_epoch IS NULL OR created_at_epoch >= ?)
+            ORDER BY path
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(parentSessionID, to: statement, index: 1)
+        sqlite3_bind_double(statement, 2, timestamp)
+        var result = [String]()
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let path = columnText(statement, index: 0) {
+                result.append(path)
+            }
+        }
+        try checkFinalStep(statement)
+        return result
+    }
+
+    func anchors(sessionID: String) throws -> [CodexAnchor]? {
+        let statement = try prepare(
+            "SELECT anchors FROM codex_sessions WHERE session_id = ? ORDER BY path LIMIT 1"
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(sessionID, to: statement, index: 1)
+        let status = sqlite3_step(statement)
+        if status == SQLITE_DONE { return nil }
+        guard status == SQLITE_ROW,
+              let data = columnData(statement, index: 0)
+        else {
+            throw currentError()
+        }
+        return try decode([CodexAnchor].self, from: data, context: "anchors")
+    }
+
+    func session(path: String) throws -> CodexCachedSession? {
+        let statement = try prepare(
+            """
+            SELECT size, modification_time, fingerprint, validation_fingerprint,
+                   session_id, created_at_epoch, parent_session_id, anchors,
+                   records, COALESCE(summary_records, records), cursor, diagnostics
+            FROM codex_sessions WHERE path = ? LIMIT 1
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(path, to: statement, index: 1)
+        let status = sqlite3_step(statement)
+        if status == SQLITE_DONE { return nil }
+        guard status == SQLITE_ROW,
+              let fingerprint = columnText(statement, index: 2),
+              let sessionID = columnText(statement, index: 4),
+              let anchorsData = columnData(statement, index: 7),
+              let recordsData = columnData(statement, index: 8),
+              let summaryData = columnData(statement, index: 9),
+              let cursorData = columnData(statement, index: 10),
+              let diagnosticsData = columnData(statement, index: 11)
+        else { return nil }
+        return CodexCachedSession(
+            path: path,
+            size: UInt64(max(0, sqlite3_column_int64(statement, 0))),
+            modificationTime: sqlite3_column_double(statement, 1),
+            fingerprint: fingerprint,
+            validationFingerprint: columnText(statement, index: 3),
+            sessionID: sessionID,
+            createdAtEpoch: sqlite3_column_type(statement, 5) == SQLITE_NULL
+                ? nil : sqlite3_column_double(statement, 5),
+            parentSessionID: columnText(statement, index: 6),
+            anchors: try decode([CodexAnchor].self, from: anchorsData, context: "session anchors"),
+            records: try decode([UsageRecord].self, from: recordsData, context: "session records"),
+            summaryRecords: try decode([UsageRecord].self, from: summaryData, context: "session summaries"),
+            cursor: try decode(CodexSessionCursor.self, from: cursorData, context: "session cursor"),
+            diagnostics: try decode(
+                CodexCollectionDiagnostics.self,
+                from: diagnosticsData,
+                context: "session diagnostics"
+            )
+        )
+    }
+
+    func beginStaging() throws {
+        guard !stagingTransactionActive else {
+            throw CodexIncrementalStoreError.sqlite("staging transaction already active")
+        }
+        try execute("BEGIN IMMEDIATE TRANSACTION")
+        do {
+            try execute("DELETE FROM codex_staged_scans")
+            try execute("DELETE FROM codex_staged_sessions")
+            stagingTransactionActive = true
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
+    func abortStaging() {
+        guard stagingTransactionActive else { return }
+        try? execute("ROLLBACK")
+        stagingTransactionActive = false
+    }
+
+    func updateValidationFingerprint(_ fingerprint: String, path: String) throws {
+        guard stagingTransactionActive else {
+            throw CodexIncrementalStoreError.sqlite("staging transaction is not active")
+        }
+        let statement = try prepare(
+            "UPDATE codex_sessions SET validation_fingerprint = ? WHERE path = ?"
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(fingerprint, to: statement, index: 1)
+        bind(path, to: statement, index: 2)
+        try requireDone(statement)
+    }
+
+    func stage(
+        scan item: PendingCodexSession,
+        anchors: [CodexAnchor],
+        createdAtEpoch: TimeInterval?
+    ) throws {
+        guard stagingTransactionActive else {
+            throw CodexIncrementalStoreError.sqlite("staging transaction is not active")
+        }
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        let anchors = try encoder.encode(anchors)
+        let scan = try encoder.encode(item.scan)
+        let statement = try prepare(
+            """
+            INSERT OR REPLACE INTO codex_staged_scans (
+                path, size, modification_time, fingerprint, validation_fingerprint,
+                session_id, created_at_epoch, parent_session_id, anchors, scan
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(item.path.path, to: statement, index: 1)
+        sqlite3_bind_int64(statement, 2, sqlite3_int64(item.metadata.size))
+        sqlite3_bind_double(statement, 3, item.metadata.modificationTime)
+        bind(item.fingerprint, to: statement, index: 4)
+        bind(item.validationFingerprint, to: statement, index: 5)
+        bind(item.scan.canonicalSessionID, to: statement, index: 6)
+        bind(createdAtEpoch, to: statement, index: 7)
+        bind(item.scan.parentSessionID, to: statement, index: 8)
+        bind(anchors, to: statement, index: 9)
+        bind(scan, to: statement, index: 10)
+        try requireDone(statement)
+    }
+
+    func stagedScanPaths() throws -> [String] {
+        let statement = try prepare("SELECT path FROM codex_staged_scans ORDER BY path")
+        defer { sqlite3_finalize(statement) }
+        var paths = [String]()
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let path = columnText(statement, index: 0) {
+                paths.append(path)
+            }
+        }
+        try checkFinalStep(statement)
+        return paths
+    }
+
+    func stagedScan(path: String) throws -> PendingCodexSession? {
+        let statement = try prepare(
+            """
+            SELECT size, modification_time, fingerprint, validation_fingerprint, scan
+            FROM codex_staged_scans WHERE path = ? LIMIT 1
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(path, to: statement, index: 1)
+        let status = sqlite3_step(statement)
+        if status == SQLITE_DONE { return nil }
+        guard status == SQLITE_ROW,
+              let fingerprint = columnText(statement, index: 2),
+              let scanData = columnData(statement, index: 4)
+        else { throw currentError() }
+        return PendingCodexSession(
+            path: URL(fileURLWithPath: path),
+            metadata: (
+                size: UInt64(max(0, sqlite3_column_int64(statement, 0))),
+                modificationTime: sqlite3_column_double(statement, 1)
+            ),
+            fingerprint: fingerprint,
+            validationFingerprint: columnText(statement, index: 3),
+            scan: try decode(CodexSessionScan.self, from: scanData, context: "staged scan")
+        )
+    }
+
+    func stagedAnchors(sessionID: String) throws -> [CodexAnchor]? {
+        for table in ["codex_staged_scans", "codex_staged_sessions"] {
+            let statement = try prepare(
+                "SELECT anchors FROM \(table) WHERE session_id = ? ORDER BY path LIMIT 1"
+            )
+            defer { sqlite3_finalize(statement) }
+            bind(sessionID, to: statement, index: 1)
+            let status = sqlite3_step(statement)
+            if status == SQLITE_DONE { continue }
+            guard status == SQLITE_ROW,
+                  let data = columnData(statement, index: 0)
+            else { throw currentError() }
+            return try decode([CodexAnchor].self, from: data, context: "staged anchors")
+        }
+        return nil
+    }
+
+    func stage(session: CodexCachedSession) throws {
+        guard stagingTransactionActive else {
+            throw CodexIncrementalStoreError.sqlite("staging transaction is not active")
+        }
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        let anchors = try encoder.encode(session.anchors)
+        let records = try encoder.encode(session.records)
+        let summaryRecords = try encoder.encode(session.summaryRecords)
+        let cursor = try encoder.encode(session.cursor)
+        let diagnostics = try encoder.encode(session.diagnostics)
+        let statement = try prepare(
+            """
+            INSERT OR REPLACE INTO codex_staged_sessions (
+                path, size, modification_time, fingerprint, validation_fingerprint,
+                session_id, created_at_epoch, parent_session_id, anchors, records,
+                summary_records, record_count, cursor, diagnostics
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(session.path, to: statement, index: 1)
+        sqlite3_bind_int64(statement, 2, sqlite3_int64(session.size))
+        sqlite3_bind_double(statement, 3, session.modificationTime)
+        bind(session.fingerprint, to: statement, index: 4)
+        bind(session.validationFingerprint, to: statement, index: 5)
+        bind(session.sessionID, to: statement, index: 6)
+        bind(session.createdAtEpoch, to: statement, index: 7)
+        bind(session.parentSessionID, to: statement, index: 8)
+        bind(anchors, to: statement, index: 9)
+        bind(records, to: statement, index: 10)
+        bind(summaryRecords, to: statement, index: 11)
+        sqlite3_bind_int64(statement, 12, sqlite3_int64(session.records.count))
+        bind(cursor, to: statement, index: 13)
+        bind(diagnostics, to: statement, index: 14)
+        try requireDone(statement)
+    }
+
+    func commitStaged(deletedPaths: Set<String>) throws {
+        guard stagingTransactionActive else {
+            throw CodexIncrementalStoreError.sqlite("staging transaction is not active")
+        }
+        do {
+            let stagedCount = try stagedSessionCount()
+            let stagedPayloadBytes = try stagedSessionPayloadBytes()
+            if !deletedPaths.isEmpty {
+                let statement = try prepare("DELETE FROM codex_sessions WHERE path = ?")
+                defer { sqlite3_finalize(statement) }
+                for path in deletedPaths {
+                    sqlite3_reset(statement)
+                    sqlite3_clear_bindings(statement)
+                    bind(path, to: statement, index: 1)
+                    try requireDone(statement)
+                }
+            }
+            if stagedCount > 0 {
+                try execute(
+                    """
+                    INSERT OR REPLACE INTO codex_sessions (
+                        path, size, modification_time, fingerprint, validation_fingerprint,
+                        session_id, created_at_epoch, parent_session_id, anchors, records,
+                        summary_records, record_count, cursor, diagnostics
+                    )
+                    SELECT path, size, modification_time, fingerprint,
+                           validation_fingerprint, session_id, created_at_epoch,
+                           parent_session_id, anchors, records, summary_records,
+                           record_count, cursor, diagnostics
+                    FROM codex_staged_sessions
+                    """
+                )
+            }
+            if stagedCount > 0 || !deletedPaths.isEmpty {
+                try execute(
+                    """
+                    INSERT INTO cache_meta(key, value) VALUES ('generation', '1')
+                    ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1
+                    """
+                )
+                let logicalWriteBytes = stagedPayloadBytes * 2
+                try execute(
+                    """
+                    INSERT INTO cache_meta(key, value)
+                    VALUES ('last_logical_write_bytes', '\(logicalWriteBytes)')
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """
+                )
+            }
+            try execute("DELETE FROM codex_staged_scans")
+            try execute("DELETE FROM codex_staged_sessions")
+            try execute("COMMIT")
+            stagingTransactionActive = false
+        } catch {
+            try? execute("ROLLBACK")
+            stagingTransactionActive = false
+            throw error
+        }
+    }
+
+    private func stagedSessionCount() throws -> Int {
+        let statement = try prepare("SELECT COUNT(*) FROM codex_staged_sessions")
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw currentError() }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
+    private func stagedSessionPayloadBytes() throws -> Int {
+        let statement = try prepare(
+            """
+            SELECT COALESCE(SUM(
+                LENGTH(anchors) + LENGTH(records) + LENGTH(summary_records)
+                + LENGTH(cursor) + LENGTH(diagnostics)
+            ), 0)
+            FROM codex_staged_sessions
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw currentError() }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
+    func sessionCount() throws -> Int {
+        let statement = try prepare("SELECT COUNT(*) FROM codex_sessions")
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw currentError() }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
+    func forEachContribution(
+        detailed: Bool,
+        _ body: (CodexCachedContribution) throws -> Void
+    ) throws {
+        let statement = try prepare(
+            detailed
+                ? "SELECT records, diagnostics, record_count FROM codex_sessions ORDER BY path"
+                : """
+                  SELECT CASE
+                      WHEN session_id IN (
+                          SELECT session_id FROM codex_sessions
+                          GROUP BY session_id HAVING COUNT(*) > 1
+                      ) THEN records
+                      ELSE COALESCE(summary_records, records)
+                    END,
+                    diagnostics,
+                    record_count
+                  FROM codex_sessions
+                  ORDER BY path
+                  """
+        )
+        defer { sqlite3_finalize(statement) }
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let recordsData = columnData(statement, index: 0),
+                  let diagnosticsData = columnData(statement, index: 1)
+            else { throw currentError() }
+            try body(
+                CodexCachedContribution(
+                    records: try decode(
+                        [UsageRecord].self,
+                        from: recordsData,
+                        context: "contribution records"
+                    ),
+                    recordCount: Int(sqlite3_column_int64(statement, 2)),
+                    diagnostics: try decode(
+                        CodexCollectionDiagnostics.self,
+                        from: diagnosticsData,
+                        context: "contribution diagnostics"
+                    )
+                )
+            )
+        }
+        try checkFinalStep(statement)
+    }
+
+    func stats() throws -> CodexIncrementalCacheStats {
+        let statement = try prepare(
+            """
+            SELECT
+                COALESCE((SELECT CAST(value AS INTEGER) FROM cache_meta WHERE key = 'generation'), 0),
+                COUNT(*),
+                COALESCE(SUM(record_count), 0),
+                COALESCE((
+                    SELECT CAST(value AS INTEGER) FROM cache_meta
+                    WHERE key = 'last_logical_write_bytes'
+                ), 0)
+            FROM codex_sessions
+            """
+        )
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw currentError() }
+        return CodexIncrementalCacheStats(
+            generation: Int(sqlite3_column_int64(statement, 0)),
+            sessions: Int(sqlite3_column_int64(statement, 1)),
+            records: Int(sqlite3_column_int64(statement, 2)),
+            lastLogicalWriteBytes: Int(sqlite3_column_int64(statement, 3))
+        )
+    }
+
+    private func migrateIfNeeded() throws {
+        guard database != nil else { throw CodexIncrementalStoreError.sqlite("database closed") }
+        let current = userVersion()
+        guard current >= 0, current <= Self.schemaVersion else {
+            throw CodexIncrementalStoreError.sqlite("unsupported schema version \(current)")
+        }
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS cache_meta (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        if current > 0, current < Self.schemaVersion {
+            // v0.1.48 is the first public incremental-cache release. Recreate
+            // older development schemas so interim payloads cannot survive.
+            try execute("DROP TABLE IF EXISTS codex_sessions")
+            try execute("DROP TABLE IF EXISTS codex_staged_scans")
+            try execute("DROP TABLE IF EXISTS codex_staged_sessions")
+            try execute("DELETE FROM cache_meta")
+        }
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS codex_sessions (
+                path TEXT PRIMARY KEY NOT NULL,
+                size INTEGER NOT NULL,
+                modification_time REAL NOT NULL,
+                fingerprint TEXT NOT NULL,
+                validation_fingerprint TEXT,
+                session_id TEXT NOT NULL,
+                created_at_epoch REAL,
+                parent_session_id TEXT,
+                anchors BLOB NOT NULL,
+                records BLOB NOT NULL,
+                summary_records BLOB,
+                record_count INTEGER NOT NULL,
+                cursor BLOB,
+                diagnostics BLOB NOT NULL
+            )
+            """
+        )
+        try execute(
+            "CREATE INDEX IF NOT EXISTS codex_sessions_session_id ON codex_sessions(session_id)"
+        )
+        try execute(
+            "CREATE INDEX IF NOT EXISTS codex_sessions_parent_id ON codex_sessions(parent_session_id)"
+        )
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS codex_staged_scans (
+                path TEXT PRIMARY KEY NOT NULL,
+                size INTEGER NOT NULL,
+                modification_time REAL NOT NULL,
+                fingerprint TEXT NOT NULL,
+                validation_fingerprint TEXT,
+                session_id TEXT NOT NULL,
+                created_at_epoch REAL,
+                parent_session_id TEXT,
+                anchors BLOB NOT NULL,
+                scan BLOB NOT NULL
+            )
+            """
+        )
+        try execute(
+            "CREATE INDEX IF NOT EXISTS codex_staged_scans_session_id ON codex_staged_scans(session_id)"
+        )
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS codex_staged_sessions (
+                path TEXT PRIMARY KEY NOT NULL,
+                size INTEGER NOT NULL,
+                modification_time REAL NOT NULL,
+                fingerprint TEXT NOT NULL,
+                validation_fingerprint TEXT,
+                session_id TEXT NOT NULL,
+                created_at_epoch REAL,
+                parent_session_id TEXT,
+                anchors BLOB NOT NULL,
+                records BLOB NOT NULL,
+                summary_records BLOB NOT NULL,
+                record_count INTEGER NOT NULL,
+                cursor BLOB NOT NULL,
+                diagnostics BLOB NOT NULL
+            )
+            """
+        )
+        try execute("PRAGMA user_version = \(Self.schemaVersion)")
+    }
+
+    private func userVersion() -> Int32 {
+        guard let statement = try? prepare("PRAGMA user_version") else { return -1 }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { return -1 }
+        return sqlite3_column_int(statement, 0)
+    }
+
+    private func execute(_ sql: String) throws {
+        guard let database else { throw CodexIncrementalStoreError.sqlite("database closed") }
+        var error: UnsafeMutablePointer<CChar>?
+        guard sqlite3_exec(database, sql, nil, nil, &error) == SQLITE_OK else {
+            let message = error.map { String(cString: $0) }
+                ?? String(cString: sqlite3_errmsg(database))
+            sqlite3_free(error)
+            throw CodexIncrementalStoreError.sqlite(message)
+        }
+    }
+
+    private func prepare(_ sql: String) throws -> OpaquePointer {
+        guard let database else { throw CodexIncrementalStoreError.sqlite("database closed") }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement
+        else { throw currentError() }
+        return statement
+    }
+
+    private func bind(_ value: String?, to statement: OpaquePointer, index: Int32) {
+        guard let value else {
+            sqlite3_bind_null(statement, index)
+            return
+        }
+        sqlite3_bind_text(statement, index, value, -1, Self.transient)
+    }
+
+    private func bind(_ value: TimeInterval?, to statement: OpaquePointer, index: Int32) {
+        guard let value else {
+            sqlite3_bind_null(statement, index)
+            return
+        }
+        sqlite3_bind_double(statement, index, value)
+    }
+
+    private func bind(_ data: Data, to statement: OpaquePointer, index: Int32) {
+        _ = data.withUnsafeBytes { bytes in
+            sqlite3_bind_blob(statement, index, bytes.baseAddress, Int32(bytes.count), Self.transient)
+        }
+    }
+
+    private func decode<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        context: String
+    ) throws -> T {
+        do {
+            return try PropertyListDecoder().decode(type, from: data)
+        } catch {
+            throw CodexIncrementalStoreError.corruptPayload(context)
+        }
+    }
+
+    private func columnText(_ statement: OpaquePointer, index: Int32) -> String? {
+        guard let value = sqlite3_column_text(statement, index) else { return nil }
+        return String(cString: value)
+    }
+
+    private func columnData(_ statement: OpaquePointer, index: Int32) -> Data? {
+        let count = Int(sqlite3_column_bytes(statement, index))
+        guard count >= 0 else { return nil }
+        if count == 0 { return Data() }
+        guard let bytes = sqlite3_column_blob(statement, index) else { return nil }
+        return Data(bytes: bytes, count: count)
+    }
+
+    private func requireDone(_ statement: OpaquePointer) throws {
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw currentError() }
+    }
+
+    private func checkFinalStep(_ statement: OpaquePointer) throws {
+        let status = sqlite3_errcode(database)
+        guard status == SQLITE_OK || status == SQLITE_DONE else { throw currentError() }
+    }
+
+    private func currentError() -> CodexIncrementalStoreError {
+        guard let database else { return .sqlite("database closed") }
+        return .sqlite(String(cString: sqlite3_errmsg(database)))
+    }
+}
+
 private struct CollectorCache: Codable {
     static let currentVersion = UsageCollector.codexAccountingRevision
 
@@ -2292,10 +4150,13 @@ private struct CodexSessionScan: Codable {
     var parentSessionID: String?
     var sourcePath: String
     var events: [CodexTokenEvent]
+    var finalModel: String? = nil
+    var relevantLineCount: Int? = nil
 }
 
 private struct CodexTokenEvent: Codable {
     var timestamp: String?
+    var timestampEpoch: TimeInterval? = nil
     var model: String
     var cumulativePresent: Bool
     var cumulative: TokenUsageCounts?
@@ -2304,7 +4165,35 @@ private struct CodexTokenEvent: Codable {
     var lineNumber: Int
 }
 
-private struct CodexCollectionDiagnostics {
+private struct CodexAnchor: Codable, Equatable {
+    var timestamp: TimeInterval
+    var usage: TokenUsageCounts
+}
+
+private struct CodexDeltaCursor {
+    var hasCumulativeSchema: Bool
+    var previousCumulative: TokenUsageCounts?
+    var epoch: Int
+}
+
+private struct CodexSessionCursor: Codable, Equatable {
+    var currentModel: String
+    var relevantLineNumber: Int
+    var hasCumulativeSchema: Bool
+    var previousCumulative: TokenUsageCounts?
+    var epoch: Int
+}
+
+private struct CodexSessionTail {
+    var events: [CodexTokenEvent]
+    var currentModel: String
+    var relevantLineNumber: Int
+    var processedSize: UInt64
+    var modificationTime: TimeInterval
+    var fingerprint: String
+}
+
+private struct CodexCollectionDiagnostics: Codable, Equatable {
     var rawRecords = 0
     var exactRecords = 0
     var legacyRecords = 0
@@ -2328,9 +4217,10 @@ private struct CodexCollectionDiagnostics {
     }
 }
 
-private struct UsageRecord: Codable {
+private struct UsageRecord: Codable, Equatable {
     var date: String
     var timestamp: String?
+    var timestampEpoch: TimeInterval? = nil
     var tool: String
     var model: String
     var usage: TokenUsageCounts
@@ -2348,6 +4238,7 @@ private struct UsageRecord: Codable {
     enum CodingKeys: String, CodingKey {
         case date
         case timestamp
+        case timestampEpoch
         case tool
         case model
         case usage
@@ -2366,6 +4257,7 @@ private struct UsageRecord: Codable {
     init(
         date: String,
         timestamp: String?,
+        timestampEpoch: TimeInterval? = nil,
         tool: String,
         model: String,
         usage: TokenUsageCounts,
@@ -2382,6 +4274,7 @@ private struct UsageRecord: Codable {
     ) {
         self.date = date
         self.timestamp = timestamp
+        self.timestampEpoch = timestampEpoch
         self.tool = tool
         self.model = model
         self.usage = usage
@@ -2401,6 +4294,7 @@ private struct UsageRecord: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         date = try container.decode(String.self, forKey: .date)
         timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
+        timestampEpoch = try container.decodeIfPresent(TimeInterval.self, forKey: .timestampEpoch)
         tool = try container.decode(String.self, forKey: .tool)
         model = try container.decode(String.self, forKey: .model)
         usage = try container.decode(TokenUsageCounts.self, forKey: .usage)
@@ -2417,7 +4311,7 @@ private struct UsageRecord: Codable {
     }
 }
 
-private enum UsageRecordSource: String, Codable {
+private enum UsageRecordSource: String, Codable, Equatable {
     case nativeCodex
     case nativeCodexSQLite
     case nativeClaudeCode

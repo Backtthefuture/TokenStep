@@ -70,6 +70,9 @@ struct MainWindowView: View {
                 .id(appState.appearanceID)
         }
         .background(TokenStepBackdrop().id(appState.appearanceID))
+        .onAppear {
+            appState.refreshForForeground()
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
