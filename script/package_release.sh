@@ -118,14 +118,29 @@ fi
 echo "Creating dmg..."
 rm -rf "$DMG_STAGING"
 mkdir -p "$DMG_STAGING"
-cp -R "$APP_BUNDLE" "$DMG_STAGING/"
+ditto "$APP_BUNDLE" "$DMG_STAGING/$APP_NAME.app"
 ln -s /Applications "$DMG_STAGING/Applications"
-hdiutil create \
-  -volname "$APP_NAME" \
-  -srcfolder "$DMG_STAGING" \
-  -ov \
-  -format UDZO \
-  "$DMG_PATH"
+
+DMG_CREATED=false
+for attempt in 1 2 3; do
+  rm -f "$DMG_PATH"
+  if hdiutil create \
+    -volname "$APP_NAME" \
+    -srcfolder "$DMG_STAGING" \
+    -ov \
+    -format UDZO \
+    "$DMG_PATH"; then
+    DMG_CREATED=true
+    break
+  fi
+  echo "DMG creation attempt $attempt failed; retrying..." >&2
+  sleep $((attempt * 3))
+done
+
+if [[ "$DMG_CREATED" != true ]]; then
+  echo "DMG creation failed after 3 attempts." >&2
+  exit 1
+fi
 echo "Signing dmg with Developer ID..."
 codesign --force --timestamp --sign "$IDENTITY" "$DMG_PATH"
 codesign --verify --verbose=2 "$DMG_PATH"
