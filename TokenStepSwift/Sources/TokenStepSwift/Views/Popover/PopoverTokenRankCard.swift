@@ -49,7 +49,7 @@ struct PopoverTokenRankCard: View {
                     .controlSize(.small)
                     .scaleEffect(0.72)
             } else if let fetchedAt = appState.tokenRank?.fetchedAt {
-                Text(relativeTime(fetchedAt))
+                Text(headerStatus(fetchedAt))
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
             }
@@ -64,16 +64,32 @@ struct PopoverTokenRankCard: View {
                 .frame(width: 38, height: 38)
                 .background(mainTint.opacity(0.16), in: Circle())
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(mainTitle)
-                    .font(.title3.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+            VStack(alignment: .leading, spacing: 3) {
+                if let entry = currentUserEntry {
+                    Text(L("今日排名"))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    Text("#\(entry.rank)")
+                        .font(.system(size: 28, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.tokenInk)
+                        .monospacedDigit()
+                } else {
+                    Text(mainTitle)
+                        .font(.title3.weight(.heavy))
+                        .foregroundStyle(Color.tokenInk)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
                 Text(mainSubtitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if let rankContext {
+                    Text(rankContext)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(mainTint)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 0)
@@ -112,13 +128,13 @@ struct PopoverTokenRankCard: View {
         } else {
             HStack(spacing: 8) {
                 if let entry = currentUserEntry {
-                    TokenRankMetaPill(label: L("今日 Token"), value: TokenStepFormat.tokens(entry.totalTokens, compact: true))
+                    TokenRankMetaPill(label: L("我的今日 Token"), value: TokenStepFormat.tokens(entry.totalTokens, compact: true))
                 } else if let topEntry = appState.tokenRank?.topEntry {
                     TokenRankMetaPill(label: L("今日榜首"), value: TokenStepFormat.tokens(topEntry.totalTokens, compact: true))
                 } else {
                     TokenRankMetaPill(label: L("今日榜单"), value: L("等待同步"))
                 }
-                TokenRankMetaPill(label: L("上榜："), value: rankingThresholdText)
+                TokenRankMetaPill(label: L("全榜今日 Token"), value: totalRankTokensText)
             }
 
             if let error = appState.tokenRankError {
@@ -153,7 +169,7 @@ struct PopoverTokenRankCard: View {
 
     private var mainSubtitle: String {
         if let entry = currentUserEntry {
-            return "\(entry.name) · \(primaryClientName(entry))"
+            return "\(entry.name) · \(L("主力")) \(primaryClientName(entry))"
         }
         if let identity = appState.agentWorkRankIdentity {
             return identity.name
@@ -172,15 +188,25 @@ struct PopoverTokenRankCard: View {
         appState.tokenRank == nil && appState.tokenRankError != nil ? .secondary : .tokenGreen
     }
 
-    private var rankingThresholdText: String {
-        guard let entry = rankingThresholdEntry else { return L("等待同步") }
-        return TokenStepFormat.tokens(entry.totalTokens, compact: true)
+    private var rankContext: String? {
+        guard let entry = currentUserEntry,
+              let leaderboard = appState.tokenRank,
+              leaderboard.totalRankedUsers > 0 else { return nil }
+        let percentile = max(
+            0,
+            min(100, Int((Double(leaderboard.totalRankedUsers - entry.rank) / Double(leaderboard.totalRankedUsers) * 100).rounded()))
+        )
+        return LFormat(
+            "第 %d / %d · 超过 %d%% 参榜用户",
+            entry.rank,
+            leaderboard.totalRankedUsers,
+            percentile
+        )
     }
 
-    private var rankingThresholdEntry: TokenRankEntry? {
-        guard let leaderboard = appState.tokenRank, !leaderboard.entries.isEmpty else { return nil }
-        return leaderboard.entries.first { $0.rank == leaderboard.topLimit }
-            ?? leaderboard.entries.max { $0.rank < $1.rank }
+    private var totalRankTokensText: String {
+        guard let leaderboard = appState.tokenRank else { return L("等待同步") }
+        return TokenStepFormat.tokens(leaderboard.totalTokens, compact: true)
     }
 
     private func primaryClientName(_ entry: TokenRankEntry) -> String {
@@ -201,6 +227,12 @@ struct PopoverTokenRankCard: View {
         let seconds = max(0, Int(Date().timeIntervalSince(date).rounded()))
         if seconds < 60 { return L("刚刚") }
         return LFormat("%d 分钟前", max(1, seconds / 60))
+    }
+
+    private func headerStatus(_ date: Date) -> String {
+        let time = relativeTime(date)
+        guard let count = appState.tokenRank?.totalRankedUsers, count > 0 else { return time }
+        return LFormat("%d 人 · %@", count, time)
     }
 }
 

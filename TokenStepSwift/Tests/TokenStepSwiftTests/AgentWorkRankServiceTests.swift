@@ -77,7 +77,7 @@ final class AgentWorkRankServiceTests: XCTestCase {
         XCTAssertNotNil(identity.lastSyncedAt)
     }
 
-    func testLegacyShengcaiSettingsDoNotEnableAgentWorkRank() throws {
+    func testLegacyShengcaiSettingsMigrateToAutomaticAgentWorkRank() throws {
         let data = Data("""
         {
           "show_token_rank": true,
@@ -85,6 +85,49 @@ final class AgentWorkRankServiceTests: XCTestCase {
         }
         """.utf8)
         let settings = try JSONDecoder().decode(TokenStepSettings.self, from: data)
-        XCTAssertFalse(settings.showAgentWorkRank)
+        XCTAssertEqual(settings.agentWorkRankVisibility, .automatic)
+    }
+
+    func testLegacyAgentWorkRankBooleanMigratesToThreeStateVisibility() throws {
+        let visible = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: Data("{\"show_agent_work_rank\":true}".utf8)
+        )
+        let automatic = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: Data("{\"show_agent_work_rank\":false}".utf8)
+        )
+
+        XCTAssertEqual(visible.agentWorkRankVisibility, .visible)
+        XCTAssertEqual(automatic.agentWorkRankVisibility, .automatic)
+    }
+
+    func testExplicitHiddenVisibilityWinsOverLegacyBoolean() throws {
+        let settings = try JSONDecoder().decode(
+            TokenStepSettings.self,
+            from: Data("{\"agent_work_rank_visibility\":\"hidden\",\"show_agent_work_rank\":true}".utf8)
+        )
+
+        XCTAssertEqual(settings.agentWorkRankVisibility, .hidden)
+    }
+
+    func testAutomaticVisibilityRequiresIdentityAndHiddenNeverReadsIt() {
+        XCTAssertTrue(AgentWorkRankVisibility.automatic.readsLocalIdentity)
+        XCTAssertFalse(AgentWorkRankVisibility.automatic.shouldShow(hasLocalIdentity: false))
+        XCTAssertTrue(AgentWorkRankVisibility.automatic.shouldShow(hasLocalIdentity: true))
+        XCTAssertTrue(AgentWorkRankVisibility.visible.shouldShow(hasLocalIdentity: false))
+        XCTAssertFalse(AgentWorkRankVisibility.hidden.readsLocalIdentity)
+        XCTAssertFalse(AgentWorkRankVisibility.hidden.shouldShow(hasLocalIdentity: true))
+    }
+
+    func testSettingsEncodeOnlyWritesNewRankVisibilityKey() throws {
+        var settings = TokenStepSettings.defaults
+        settings.agentWorkRankVisibility = .hidden
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as? [String: Any]
+        )
+
+        XCTAssertEqual(object["agent_work_rank_visibility"] as? String, "hidden")
+        XCTAssertNil(object["show_agent_work_rank"])
     }
 }

@@ -54,14 +54,23 @@ struct PopoverTodayRingCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                if let summary = todayToolSummary {
-                    Text(summary)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 1)
+                if !todaySourceRows.isEmpty {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(L("今日来源"))
+                            .font(.caption2.weight(.heavy))
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 10) {
+                            ForEach(todaySourceRows.indices, id: \.self) { index in
+                                let row = todaySourceRows[index]
+                                if index > 0 {
+                                    Divider()
+                                        .frame(height: 30)
+                                }
+                                TodaySourceMetric(name: row.name, tokens: row.tokens)
+                            }
+                        }
+                    }
+                    .padding(.top, 1)
                 }
             }
         }
@@ -71,12 +80,49 @@ struct PopoverTodayRingCard: View {
         TokenStepLocalization.language == .en ? "\(count)d" : "\(count) 天"
     }
 
-    private var todayToolSummary: String? {
-        guard appState.today.totalTokens > 0 else { return nil }
-        let orderedTools = [("Codex", "Codex"), ("Claude Code", "Claude")]
-        let parts = orderedTools.map { tool, label in
-            "\(label) \(TokenStepFormat.tokens(appState.today.tools[tool] ?? 0, compact: true))"
+    private var todaySourceRows: [(name: String, tokens: Int)] {
+        var rows = appState.today.tools
+            .filter { $0.value > 0 }
+            .map { (name: $0.key, tokens: $0.value) }
+            .sorted { $0.tokens > $1.tokens }
+        guard rows.count > 3 else { return rows }
+
+        var selected = Array(rows.prefix(3))
+        if let workBuddy = rows.first(where: { $0.name == "WorkBuddy" }),
+           !selected.contains(where: { $0.name == "WorkBuddy" }) {
+            selected[2] = workBuddy
         }
-        return "\(L("今日")) \(parts.joined(separator: " · "))"
+        rows = selected.sorted { $0.tokens > $1.tokens }
+        return rows
+    }
+}
+
+private struct TodaySourceMetric: View {
+    var name: String
+    var tokens: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(tokenToolColor(name))
+                    .frame(width: 6, height: 6)
+                Text(displayName)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Text(TokenStepFormat.tokens(tokens, compact: true))
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.tokenInk.opacity(0.82))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var displayName: String {
+        name == "Claude Code" ? "Claude" : name
     }
 }

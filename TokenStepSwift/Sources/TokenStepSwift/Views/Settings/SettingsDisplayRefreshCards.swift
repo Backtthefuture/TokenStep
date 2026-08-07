@@ -93,24 +93,27 @@ struct SettingsTokenRankCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("Agent 消耗榜"), symbol: "list.number") {
+        SettingsCard(title: L("Agent 消耗榜"), symbol: "list.number", height: 282) {
             VStack(alignment: .leading, spacing: 13) {
-                SettingsToggleRow(
-                    title: L("Agent 消耗榜显示"),
-                    isOn: Binding(
-                        get: { appState.settings.showAgentWorkRank },
-                        set: { appState.setAgentWorkRankVisible($0) }
-                    )
+                Picker("", selection: Binding(
+                    get: { appState.settings.agentWorkRankVisibility },
+                    set: { appState.setAgentWorkRankVisibility($0) }
+                )) {
+                    Text(L("自动")).tag(AgentWorkRankVisibility.automatic)
+                    Text(L("显示")).tag(AgentWorkRankVisibility.visible)
+                    Text(L("隐藏")).tag(AgentWorkRankVisibility.hidden)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+
+                StatusLine(
+                    symbol: statusSymbol,
+                    title: statusTitle,
+                    value: statusValue,
+                    tint: statusTint
                 )
 
-                if appState.settings.showAgentWorkRank {
-                    StatusLine(
-                        symbol: appState.agentWorkRankIdentity == nil ? "person.crop.circle.badge.questionmark" : "checkmark.circle.fill",
-                        title: appState.agentWorkRankIdentity == nil ? L("尚未关联") : L("已自动关联"),
-                        value: identityText,
-                        tint: appState.agentWorkRankIdentity == nil ? .orange : .tokenGreen
-                    )
-
+                if appState.shouldShowAgentWorkRank {
                     StatusLine(
                         symbol: "arrow.triangle.2.circlepath",
                         title: L("数据同步"),
@@ -139,13 +142,6 @@ struct SettingsTokenRankCard: View {
                         }
                         .buttonStyle(SettingsSecondaryButtonStyle())
                     }
-                } else {
-                    StatusLine(
-                        symbol: "eye.slash.fill",
-                        title: L("默认关闭"),
-                        value: L("不会请求榜单"),
-                        tint: .gray
-                    )
                 }
 
                 Spacer(minLength: 0)
@@ -153,11 +149,51 @@ struct SettingsTokenRankCard: View {
         }
     }
 
-    private var identityText: String {
-        guard let identity = appState.agentWorkRankIdentity else {
-            return L("安装 Token Rank 后自动识别")
+    private var statusSymbol: String {
+        switch appState.settings.agentWorkRankVisibility {
+        case .automatic:
+            return appState.agentWorkRankIdentity == nil ? "magnifyingglass" : "checkmark.circle.fill"
+        case .visible:
+            return "eye.fill"
+        case .hidden:
+            return "eye.slash.fill"
         }
-        return "\(identity.name) · ID \(identity.id)"
+    }
+
+    private var statusTitle: String {
+        switch appState.settings.agentWorkRankVisibility {
+        case .automatic:
+            return appState.agentWorkRankIdentity == nil ? L("自动检测") : L("已自动显示")
+        case .visible:
+            return L("已显示")
+        case .hidden:
+            return L("已手动隐藏")
+        }
+    }
+
+    private var statusValue: String {
+        if let identity = appState.agentWorkRankIdentity {
+            return identity.name
+        }
+        switch appState.settings.agentWorkRankVisibility {
+        case .automatic:
+            return L("未检测到 Token Rank")
+        case .visible:
+            return L("等待关联")
+        case .hidden:
+            return L("不读取身份与榜单")
+        }
+    }
+
+    private var statusTint: Color {
+        switch appState.settings.agentWorkRankVisibility {
+        case .automatic:
+            return appState.agentWorkRankIdentity == nil ? .orange : .tokenGreen
+        case .visible:
+            return .tokenGreen
+        case .hidden:
+            return .gray
+        }
     }
 
     private var syncText: String {
