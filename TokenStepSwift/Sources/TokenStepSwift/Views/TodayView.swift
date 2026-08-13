@@ -19,8 +19,68 @@ struct TodayView: View {
             }
             hero
             todayBreakdownStrip
+            todayProjectsCard
             TodayAgentWorkCard()
             metricStrip
+        }
+    }
+
+    /// G-B1：今日项目卡——"今天你的 token 走了这些路"。
+    @ViewBuilder
+    private var todayProjectsCard: some View {
+        let projects = appState.today.projects ?? []
+        if !projects.isEmpty {
+            TokenCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(L("今日项目"))
+                            .font(.title3.weight(.heavy))
+                            .foregroundStyle(Color.tokenInk)
+                        Spacer()
+                        Text(L("今天你的 token 走了这些路"))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    let total = max(1, projects.reduce(0) { $0 + $1.tokens })
+                    ForEach(projects.prefix(4)) { project in
+                        HStack(spacing: 14) {
+                            Text(TokenStepProject.displayName(project.name))
+                                .font(.callout.weight(.heavy))
+                                .foregroundStyle(Color.tokenInk)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(width: 250, alignment: .leading)
+                            GeometryReader { proxy in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.tokenTrack.opacity(0.5))
+                                    Capsule()
+                                        .fill(Color.tokenGreen.opacity(0.85))
+                                        .frame(width: max(4, proxy.size.width * CGFloat(project.tokens) / CGFloat(total)))
+                                }
+                            }
+                            .frame(height: 8)
+                            Text("\(TokenStepFormat.tokens(project.tokens, compact: true)) · \(TokenStepFormat.percent(Double(project.tokens) * 100 / Double(total)))")
+                                .font(.callout.weight(.bold))
+                                .monospacedDigit()
+                                .frame(width: 150, alignment: .trailing)
+                            Text(TokenStepProject.agentSummary(project.tools))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .frame(minWidth: 160, alignment: .leading)
+                        }
+                    }
+                    if projects.count > 4 {
+                        Text(LFormat("还有 %d 个项目", projects.count - 4))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(L("只显示项目目录名；完整路径仅保存在本机。"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 

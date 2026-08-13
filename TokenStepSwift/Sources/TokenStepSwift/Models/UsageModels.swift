@@ -12,6 +12,8 @@ struct UsageSnapshot: Codable {
     var sources: [String: SourceInfo]
     /// 生成该快照的采集尝试信息（G-V1）。旧快照缺失时按 nil 解码。
     var sourceAttempt: RefreshAttemptRecord?
+    /// 项目维度聚合（G-B1，按末级目录名脱敏）。旧快照缺失时按空数组解码。
+    var projects: [ProjectUsage]
 
     enum CodingKeys: String, CodingKey {
         case generatedAt = "generated_at"
@@ -24,6 +26,7 @@ struct UsageSnapshot: Codable {
         case models
         case sources
         case sourceAttempt = "source_attempt"
+        case projects
     }
 
     init(
@@ -36,7 +39,8 @@ struct UsageSnapshot: Codable {
         tools: [ToolUsage],
         models: [ModelUsage],
         sources: [String: SourceInfo],
-        sourceAttempt: RefreshAttemptRecord? = nil
+        sourceAttempt: RefreshAttemptRecord? = nil,
+        projects: [ProjectUsage] = []
     ) {
         self.generatedAt = generatedAt
         self.timezone = timezone
@@ -48,6 +52,7 @@ struct UsageSnapshot: Codable {
         self.models = models
         self.sources = sources
         self.sourceAttempt = sourceAttempt
+        self.projects = projects
     }
 
     init(from decoder: Decoder) throws {
@@ -62,6 +67,7 @@ struct UsageSnapshot: Codable {
         models = try container.decodeIfPresent([ModelUsage].self, forKey: .models) ?? []
         sources = try container.decodeIfPresent([String: SourceInfo].self, forKey: .sources) ?? [:]
         sourceAttempt = try container.decodeIfPresent(RefreshAttemptRecord.self, forKey: .sourceAttempt)
+        projects = try container.decodeIfPresent([ProjectUsage].self, forKey: .projects) ?? []
     }
 
     func rhythm(for date: String) -> DailyRhythm? {
@@ -104,6 +110,8 @@ struct DailyUsage: Codable, Identifiable {
     var models: [String: Int]
     var totalTokens: Int
     var cost: Double
+    /// 项目维度（G-B1）。name 为末级目录名；空串表示未命名（UI 层本地化）。旧快照按 nil 解码。
+    var projects: [ProjectUsage]?
 
     enum CodingKeys: String, CodingKey {
         case date
@@ -111,14 +119,16 @@ struct DailyUsage: Codable, Identifiable {
         case models
         case totalTokens = "total_tokens"
         case cost
+        case projects
     }
 
-    init(date: String, tools: [String: Int], models: [String: Int] = [:], totalTokens: Int, cost: Double) {
+    init(date: String, tools: [String: Int], models: [String: Int] = [:], totalTokens: Int, cost: Double, projects: [ProjectUsage]? = nil) {
         self.date = date
         self.tools = tools
         self.models = models
         self.totalTokens = totalTokens
         self.cost = cost
+        self.projects = projects
     }
 
     init(from decoder: Decoder) throws {
@@ -128,7 +138,20 @@ struct DailyUsage: Codable, Identifiable {
         models = try container.decodeIfPresent([String: Int].self, forKey: .models) ?? [:]
         totalTokens = try container.decode(Int.self, forKey: .totalTokens)
         cost = try container.decode(Double.self, forKey: .cost)
+        projects = try container.decodeIfPresent([ProjectUsage].self, forKey: .projects)
     }
+}
+
+/// 项目维度聚合（G-B1）。name 是末级目录名（脱敏）；空串 = 未命名项目。
+struct ProjectUsage: Codable, Equatable, Identifiable {
+    var id: String { name }
+    var name: String
+    var tokens: Int
+    var cost: Double
+    /// Agent（客户端显示名）→ tokens。
+    var tools: [String: Int]
+    /// 模型 → tokens。
+    var models: [String: Int]
 }
 
 struct DailyRhythm: Codable, Identifiable {

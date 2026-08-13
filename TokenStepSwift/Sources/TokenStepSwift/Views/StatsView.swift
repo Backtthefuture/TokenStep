@@ -20,8 +20,37 @@ struct StatsView: View {
                 usageList(title: L("按模型"), subtitle: "Top \(min(appState.snapshot.models.count, 10)) / \(appState.snapshot.models.count)", rows: appState.snapshot.models.prefix(10).map {
                     UsageStatRow(name: $0.model, value: $0.tokens, percent: $0.percentValue, color: $0.displayColor)
                 })
+                usageList(title: L("按项目"), subtitle: L("近 30 天"), rows: recentProjectRows)
             }
         }
+    }
+
+    /// 近 30 天项目聚合（G-B1）。
+    private var recentProjectRows: [UsageStatRow] {
+        let rows = appState.snapshot.daily.suffix(30)
+            .flatMap { $0.projects ?? [] }
+        var merged: [String: (tokens: Int, tools: [String: Int])] = [:]
+        for project in rows {
+            let entry = merged[project.name] ?? (0, [:])
+            merged[project.name] = (
+                entry.0 + project.tokens,
+                project.tools.reduce(into: entry.1) { $0[$1.key] = ($0[$1.key] ?? 0) + $1.value }
+            )
+        }
+        let total = merged.values.reduce(0) { $0 + $1.tokens }
+        let colorSeed = [Color.tokenGreen, .tokenGreenDark, .orange, .teal, .indigo, .pink]
+        return merged
+            .sorted { $0.value.tokens > $1.value.tokens }
+            .prefix(8)
+            .enumerated()
+            .map { index, item in
+                UsageStatRow(
+                    name: TokenStepProject.displayName(item.key),
+                    value: item.value.tokens,
+                    percent: total > 0 ? Double(item.value.tokens) * 100 / Double(total) : 0,
+                    color: colorSeed[index % colorSeed.count]
+                )
+            }
     }
 
     private var recentActivityCard: some View {

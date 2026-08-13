@@ -680,3 +680,18 @@ func uniqueToolNames(in rows: [DailyUsage], fallback: [String] = ["Codex", "Clau
     }
     return names.isEmpty ? fallback : names
 }
+
+/// G-B1：项目显示名工具（未命名项目本地化）。
+enum TokenStepProject {
+    static func displayName(_ name: String) -> String {
+        name.isEmpty ? L("未命名项目") : name
+    }
+
+    static func agentSummary(_ tools: [String: Int]) -> String {
+        tools
+            .sorted { $0.value > $1.value }
+            .prefix(3)
+            .map { $0.key == "Claude Code" ? "Claude" : $0.key }
+            .joined(separator: " · ")
+    }
+}

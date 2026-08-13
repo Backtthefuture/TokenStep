@@ -49,6 +49,15 @@ struct ShareDailyCardView: View {
                     rows: toolRows,
                     compact: true
                 )
+                // G-B1：分享卡项目条目（仅目录名）。
+                if let projects = day.projects, !projects.isEmpty {
+                    ShareBreakdownPanel(
+                        title: L(mode == .today ? "今日路线" : "昨日路线"),
+                        subtitle: L("项目目录名"),
+                        rows: projectRows(projects),
+                        compact: true
+                    )
+                }
                 ShareBreakdownPanel(
                     title: L("主力模型"),
                     subtitle: L("按 Token 消耗排序"),
@@ -217,6 +226,22 @@ struct ShareDailyCardView: View {
 
     private var toolRows: [ShareBreakdownRow] {
         breakdownRows(from: day.tools, color: tokenToolColor)
+    }
+
+    /// G-B1：分享卡项目行（前 3，仅目录名）。
+    private func projectRows(_ projects: [ProjectUsage]) -> [ShareBreakdownRow] {
+        let total = max(day.totalTokens, 1)
+        return projects
+            .filter { $0.tokens > 0 }
+            .prefix(3)
+            .map { project in
+                ShareBreakdownRow(
+                    name: TokenStepProject.displayName(project.name),
+                    value: TokenStepFormat.tokens(project.tokens, compact: true),
+                    percent: Double(project.tokens) * 100 / Double(total),
+                    color: .tokenGreenDark
+                )
+            }
     }
 
     private var modelRows: [ShareBreakdownRow] {

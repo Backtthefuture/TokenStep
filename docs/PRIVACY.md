@@ -39,6 +39,15 @@ Generated app data is stored at:
 This folder contains settings, token summaries, freshness records (timestamps and
 safe error categories only — no paths, no error text), and login item logs.
 
+## Project Dimension
+
+TokenStep extracts a project name from each agent session (the last folder
+name of the working directory, e.g. `my-app`). **Full paths are never
+persisted, displayed, or shared** — only the folder name. Folders whose name
+cannot be represented (e.g. fully stripped encodings) are grouped under
+Unnamed project. Project names appear in the Today card, stats, share cards,
+and (in the future) opt-in multi-device sync payloads.
+
 ## Cost Estimates
 
 The "spend" value is a rough local estimate based on bundled API list prices

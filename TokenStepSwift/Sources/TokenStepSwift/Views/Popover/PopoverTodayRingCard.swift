@@ -89,6 +89,36 @@ struct PopoverTodayRingCard: View {
                     }
                     .padding(.top, 1)
                 }
+
+                // G-B1：今日路线（Popover 紧凑版）。
+                if let projects = appState.today.projects, !projects.isEmpty {
+                    let total = max(1, projects.reduce(0) { $0 + $1.tokens })
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L("今日路线"))
+                            .font(.caption2.weight(.heavy))
+                            .foregroundStyle(.secondary)
+                        ForEach(projects.prefix(3)) { project in
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(Color.tokenGreen.opacity(0.75))
+                                    .frame(width: 5, height: 5)
+                                Text(TokenStepProject.displayName(project.name))
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(Color.tokenInk.opacity(0.78))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Text(
+                                    "\(TokenStepFormat.tokens(project.tokens, compact: true)) · \(TokenStepFormat.percent(Double(project.tokens) * 100 / Double(total)))"
+                                )
+                                .font(.caption2.weight(.bold))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.top, 1)
+                }
             }
         }
     }

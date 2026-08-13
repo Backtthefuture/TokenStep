@@ -70,6 +70,18 @@ trigger partial-failure. Everything else (e.g. `incremental_cache_error`) counts
 enabled-but-failed source. Diagnostics are the primary evidence for "is today's number
 complete?" and feed the trust labels.
 
+## Project Dimension (V-B1)
+
+- Extraction: Claude per-line `cwd`; Codex `session_meta.payload.cwd`.
+- Storage: last path component only (≤64 chars, must contain a letter/digit;
+  symbol-only names → Unnamed). Empty name groups under Unnamed project.
+- Codex incremental cache: project rides per-record blobs; tail appends inherit
+  the session's stored project (fixture-verified); old caches backfill on the
+  next natural rescan/validation (records equality includes the new field).
+- Claude collector cache: replayed entries without a project stay Unnamed until
+  the file changes (active sessions refresh immediately).
+- Snapshot schema: `projects` additive, `decodeIfPresent` (legacy reads OK).
+
 ## Local Data, Network Requests and Retention
 
 | Item | Location | Network | Retention |

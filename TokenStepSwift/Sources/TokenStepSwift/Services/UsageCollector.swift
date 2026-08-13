@@ -953,7 +953,12 @@ enum UsageCollector {
     ) {
         let hour = record.timestampEpoch.map(hour(fromEpoch:))
             ?? hour(fromISO: record.timestamp)
-        let key = CodexSummaryKey(date: record.date, model: record.model, hour: hour)
+        let key = CodexSummaryKey(
+            date: record.date,
+            model: record.model,
+            hour: hour,
+            projectName: record.projectName
+        )
         summaries[key, default: CodexSummaryAccumulator()].add(record)
     }
 
@@ -971,7 +976,8 @@ enum UsageCollector {
                 source: .nativeCodex,
                 dataSource: "codex_incremental_summary",
                 modelRequestCount: value.modelRequestCount,
-                toolCallCount: value.toolCallCount
+                toolCallCount: value.toolCallCount,
+                projectName: key.projectName
             )
         }.sorted {
             if $0.date != $1.date { return $0.date < $1.date }
@@ -1009,6 +1015,9 @@ enum UsageCollector {
         var cursor = cached.cursor
         diagnostics.rawRecords += tail.events.count
         var seenRequestIDs = Set(records.compactMap(\.requestID))
+        // 项目名继承：tail 段不再含 session_meta，取该会话已存记录的首个项目名。
+        let inheritedProjectName = cached.records.first(where: { $0.projectName != nil })?.projectName
+            ?? cached.summaryRecords.first(where: { $0.projectName != nil })?.projectName
         let scan = CodexSessionScan(
             canonicalSessionID: cached.sessionID,
             createdAt: cached.createdAtEpoch.map { isoFormatter.string(from: Date(timeIntervalSince1970: $0)) },
@@ -1016,7 +1025,8 @@ enum UsageCollector {
             sourcePath: cached.path,
             events: tail.events,
             finalModel: tail.currentModel,
-            relevantLineCount: tail.relevantLineNumber
+            relevantLineCount: tail.relevantLineNumber,
+            projectName: inheritedProjectName
         )
 
         if cursor.hasCumulativeSchema {
@@ -1237,6 +1247,7 @@ enum UsageCollector {
         var canonicalSessionID: String?
         var createdAt: String?
         var parentSessionID: String?
+        var projectName: String?
         var currentModel = "unknown"
         var events: [CodexTokenEvent] = []
         var relevantLineNumber = 0
@@ -1255,6 +1266,9 @@ enum UsageCollector {
                         createdAt = nonEmptyString(obj["timestamp"] as? String)
                             ?? nonEmptyString(payload?["timestamp"] as? String)
                         parentSessionID = codexParentSessionID(from: payload)
+                        if projectName == nil {
+                            projectName = projectDisplayName(fromPath: payload?["cwd"] as? String)
+                        }
                     }
                     if type == "turn_context" {
                         currentModel = modelKey(payload?["model"] as? String ?? currentModel)
@@ -1295,7 +1309,8 @@ enum UsageCollector {
             sourcePath: path.path,
             events: events,
             finalModel: currentModel,
-            relevantLineCount: relevantLineNumber
+            relevantLineCount: relevantLineNumber,
+            projectName: projectName
         )
     }
 
@@ -1533,7 +1548,8 @@ enum UsageCollector {
             sessionID: scan.canonicalSessionID,
             sourcePath: scan.sourcePath,
             lineNumber: event.lineNumber,
-            dataSource: dataSource
+            dataSource: dataSource,
+            projectName: scan.projectName
         )
     }
 
@@ -1678,7 +1694,8 @@ enum UsageCollector {
                         requestID: identity.requestID,
                         responseID: identity.responseID,
                         sessionID: identity.sessionID,
-                        sourcePath: path.path
+                        sourcePath: path.path,
+                        projectName: projectDisplayName(fromPath: obj["cwd"] as? String)
                     )
                     if let existing = responses[identity.deduplicationKey],
                        !candidate.isPreferred(over: existing) {
@@ -2474,9 +2491,13 @@ enum UsageCollector {
         var tools = [String: UsageAccumulator]()
         var models = [ModelKey: UsageAccumulator]()
 
+        var projectTotals: [String: ProjectUsageAccumulator] = [:]
         for record in records {
             let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model)
             daily[record.date, default: DailyAccumulator(date: record.date)].add(record: record, cost: cost)
+            let recordProject = record.projectName ?? ""
+            projectTotals[recordProject, default: ProjectUsageAccumulator(name: recordProject)]
+                .add(record: record, cost: cost)
             let recordHour = record.timestampEpoch.map(hour(fromEpoch:))
                 ?? hour(fromISO: record.timestamp)
             if let hour = recordHour {
@@ -2502,7 +2523,10 @@ enum UsageCollector {
                     tools: item.tools,
                     models: item.models,
                     totalTokens: item.totalTokens,
-                    cost: rounded(item.cost, digits: 4)
+                    cost: rounded(item.cost, digits: 4),
+                    projects: item.projects.values
+                        .sorted { $0.tokens > $1.tokens }
+                        .map(\.projectUsage)
                 )
             }
 
@@ -2550,7 +2574,10 @@ enum UsageCollector {
             agentWork: agentWorkRows,
             tools: toolRows,
             models: modelRows,
-            sources: sources
+            sources: sources,
+            projects: projectTotals.values
+                .sorted { $0.tokens > $1.tokens }
+                .map(\.projectUsage)
         )
     }
 
@@ -3231,6 +3258,21 @@ enum UsageCollector {
         return try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
     }
 
+    /// 项目显示名：路径末级目录名（脱敏，G-B1）。空/纯符号段返回 nil（UI 归入未命名项目）。
+    static func projectDisplayName(fromPath path: String?) -> String? {
+        guard let path else { return nil }
+        let name = path
+            .split(separator: "/")
+            .last
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard let name, !name.isEmpty else { return nil }
+        let meaningful = name.contains { (character: Character) -> Bool in
+            character.isLetter || character.isNumber
+        }
+        guard meaningful else { return nil }
+        return String(name.prefix(64))
+    }
+
     private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String) -> Double {
         let lower = model.lowercased()
         if tool == "Codex", lower.contains("gpt-5.5") {
@@ -3394,6 +3436,7 @@ private struct CodexSummaryKey: Hashable {
     var date: String
     var model: String
     var hour: Int?
+    var projectName: String?
 }
 
 private struct CodexSummaryAccumulator {
@@ -4152,6 +4195,8 @@ private struct CodexSessionScan: Codable {
     var events: [CodexTokenEvent]
     var finalModel: String? = nil
     var relevantLineCount: Int? = nil
+    /// session_meta.payload.cwd 的末级目录名（G-B1）。旧缓存按 nil 解码。
+    var projectName: String? = nil
 }
 
 private struct CodexTokenEvent: Codable {
@@ -4234,6 +4279,8 @@ private struct UsageRecord: Codable, Equatable {
     var dataSource: String? = nil
     var modelRequestCount = 1
     var toolCallCount = 0
+    /// 项目显示名（末级目录名，G-B1）。旧缓存缺失按 nil 解码。
+    var projectName: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case date
@@ -4252,6 +4299,7 @@ private struct UsageRecord: Codable, Equatable {
         case dataSource
         case modelRequestCount
         case toolCallCount
+        case projectName
     }
 
     init(
@@ -4270,7 +4318,8 @@ private struct UsageRecord: Codable, Equatable {
         lineNumber: Int? = nil,
         dataSource: String? = nil,
         modelRequestCount: Int = 1,
-        toolCallCount: Int = 0
+        toolCallCount: Int = 0,
+        projectName: String? = nil
     ) {
         self.date = date
         self.timestamp = timestamp
@@ -4288,6 +4337,7 @@ private struct UsageRecord: Codable, Equatable {
         self.dataSource = dataSource
         self.modelRequestCount = modelRequestCount
         self.toolCallCount = toolCallCount
+        self.projectName = projectName
     }
 
     init(from decoder: Decoder) throws {
@@ -4308,6 +4358,7 @@ private struct UsageRecord: Codable, Equatable {
         dataSource = try container.decodeIfPresent(String.self, forKey: .dataSource)
         modelRequestCount = try container.decodeIfPresent(Int.self, forKey: .modelRequestCount) ?? 1
         toolCallCount = try container.decodeIfPresent(Int.self, forKey: .toolCallCount) ?? 0
+        projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
     }
 }
 
@@ -4348,6 +4399,7 @@ private struct ClaudeUsageCandidate {
     var responseID: String?
     var sessionID: String?
     var sourcePath: String
+    var projectName: String? = nil
 
     var record: UsageRecord {
         UsageRecord(
@@ -4361,7 +4413,8 @@ private struct ClaudeUsageCandidate {
             sessionID: sessionID,
             responseID: responseID,
             sourcePath: sourcePath,
-            lineNumber: lineNumber
+            lineNumber: lineNumber,
+            projectName: projectName
         )
     }
 
@@ -4437,12 +4490,41 @@ private struct DailyAccumulator {
     var models: [String: Int] = [:]
     var totalTokens = 0
     var cost = 0.0
+    var projects: [String: ProjectUsageAccumulator] = [:]
 
     mutating func add(record: UsageRecord, cost: Double) {
         tools[record.tool, default: 0] += record.usage.totalTokens
         models[record.model, default: 0] += record.usage.totalTokens
         totalTokens += record.usage.totalTokens
         self.cost += cost
+        let projectName = record.projectName ?? ""
+        projects[projectName, default: ProjectUsageAccumulator(name: projectName)]
+            .add(record: record, cost: cost)
+    }
+}
+
+private struct ProjectUsageAccumulator {
+    var name: String
+    var tokens = 0
+    var cost = 0.0
+    var tools: [String: Int] = [:]
+    var models: [String: Int] = [:]
+
+    mutating func add(record: UsageRecord, cost: Double) {
+        tokens += record.usage.totalTokens
+        self.cost += cost
+        tools[record.tool, default: 0] += record.usage.totalTokens
+        models[record.model, default: 0] += record.usage.totalTokens
+    }
+
+    var projectUsage: ProjectUsage {
+        ProjectUsage(
+            name: name,
+            tokens: tokens,
+            cost: (cost * 10_000).rounded() / 10_000,
+            tools: tools,
+            models: models
+        )
     }
 }
 
