@@ -394,6 +394,12 @@ enum UsageCollector {
         )
     }
 
+    /// G-B1：一次性项目回填是否仍待执行（checkpoint 跳过判定用）。
+    static func projectBackfillPending(databaseURL: URL) -> Bool {
+        guard let store = try? CodexIncrementalStore(url: databaseURL) else { return false }
+        return !store.hasMetaFlag("project_backfill_v1")
+    }
+
     static func collectorCacheRecalibrationRevisionForTests(cacheURL: URL) -> Int? {
         loadCache(at: cacheURL).recalibratedFromRevision
     }

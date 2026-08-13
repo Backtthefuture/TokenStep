@@ -56,7 +56,12 @@ enum DataService {
             includeExperimentalAgentSources: settings.showExperimentalAgentSources
         )
         let existingCheckpoint = loadCollectionCheckpoint()
-        if CollectionCheckpointPolicy.shouldSkipCollection(
+        // G-B1：项目回填未完成时不允许 checkpoint 跳过（旧缓存记录无项目名）。
+        let projectBackfillPending = UsageCollector.projectBackfillPending(
+            databaseURL: AppPaths.codexIncrementalCacheSQLite
+        )
+        if !projectBackfillPending,
+           CollectionCheckpointPolicy.shouldSkipCollection(
             force: force,
             hasSnapshot: previousSnapshot != nil,
             checkpoint: existingCheckpoint,
