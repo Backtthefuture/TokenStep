@@ -6,7 +6,7 @@
 | 任务 | 状态 | 备注 |
 |---|---|---|
 | V1-T01 统一新鲜度与失败状态模型 | **verified（待 CI swift test）** | 提交 `b4eed7d`；交付物见下 |
-| V1-T02 可信标签与界面整合 | **verified（待 MG-UX 决策）** | 提交 `d936198`；9 状态渲染件 `screenshots/freshness-states.png`（`script/render_freshness_states.sh` 生成） |
+| V1-T02 可信标签与界面整合 | **verified** | 提交 `d936198`+修复 `79842cb`；MG-UX approved（真机验证后）；9 状态渲染件 `screenshots/freshness-states.png`（`script/render_freshness_states.sh` 生成） |
 | V1-T03 Trust 与 Privacy 文档同步 | **verified** | DATA_TRUST 增补六态词表/诊断状态语义/本地数据与网络表/来源口径表；PRIVACY 增补新鲜度说明与估算措辞；AGENT_SUPPORT 核对无不一致（正式仅 Codex+Claude，实验区表述与实现相符） |
 | V1-T04 十人理解度测试 | blocked（需用户招募 Beta） | manual_gate: MG-BETA |
 
@@ -25,7 +25,9 @@
 - `build_swiftui_and_run --no-launch` ✅；fixture×4 + helper 事务 ✅；本地化×2 ✅
 - `render_freshness_states.sh` ✅ → `screenshots/freshness-states.png`（10 行：9 fixtures + 金额示例行）
 
-Goal 状态：active；待 MG-UX 决策 → 之后仅剩 V1-T04（用户招募）
+MG-UX 人工门 | **approved** | 2026-08-13 真机验证+修复后用户确认
+
+Goal 状态：**engineering complete**；V1-T04（十人测试）waiting_external——用户需招募 10 名 Beta；测试工具包见 beta-kit.md。按用户 2026-08-13 指令"按你推荐的来，完成剩下全部开发"，工程主线继续推进 G-V2→B1-lite→A1→S1→A2，T04 结果回填后做最终 G-V1 收口。
 
 ## V1-T01 交付物
 
