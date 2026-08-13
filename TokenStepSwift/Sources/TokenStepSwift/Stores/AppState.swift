@@ -500,8 +500,12 @@ final class AppState: ObservableObject {
     }
 
     /// G-A1：T1 新源逐源开关（仅主开关开启时生效）。
+    /// 列表为 nil（自动纳入态）时先物化当前有效集合，避免误关其他自动源。
     func setExperimentalAgentSource(_ sourceID: String, enabled: Bool) {
-        var list = settings.experimentalAgentSources ?? []
+        var list = AgentSourceRegistry.enabledIDs(
+            masterEnabled: settings.showExperimentalAgentSources,
+            perSource: settings.experimentalAgentSources
+        )
         if enabled, !list.contains(sourceID) {
             list.append(sourceID)
         } else if !enabled {

@@ -291,18 +291,37 @@ struct SettingsT1AgentSourcesCard: View {
         AgentSourceRegistry.observeAll()
     }
 
+    /// 有效启用集：显式列表优先；nil = 自动纳入已安装的源（用户裁决的默认语义）。
     private var enabledList: [String] {
-        appState.settings.experimentalAgentSources ?? []
+        AgentSourceRegistry.enabledIDs(
+            masterEnabled: appState.settings.showExperimentalAgentSources,
+            perSource: appState.settings.experimentalAgentSources
+        )
     }
 
     var body: some View {
-        SettingsCard(title: L("更多 Agent 数据源"), symbol: "square.grid.3x3.middle.filled", height: 320) {
+        SettingsCard(title: L("更多 Agent 数据源"), symbol: "square.grid.3x3.middle.filled", height: 330) {
             VStack(alignment: .leading, spacing: 10) {
                 if !appState.settings.showExperimentalAgentSources {
-                    Text(L("先在左侧启用实验 Agent 来源后，可单独勾选以下新数据源。"))
+                    Text(L("检测到已安装的 Agent 会自动纳入统计；主开关关闭时不采集任何实验源。"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        appState.setExperimentalAgentSourcesVisible(true)
+                    } label: {
+                        Label(L("启用实验 Agent 来源"), systemImage: "bolt.fill")
+                            .font(.caption.weight(.heavy))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Color.tokenGreen, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text(L("检测到已安装的 Agent 自动计入；可单独关闭某个来源。"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
                 ForEach(observations, id: \.sourceID) { observation in
                     sourceRow(observation)

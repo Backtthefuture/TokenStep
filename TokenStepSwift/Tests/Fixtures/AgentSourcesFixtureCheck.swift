@@ -23,17 +23,42 @@ struct AgentSourcesFixtureCheck {
         }
     }
 
-    // 主开关与逐源开关语义：新源永不因 legacy 布尔被启用。
+    // 开关语义（2026-08-13 用户裁决）：主开关开 + 未做逐源选择 → 已安装的源自动纳入。
     private static func checkEnabledIDPolicy() throws {
-        try expectEqual(AgentSourceRegistry.enabledIDs(masterEnabled: false, perSource: nil), [], "master off → empty")
-        try expectEqual(AgentSourceRegistry.enabledIDs(masterEnabled: true, perSource: nil), [], "legacy true → no new sources")
+        let emptyHome = try freshDirectory("policy-empty")
         try expectEqual(
-            AgentSourceRegistry.enabledIDs(masterEnabled: true, perSource: ["Gemini CLI", "Grok Build", "NotARealSource"]),
-            ["Gemini CLI", "Grok Build"],
-            "explicit list filters unknown ids"
+            AgentSourceRegistry.enabledIDs(masterEnabled: false, perSource: nil, homeURL: emptyHome),
+            [],
+            "master off → empty"
         )
         try expectEqual(
-            AgentSourceRegistry.enabledIDs(masterEnabled: false, perSource: ["Gemini CLI"]),
+            AgentSourceRegistry.enabledIDs(masterEnabled: true, perSource: nil, homeURL: emptyHome),
+            [],
+            "master on + nothing installed → empty"
+        )
+        // 自动纳入：装有 Gemini 数据目录即自动启用 Gemini CLI。
+        let geminiHome = try freshDirectory("policy-gemini")
+        try FileManager.default.createDirectory(
+            at: geminiHome.appendingPathComponent(".gemini/tmp/x/chats", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try expectEqual(
+            AgentSourceRegistry.enabledIDs(masterEnabled: true, perSource: nil, homeURL: geminiHome),
+            ["Gemini CLI"],
+            "detected agent auto-enrolls"
+        )
+        // 显式列表优先于自动纳入（用户可关掉自动源）。
+        try expectEqual(
+            AgentSourceRegistry.enabledIDs(
+                masterEnabled: true,
+                perSource: ["Grok Build", "NotARealSource"],
+                homeURL: geminiHome
+            ),
+            ["Grok Build"],
+            "explicit list filters unknown ids and overrides auto"
+        )
+        try expectEqual(
+            AgentSourceRegistry.enabledIDs(masterEnabled: false, perSource: ["Gemini CLI"], homeURL: geminiHome),
             [],
             "per-source cannot bypass master switch"
         )

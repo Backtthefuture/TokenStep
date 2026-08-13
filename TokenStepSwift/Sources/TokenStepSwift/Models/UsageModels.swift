@@ -990,6 +990,11 @@ struct TokenStepSettings: Codable {
         try container.encode(showCodexQuota, forKey: .showCodexQuota)
         try container.encode(agentWorkRankVisibility, forKey: .agentWorkRankVisibility)
         try container.encode(showExperimentalAgentSources, forKey: .showExperimentalAgentSources)
+        try container.encodeIfPresent(experimentalAgentSources, forKey: .experimentalAgentSources)
+        try container.encode(deviceSyncEnabled, forKey: .deviceSyncEnabled)
+        try container.encode(mergeTodayAllDevices, forKey: .mergeTodayAllDevices)
+        try container.encode(mergeHistoryAllDevices, forKey: .mergeHistoryAllDevices)
+        try container.encode(hiddenDeviceIDs, forKey: .hiddenDeviceIDs)
         try container.encode(language, forKey: .language)
         try container.encodeIfPresent(skippedUpdateVersion, forKey: .skippedUpdateVersion)
     }

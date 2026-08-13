@@ -28,13 +28,20 @@ enum AgentSourceRegistry {
         geminiCLI, qwenCode, kimiCode, openCode, amp, droid, grokBuild
     ]
 
-    /// 主开关关闭时的默认启用集 = 旧三实验源；新 T1 源永不默认启用。
-    static func enabledIDs(masterEnabled: Bool, perSource: [String]?) -> [String] {
+    /// 启用语义（2026-08-13 用户裁决）：
+    /// - 主开关关 → 一律不采集（隐私默认不变）；
+    /// - 主开关开 + 用户未做逐源选择（nil）→ **检测到已安装的源自动纳入统计**；
+    /// - 用户做过任何逐源操作（显式列表）→ 以列表为准（可关掉自动纳入的源）。
+    static func enabledIDs(
+        masterEnabled: Bool,
+        perSource: [String]?,
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [String] {
         guard masterEnabled else { return [] }
         if let perSource, !perSource.isEmpty {
             return perSource.filter { allSourceIDs.contains($0) || ["ZCode", "Hermes Agent", "WorkBuddy"].contains($0) }
         }
-        return []
+        return allSourceIDs.filter { detectorStatus(for: $0, homeURL: homeURL) == "installed" }
     }
 
     /// 探测：不解析 usage，只看目录/文件是否存在（设置页三态展示用）。
