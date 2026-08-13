@@ -21,7 +21,7 @@
 
 ## MG-PRIVACY —— 未开始（E0-T03 完成后）
 
-## MG-PRIVACY —— 待决（2026-08-13 材料齐备）
+## MG-PRIVACY —— approved
 
 审核材料（均在仓库中）：
 
@@ -44,6 +44,6 @@
 
 | 时间 | 决策 | 备注 |
 |---|---|---|
-| （待填） | | |
+| 2026-08-13 | **approve** | 用户经 AskUserQuestion 明确选择 approve；授权进入 G-V1；push/PR/发布/清理仍未授权 |
 
 > approve 仅授权进入 G-V1，不授权 push、PR、发布或清理。

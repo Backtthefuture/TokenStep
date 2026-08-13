@@ -13,4 +13,6 @@
 本地验收记录（2026-08-13 第二轮，含全部代码改动后）：
 `test_ccswitch_proxy_collector` ✅ `test_codex_cumulative_collector` ✅ `test_usage_recalibration_migration` ✅ `test_update_helper_transaction` ✅ `check_localization` ✅ `check_language_refresh` ✅ `benchmark_energy_efficiency.sh fixed-corpus` ✅（10 场景全绿） `build_swiftui_and_run --no-launch` ✅
 
-Goal 状态：active；剩余 = MG-PRIVACY 人工门（材料齐备，待用户决策）
+MG-PRIVACY 人工门 | **approved** | 2026-08-13 用户明确 approve，记录于 manual-gates.md
+
+Goal 状态：**complete（本地证据链闭合）**。全部 required tasks verified；MG-BASELINE 与 MG-PRIVACY 均 approved；本地自动验收全绿。遗留申报：`swift test` 全量 XCTest 待 PR CI 代验（推送需用户另行授权）；E0 结论已按三分类沉淀，V2-T02 获证据激活。
