@@ -40,10 +40,12 @@ for arg in "$@"; do
   esac
 done
 
-pkill -f "TokenUsageMenu.py" 2>/dev/null || true
-pkill -x "$PRODUCT_NAME" 2>/dev/null || true
-pkill -x "$HELPER_NAME" 2>/dev/null || true
-pkill -x "$APP_NAME" 2>/dev/null || true
+if [[ "$LAUNCH" == true ]]; then
+  pkill -f "TokenUsageMenu.py" 2>/dev/null || true
+  pkill -x "$PRODUCT_NAME" 2>/dev/null || true
+  pkill -x "$HELPER_NAME" 2>/dev/null || true
+  pkill -x "$APP_NAME" 2>/dev/null || true
+fi
 
 mkdir -p "$BUILD_DIR" "$DIST_DIR" "$OVERLAY_DIR"
 python3 "$ROOT_DIR/script/check_localization.py"

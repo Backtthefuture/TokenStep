@@ -18,5 +18,7 @@ jobs:
         run: ./script/test_codex_cumulative_collector.sh
       - name: Run accounting migration checks
         run: ./script/test_usage_recalibration_migration.sh
+      - name: Run update rollback checks
+        run: ./script/test_update_helper_transaction.sh
       - name: Build TokenStep
         run: ./script/build_swiftui_and_run.sh --no-launch
