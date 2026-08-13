@@ -21,11 +21,12 @@ assert_absent() {
 }
 
 assert_log() {
-  rg -F -- "$2" "$1" >/dev/null || fail "log does not contain: $2"
+  # grep -F：固定字符串匹配，无 riprep 依赖（CI runner 无 rg）。
+  grep -aF -- "$2" "$1" >/dev/null || fail "log does not contain: $2"
 }
 
 assert_no_backup() {
-  if find "$1" -maxdepth 1 -name 'TokenStep.app.previous.*' -print -quit | rg . >/dev/null; then
+  if [[ -n "$(find "$1" -maxdepth 1 -name 'TokenStep.app.previous.*' -print -quit)" ]]; then
     fail "stale backup remains under $1"
   fi
 }
