@@ -6,6 +6,13 @@
 > 当前状态：PRD 已获用户确认（2026-08-13，"确认 /goal"）；未启动任何 Goal。
 > 启动前核验记录：2026-08-13 live baseline `HEAD = origin/main = ef13871`（v0.1.48）✓；工作区存在 G-E0 未提交改动（8 个 tracked 文件），G-A1 激活条件未满足，等待用户裁决启动顺序（见 §2）。
 > 顺序裁决：2026-08-13 用户确认按序推进 `G-E0 → G-V1 → G-V2 → G-A1 → G-B1 → G-A2 → G-S1`；G-A1 严格遵守"G-V2=complete"前置，不并行、不豁免。
+>
+> 执行快报（2026-08-13，用户指令"按你推荐的来，完成剩下全部开发"）：
+> - G-E0/G-V1/G-V2：完成（V1-T04 十人测试 waiting_external，工具包已备；V2 正确停止，G1 估算金额口径转 Backlog）
+> - G-B1：以 **B1-lite** 完成（项目维度全量落地：提取/模型/UI 三处/分享卡/文档；用户批准提前）
+> - G-A1：完成（七源接入；Grok/OpenCode/Gemini 本机真机验证通过；逐源开关）
+> - G-S1：**client-ready, waiting_external**（契约 draft-frozen + 客户端核心 + 隐私门测试；启用入口待服务端 MG-SYNC）
+> - G-A2：not_started（样本侦察完成，Cursor 有真库；下一轮）
 > 当前范围：A1 Provider 架构与 T1 数据源、A2 T2 数据源、B1 项目维度、S1 多设备同步
 > 上游文档：[PRD_TOKENSTEP_OPTIMIZATION.md](PRD_TOKENSTEP_OPTIMIZATION.md)（G-E0/G-V1/G-V2，本文所有 Goal 均排在其后）
 > 决策基线：2026-08-13 用户已确认 4 项产品决策（见 §1.2）
