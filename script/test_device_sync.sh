@@ -51,6 +51,10 @@ swiftc \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DeviceSyncService.swift" \
   "$SWIFT_DIR/Tests/Fixtures/DeviceSyncFixtureCheck.swift" \
+  -D TOKENSTEP_TESTING \
   -o "$EXECUTABLE"
 
-"$EXECUTABLE"
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tokenstep-devicesync-isolated-$UID-XXXXXX")"
+mkdir -p "$TEST_ROOT/app-support"
+trap 'rm -rf "$TEST_ROOT"' EXIT
+TOKENSTEP_TEST_APP_SUPPORT_ROOT="$TEST_ROOT/app-support" "$EXECUTABLE"

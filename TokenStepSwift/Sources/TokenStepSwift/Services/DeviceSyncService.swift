@@ -167,6 +167,10 @@ enum DeviceSyncService {
             let devices = try transport.fetch(since: nil)
             let remote = RemoteBucketsSnapshot(fetchedAt: Date(), devices: devices)
             if let data = try? JSONEncoder().encode(remote) {
+                try? FileManager.default.createDirectory(
+                    at: remoteURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
                 try? data.write(to: remoteURL, options: .atomic)
             }
             state.lastSucceededAt = Date()
