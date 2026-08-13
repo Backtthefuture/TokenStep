@@ -95,7 +95,7 @@ struct FreshnessStatesRender {
                     sourceStatuses: [
                         "Codex": "ok",
                         "Claude Code": "ok",
-                        "CC Switch via proxy": "missing_valid_rows",
+                        "CC Switch via proxy": "incremental_cache_error",
                         "ZCode": "disabled"
                     ]
                 )

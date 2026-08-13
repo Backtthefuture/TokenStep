@@ -122,7 +122,7 @@ final class FreshnessModelTests: XCTestCase {
             sourceStatuses: [
                 "Codex": "ok",
                 "Claude Code": "ok",
-                "CC Switch via proxy": "missing_valid_rows",
+                "CC Switch via proxy": "incremental_cache_error",
                 "ZCode": "disabled"
             ]
         )
@@ -131,15 +131,19 @@ final class FreshnessModelTests: XCTestCase {
         XCTAssertEqual(freshness.failedSources, ["CC Switch via proxy"])
     }
 
-    // 7b. 全部来源成功：不因存在 disabled 源而误报 partial。
-    func testNotPartialWhenDisabledSourceOnly() {
+    // 7b. 缺席来源（disabled / missing 各形态）不算失败：不误报 partial。
+    func testNotPartialWhenAbsentSourcesOnly() {
         let record = RefreshAttemptRecord(lastSucceededAt: now.addingTimeInterval(-10))
         let freshness = FreshnessPolicy.classify(
             enabled: true,
             record: record,
             normalTTL: collectionTTL,
             now: now,
-            sourceStatuses: ["Codex": "ok", "ZCode": "disabled"]
+            sourceStatuses: [
+                "Codex": "ok",
+                "ZCode": "disabled",
+                "CC Switch Proxy": "missing_valid_rows"
+            ]
         )
         XCTAssertEqual(freshness.kind, .fresh)
     }

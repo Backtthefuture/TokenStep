@@ -204,8 +204,7 @@ enum FreshnessPolicy {
         // 同一刷新周期内部分来源失败（仅采集通道有意义）。
         if let sourceStatuses, !sourceStatuses.isEmpty {
             let successful = sourceStatuses.filter { isSuccessfulSourceStatus($0.value) }.keys.sorted()
-            let failed = sourceStatuses.filter { isEnabledSourceStatus($0.value) && !isSuccessfulSourceStatus($0.value) }
-                .keys.sorted()
+            let failed = sourceStatuses.filter { isFailedSourceStatus($0.value) }.keys.sorted()
             if !successful.isEmpty && !failed.isEmpty {
                 return UsageFreshness(
                     kind: .partial,
@@ -236,9 +235,16 @@ enum FreshnessPolicy {
         status == "ok" || status == "ok_sqlite"
     }
 
-    /// source diagnostics 中视为"已启用但失败"的状态（disabled 之外的都算启用）。
-    static func isEnabledSourceStatus(_ status: String) -> Bool {
-        status != "disabled"
+    /// 视为"缺席"的状态：功能关闭或该来源当日无数据（missing 各形态）。
+    /// 缺席不等于失败：CC Switch 今天没有代理行不应天天报"部分来源失败"。
+    static func isAbsentSourceStatus(_ status: String) -> Bool {
+        status == "disabled" || status == "missing" || status == "missing_db"
+            || status == "missing_valid_rows"
+    }
+
+    /// 视为"已启用但失败"的状态（如 incremental_cache_error / 解析失败）。
+    static func isFailedSourceStatus(_ status: String) -> Bool {
+        !isSuccessfulSourceStatus(status) && !isAbsentSourceStatus(status)
     }
 
     /// 把底层错误映射为安全分类（不保留正文）。
@@ -268,7 +274,8 @@ enum FreshnessPolicy {
         if lower.contains("unauthorized") || lower.contains("forbidden")
             || lower.contains("401") || lower.contains("403")
             || description.contains("未授权") || description.contains("登录")
-            || description.contains("凭据") || description.contains("钥匙串") {
+            || description.contains("凭据") || description.contains("钥匙串")
+            || description.contains("额度") {
             return .unauthorized
         }
         if lower.contains("timed out") || lower.contains("timeout") || description.contains("超时") {

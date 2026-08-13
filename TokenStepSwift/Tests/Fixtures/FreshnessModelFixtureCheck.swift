@@ -103,16 +103,19 @@ struct FreshnessModelFixtureCheck {
             sourceStatuses: [
                 "Codex": "ok",
                 "Claude Code": "ok_sqlite",
-                "CC Switch via proxy": "missing_valid_rows",
+                "CC Switch via proxy": "incremental_cache_error",
                 "ZCode": "disabled"
             ]
         )
         try expectEqual(partial.kind, .partial, "mixed sources are partial")
         try expectEqual(partial.successfulSources ?? [], ["Claude Code", "Codex"], "successful source names")
-        try expectEqual(partial.failedSources ?? [], ["CC Switch via proxy"], "failed source names exclude disabled")
+        try expectEqual(partial.failedSources ?? [], ["CC Switch via proxy"], "failed source names exclude absent")
 
-        let allGood = classify(record, sourceStatuses: ["Codex": "ok", "ZCode": "disabled"])
-        try expectEqual(allGood.kind, .fresh, "disabled-only mix stays fresh")
+        let allGood = classify(
+            record,
+            sourceStatuses: ["Codex": "ok", "ZCode": "disabled", "CC Switch Proxy": "missing_valid_rows"]
+        )
+        try expectEqual(allGood.kind, .fresh, "absent-only mix stays fresh")
     }
 
     private static func checkLegacyDecode() throws {

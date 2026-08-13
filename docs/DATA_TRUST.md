@@ -64,9 +64,11 @@ plus a safe error kind — Codex and Claude quota failures never mask each other
 
 `sources` in `data/usage.json` exposes per-source status, record counts, and accounting
 counters (`counter_resets`, `inherited_tokens`, …). Statuses considered successful by
-the freshness policy: `ok`, `ok_sqlite`; `disabled` is excluded from partial-failure
-detection; everything else counts as an enabled-but-failed source. Diagnostics are the
-primary evidence for "is today's number complete?" and feed the trust labels.
+the freshness policy: `ok`, `ok_sqlite`. Absent statuses (`disabled`, `missing`,
+`missing_db`, `missing_valid_rows`) mean "no data from this source today" and never
+trigger partial-failure. Everything else (e.g. `incremental_cache_error`) counts as an
+enabled-but-failed source. Diagnostics are the primary evidence for "is today's number
+complete?" and feed the trust labels.
 
 ## Local Data, Network Requests and Retention
 

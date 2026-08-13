@@ -162,6 +162,13 @@ final class AppState: ObservableObject {
             }
         }
         autostartEnabled = AutostartService.isEnabled
+        // 升级/首跑迁移：无采集记录但仓库已有快照时，从 generated_at 继承最后成功时间，
+        // 避免"数据明明存在却显示暂无数据"。
+        if freshnessState.collection.lastSucceededAt == nil,
+           let generatedAt = snapshot.generatedAt,
+           let generatedDate = UsageSnapshotRefreshPolicy.generatedDate(generatedAt) {
+            freshnessState.collection.lastSucceededAt = generatedDate
+        }
         // 快照重载后来源级状态可能变化；把采集尝试信息同步到内存快照并重算新鲜度。
         snapshot.sourceAttempt = freshnessState.collection
         recomputeFreshness()
@@ -214,9 +221,14 @@ final class AppState: ObservableObject {
             if outcome != .unchanged {
                 load()
             }
-            if collectionSucceeded, outcome != .updatedWhileSourcesChanged {
-                lastUsageObservedAt = Date()
-                freshnessState.collection = freshnessState.collection.succeeding(at: lastUsageObservedAt!)
+            if collectionSucceeded {
+                if outcome != .updatedWhileSourcesChanged {
+                    lastUsageObservedAt = Date()
+                }
+                // 只要 helper 未抛错即视为成功（快照已持久化）；
+                // updatedWhileSourcesChanged 的口径警示保留在 source diagnostics，
+                // 不影响"最后成功时间"的判定。
+                freshnessState.collection = freshnessState.collection.succeeding(at: Date())
             }
             recomputeFreshness()
             persistFreshnessState()

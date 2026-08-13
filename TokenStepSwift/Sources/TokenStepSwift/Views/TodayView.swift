@@ -111,7 +111,8 @@ struct TodayView: View {
     private var todayToolRows: [TodayBreakdownRow] {
         let total = appState.today.totalTokens
         guard total > 0 else { return [] }
-        let primaryTools = ["Codex", "Claude Code"]
+        // 主力工具仅在有数据时置顶；0 token 的行不显示，避免挤掉更大的来源。
+        let primaryTools = ["Codex", "Claude Code"].filter { (appState.today.tools[$0] ?? 0) > 0 }
         let primaryRows = primaryTools.map { name in
             TodayBreakdownRow(
                 name: name,
