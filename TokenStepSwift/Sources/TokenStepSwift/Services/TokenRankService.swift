@@ -8,6 +8,11 @@ enum AgentWorkRankService {
     static let leaderboardPageURL = URL(string: "https://www.zhenganhuo.com/token-rank")!
     static let myPageURL = URL(string: "https://www.zhenganhuo.com/token-rank/me")!
 
+    // Opt-in privacy test hooks (E0-T03): tests inject counters here to assert that
+    // hidden/disabled visibility performs zero identity reads and zero requests.
+    static var localIdentityLoaderOverride: ((URL) -> AgentWorkRankIdentity)?
+    static var leaderboardClientOverride: ((String, String, String) async throws -> TokenRankLeaderboard)?
+
     private static let leaderboardAPIURL = URL(
         string: "https://www.zhenganhuo.com/api/token-rank/leaderboard.php"
     )!
@@ -17,6 +22,9 @@ enum AgentWorkRankService {
         range: String = defaultRange,
         usageMode: String = defaultUsageMode
     ) async throws -> TokenRankLeaderboard {
+        if let leaderboardClientOverride {
+            return try await leaderboardClientOverride(client, range, usageMode)
+        }
         var components = URLComponents(url: leaderboardAPIURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
             URLQueryItem(name: "client", value: client),
@@ -64,6 +72,9 @@ enum AgentWorkRankService {
         clientStateURL: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".token-rank/client-state.json")
     ) -> AgentWorkRankIdentity? {
+        if let localIdentityLoaderOverride {
+            return localIdentityLoaderOverride(clientStateURL)
+        }
         guard let data = try? Data(contentsOf: clientStateURL),
               let state = try? JSONDecoder().decode(LocalClientState.self, from: data),
               let user = state.user,

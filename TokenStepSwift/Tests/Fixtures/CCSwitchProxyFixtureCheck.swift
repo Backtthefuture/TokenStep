@@ -491,7 +491,7 @@ struct CCSwitchProxyFixtureCheck {
             {"show_token_rank":true,"token_rank_user_id":"168066"}
             """.utf8)
         )
-        try assertEqual(legacySettings.agentWorkRankVisibility, .automatic, "legacy rank uses automatic detection")
+        try assertEqual(legacySettings.agentWorkRankVisibility, .hidden, "unrecognized legacy rank fields stay opt-in hidden")
 
         let hiddenSettings = try JSONDecoder().decode(
             TokenStepSettings.self,

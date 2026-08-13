@@ -853,7 +853,7 @@ struct TokenStepSettings: Codable {
         tokenIslandEnabled: false,
         tokenIslandPlacement: .menuBar,
         showCodexQuota: false,
-        agentWorkRankVisibility: .automatic,
+        agentWorkRankVisibility: .hidden,
         showExperimentalAgentSources: false,
         language: .system,
         skippedUpdateVersion: nil
@@ -915,7 +915,9 @@ struct TokenStepSettings: Codable {
         if let visibility = try container.decodeIfPresent(AgentWorkRankVisibility.self, forKey: .agentWorkRankVisibility) {
             agentWorkRankVisibility = visibility
         } else if let legacyVisible = try container.decodeIfPresent(Bool.self, forKey: .legacyShowAgentWorkRank) {
-            agentWorkRankVisibility = legacyVisible ? .visible : .automatic
+            // Opt-in contract (docs/PRIVACY.md): legacy absence/false must never
+            // silently enable local identity reads or leaderboard requests.
+            agentWorkRankVisibility = legacyVisible ? .visible : .hidden
         } else {
             agentWorkRankVisibility = defaults.agentWorkRankVisibility
         }
