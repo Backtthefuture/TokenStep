@@ -1934,6 +1934,15 @@ enum UsageCollector {
         let providerTotalExpression = availableColumns.contains("provider_total_tokens")
             ? "coalesce(model_usage.provider_total_tokens, 0)"
             : "0"
+        // 项目名列与 join 作为条件片段构造（旧库无 session 表时优雅降级），
+        // 不做运行时字符串剥离——多行字面量的缩进剥离会让固定模式失配。
+        let hasSessionTable = sqliteTableExists(database: database, table: "session")
+        let projectColumn = hasSessionTable
+            ? ",\n    coalesce(session.directory, '') as project_directory"
+            : ""
+        let sessionJoin = hasSessionTable
+            ? "left join session on session.id = model_usage.session_id\n"
+            : ""
         var query = """
         select
             model_usage.id,
@@ -1947,11 +1956,9 @@ enum UsageCollector {
             coalesce(model_usage.cache_read_input_tokens, 0) as cache_read_input_tokens,
             coalesce(model_usage.computed_total_tokens, 0) as computed_total_tokens,
             \(providerTotalExpression) as provider_total_tokens,
-            coalesce(model_usage.tool_call_count, 0) as tool_call_count,
-            coalesce(session.directory, '') as project_directory
+            coalesce(model_usage.tool_call_count, 0) as tool_call_count\(projectColumn)
         from model_usage
-        left join session on session.id = model_usage.session_id
-        where model_usage.status = 'completed'
+        \(sessionJoin)where model_usage.status = 'completed'
             and (
                 coalesce(model_usage.computed_total_tokens, 0) > 0
                 or \(providerTotalExpression) > 0
@@ -1965,12 +1972,6 @@ enum UsageCollector {
             )
         order by model_usage.started_at, model_usage.id
         """
-
-        if !sqliteTableExists(database: database, table: "session") {
-            // 旧库无 session 表：退回无 join 查询（无项目名）。
-            query = query.replacingOccurrences(of: ",\n            coalesce(session.directory, '') as project_directory", with: "")
-            query = query.replacingOccurrences(of: "left join session on session.id = model_usage.session_id\n        ", with: "")
-        }
         guard let rows = sqliteJSONRows(database: database, query: query) else {
             return CollectorResult(records: [], source: SourceInfo(status: "query_failed", files: 1, records: 0))
         }

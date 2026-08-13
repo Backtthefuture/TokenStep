@@ -250,6 +250,11 @@ enum FreshnessPolicy {
     /// 把底层错误映射为安全分类（不保留正文）。
     static func classify(error: Error) -> UsageErrorKind {
         if let urlError = error as? URLError {
+            // NSError(NSURLErrorDomain, 401/403) 会桥接成 URLError 且落入 default；
+            // 鉴权类错误优先于网络分类。
+            if urlError.code.rawValue == 401 || urlError.code.rawValue == 403 {
+                return .unauthorized
+            }
             switch urlError.code {
             case .timedOut:
                 return .timeout
