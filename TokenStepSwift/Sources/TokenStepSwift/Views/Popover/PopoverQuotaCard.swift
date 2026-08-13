@@ -21,22 +21,26 @@ struct PopoverQuotaCard: View {
                     }
                 }
 
-                if appState.hasAnyQuota || appState.codexQuotaFreshness.kind != .neverSucceeded
-                    || appState.claudeQuotaFreshness.kind != .neverSucceeded {
-                    // G-V1：两家额度分别显示状态；Codex 已取消 5 小时额度，
-                    // 仅展示 7 天窗口（2026-08-13），Claude 两个窗口不变。
+                // 从未读到额度的供应商整段隐藏（用户裁决 2026-08-13）；
+                // "失败但保留旧值"的段落仍按 G-V1 规则展示。
+                if showsCodexQuotaSection || showsClaudeQuotaSection {
                     VStack(spacing: 12) {
-                        quotaSection(
-                            title: "Codex",
-                            quota: appState.codexQuota,
-                            freshness: appState.codexQuotaFreshness,
-                            showsFiveHourWindow: false
-                        )
-                        quotaSection(
-                            title: "Claude Code",
-                            quota: appState.claudeQuota,
-                            freshness: appState.claudeQuotaFreshness
-                        )
+                        if showsCodexQuotaSection {
+                            // Codex 已取消 5 小时额度，仅展示 7 天窗口（2026-08-13）。
+                            quotaSection(
+                                title: "Codex",
+                                quota: appState.codexQuota,
+                                freshness: appState.codexQuotaFreshness,
+                                showsFiveHourWindow: false
+                            )
+                        }
+                        if showsClaudeQuotaSection {
+                            quotaSection(
+                                title: "Claude Code",
+                                quota: appState.claudeQuota,
+                                freshness: appState.claudeQuotaFreshness
+                            )
+                        }
                     }
                 } else {
                     HStack(spacing: 10) {
@@ -59,6 +63,14 @@ struct PopoverQuotaCard: View {
             }
         }
         .padding(.vertical, -2)
+    }
+
+    private var showsCodexQuotaSection: Bool {
+        appState.codexQuota.isAvailable || appState.codexQuotaFreshness.kind == .stale
+    }
+
+    private var showsClaudeQuotaSection: Bool {
+        appState.claudeQuota.isAvailable || appState.claudeQuotaFreshness.kind == .stale
     }
 
     private func quotaSection(

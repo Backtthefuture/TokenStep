@@ -192,11 +192,21 @@ struct TodayView: View {
                     color: tokenToolColor(name)
                 )
             }
-        return primaryRows + extraRows
+        return hideNegligibleRows(primaryRows + extraRows)
     }
 
     private var todayModelRows: [TodayBreakdownRow] {
-        breakdownRows(from: appState.today.models) { _ in nil }
+        hideNegligibleRows(breakdownRows(from: appState.today.models) { _ in nil })
+    }
+
+    /// 展示占比不足 0.1%（渲染为 0%，看着像没数据）的行隐藏；保底保留前两名。
+    private func hideNegligibleRows(_ rows: [TodayBreakdownRow]) -> [TodayBreakdownRow] {
+        guard rows.count > 2 else { return rows }
+        return rows.enumerated()
+            .filter { index, row in
+                index < 2 || row.percent >= 0.1
+            }
+            .map(\.element)
     }
 
     private func breakdownRows(from values: [String: Int], color: (String) -> Color?) -> [TodayBreakdownRow] {
