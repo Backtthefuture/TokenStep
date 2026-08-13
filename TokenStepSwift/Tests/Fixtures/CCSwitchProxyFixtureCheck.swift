@@ -788,6 +788,17 @@ struct CCSwitchProxyFixtureCheck {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let database = directory.appendingPathComponent("zcode.sqlite")
         try runSQLite(database: database, sql: """
+        create table session (
+            id text primary key,
+            project_id text not null,
+            workspace_id text,
+            parent_id text,
+            slug text not null,
+            directory text not null,
+            path text,
+            title text not null,
+            version text not null
+        );
         create table model_usage (
             id text primary key,
             logical_request_id text not null,

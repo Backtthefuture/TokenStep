@@ -526,6 +526,10 @@ enum UsageCollector {
         }
 
         let store = try CodexIncrementalStore(url: databaseURL)
+        // G-B1 一次性回填：B1-lite 之前的旧缓存记录无 projectName；内容未变的会话
+        // 在全量校验中会被 fingerprint 捷径跳过，故用旗标绕过一次，重扫补齐。
+        let projectBackfillKey = "project_backfill_v1"
+        let projectBackfillNeeded = !store.hasMetaFlag(projectBackfillKey)
         let storedMetadata = try store.metadataByPath()
         let currentPaths = Set(paths.map(\.path))
         let deletedPaths = Set(storedMetadata.keys).subtracting(currentPaths)
@@ -584,7 +588,7 @@ enum UsageCollector {
             let metadataMatches = stored?.size == metadata.size
                 && abs((stored?.modificationTime ?? -1) - metadata.modificationTime) < 0.001
             if metadataMatches {
-                if !forceFullValidation {
+                if !forceFullValidation, !projectBackfillNeeded {
                     continue
                 }
                 let fingerprint = contentFingerprint(for: path, size: metadata.size)
@@ -598,14 +602,14 @@ enum UsageCollector {
                     else {
                         throw CodexIncrementalStoreError.unstableSource(path.path)
                     }
-                    if fullFingerprint == stored?.validationFingerprint {
+                    if fullFingerprint == stored?.validationFingerprint, !projectBackfillNeeded {
                         continue
                     }
                     validatedFullFingerprint = fullFingerprint
                 }
             }
 
-            if !forceFullValidation,
+            if !forceFullValidation, !projectBackfillNeeded,
                let stored,
                metadata.size > stored.size,
                contentFingerprint(for: path, size: stored.size) == stored.fingerprint,
@@ -749,6 +753,9 @@ enum UsageCollector {
 
         try store.commitStaged(deletedPaths: deletedPaths)
         committed = true
+        if projectBackfillNeeded {
+            store.setMetaFlag(projectBackfillKey)
+        }
         let cachedSessionCount = try store.sessionCount()
         guard cachedSessionCount == paths.count else {
             throw CodexIncrementalStoreError.incompleteCache(
@@ -1919,38 +1926,45 @@ enum UsageCollector {
         }
 
         let providerTotalExpression = availableColumns.contains("provider_total_tokens")
-            ? "coalesce(provider_total_tokens, 0)"
+            ? "coalesce(model_usage.provider_total_tokens, 0)"
             : "0"
-        let query = """
+        var query = """
         select
-            id,
-            session_id,
-            started_at,
-            coalesce(nullif(model_id, ''), 'unknown') as display_model,
-            coalesce(input_tokens, 0) as input_tokens,
-            coalesce(output_tokens, 0) as output_tokens,
-            coalesce(reasoning_tokens, 0) as reasoning_tokens,
-            coalesce(cache_creation_input_tokens, 0) as cache_creation_input_tokens,
-            coalesce(cache_read_input_tokens, 0) as cache_read_input_tokens,
-            coalesce(computed_total_tokens, 0) as computed_total_tokens,
+            model_usage.id,
+            model_usage.session_id,
+            model_usage.started_at,
+            coalesce(nullif(model_usage.model_id, ''), 'unknown') as display_model,
+            coalesce(model_usage.input_tokens, 0) as input_tokens,
+            coalesce(model_usage.output_tokens, 0) as output_tokens,
+            coalesce(model_usage.reasoning_tokens, 0) as reasoning_tokens,
+            coalesce(model_usage.cache_creation_input_tokens, 0) as cache_creation_input_tokens,
+            coalesce(model_usage.cache_read_input_tokens, 0) as cache_read_input_tokens,
+            coalesce(model_usage.computed_total_tokens, 0) as computed_total_tokens,
             \(providerTotalExpression) as provider_total_tokens,
-            coalesce(tool_call_count, 0) as tool_call_count
+            coalesce(model_usage.tool_call_count, 0) as tool_call_count,
+            coalesce(session.directory, '') as project_directory
         from model_usage
-        where status = 'completed'
+        left join session on session.id = model_usage.session_id
+        where model_usage.status = 'completed'
             and (
-                coalesce(computed_total_tokens, 0) > 0
+                coalesce(model_usage.computed_total_tokens, 0) > 0
                 or \(providerTotalExpression) > 0
                 or (
-                    coalesce(input_tokens, 0)
-                    + coalesce(output_tokens, 0)
-                    + coalesce(reasoning_tokens, 0)
-                    + coalesce(cache_creation_input_tokens, 0)
-                    + coalesce(cache_read_input_tokens, 0)
+                    coalesce(model_usage.input_tokens, 0)
+                    + coalesce(model_usage.output_tokens, 0)
+                    + coalesce(model_usage.reasoning_tokens, 0)
+                    + coalesce(model_usage.cache_creation_input_tokens, 0)
+                    + coalesce(model_usage.cache_read_input_tokens, 0)
                 ) > 0
             )
-        order by started_at, id
+        order by model_usage.started_at, model_usage.id
         """
 
+        if !sqliteTableExists(database: database, table: "session") {
+            // 旧库无 session 表：退回无 join 查询（无项目名）。
+            query = query.replacingOccurrences(of: ",\n            coalesce(session.directory, '') as project_directory", with: "")
+            query = query.replacingOccurrences(of: "left join session on session.id = model_usage.session_id\n        ", with: "")
+        }
         guard let rows = sqliteJSONRows(database: database, query: query) else {
             return CollectorResult(records: [], source: SourceInfo(status: "query_failed", files: 1, records: 0))
         }
@@ -1980,7 +1994,8 @@ enum UsageCollector {
                 requestID: nonEmptyString(row["id"] as? String),
                 sessionID: nonEmptyString(row["session_id"] as? String),
                 modelRequestCount: 1,
-                toolCallCount: integerValue(row["tool_call_count"] as Any)
+                toolCallCount: integerValue(row["tool_call_count"] as Any),
+                projectName: projectDisplayName(fromPath: nonEmptyString(row["project_directory"] as? String))
             )
         }
 
@@ -1988,6 +2003,17 @@ enum UsageCollector {
             records: records,
             source: SourceInfo(status: records.isEmpty ? "missing_valid_rows" : "ok", files: 1, records: records.count)
         )
+    }
+
+    /// SQLite 表存在性探测（ZCode 旧库无 session 表时优雅降级）。
+    private static func sqliteTableExists(database: URL, table: String) -> Bool {
+        guard let rows = sqliteJSONRows(
+            database: database,
+            query: "select count(*) as n from sqlite_master where type = 'table' and name = '\(table)'"
+        ), let first = rows.first, integerValue(first["n"] as Any) > 0 else {
+            return false
+        }
+        return true
     }
 
     private static func collectHermesUsage(databaseURL: URL? = nil) -> CollectorResult {
@@ -2105,6 +2131,17 @@ enum UsageCollector {
         )
     }
 
+    /// WorkBuddy 会话文件路径里的项目目录名（<projects 根>/<项目目录>/<uuid>.jsonl）。
+    private static func workBuddyProjectName(_ path: String) -> String? {
+        let components = path.split(separator: "/").map(String.init)
+        guard let projectsIndex = components.lastIndex(of: "projects"),
+              projectsIndex + 1 < components.count - 1
+        else {
+            return projectDisplayName(fromPath: components.count > 1 ? components[components.count - 2] : nil)
+        }
+        return projectDisplayName(fromPath: components[projectsIndex + 1])
+    }
+
     private static func collectWorkBuddyUsage(
         rootURLs: [URL]? = nil,
         modifiedSince cutoffDate: Date?
@@ -2150,7 +2187,8 @@ enum UsageCollector {
                     sourcePath: file.path,
                     lineNumber: lineNumber,
                     modelRequestCount: 1,
-                    toolCallCount: recordType == "function_call" ? 1 : 0
+                    toolCallCount: recordType == "function_call" ? 1 : 0,
+                    projectName: workBuddyProjectName(file.path)
                 ))
             }
         }
@@ -3973,6 +4011,21 @@ private final class CodexIncrementalStore {
             )
         }
         try checkFinalStep(statement)
+    }
+
+    /// cache_meta 布尔旗标（一次性迁移/回填用）。
+    func hasMetaFlag(_ key: String) -> Bool {
+        guard database != nil else { return false }
+        let statement = try? prepare("SELECT COUNT(*) FROM cache_meta WHERE key = '\(key)'")
+        guard let statement else { return false }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { return false }
+        return sqlite3_column_int64(statement, 0) > 0
+    }
+
+    func setMetaFlag(_ key: String) {
+        guard database != nil else { return }
+        try? execute("INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('\(key)', '1')")
     }
 
     func stats() throws -> CodexIncrementalCacheStats {

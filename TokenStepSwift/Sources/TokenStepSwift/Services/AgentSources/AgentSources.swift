@@ -517,7 +517,7 @@ enum OpenCodeSource {
                json_extract(data, '$.tokens.reasoning'),
                json_extract(data, '$.tokens.cache.read'),
                json_extract(data, '$.tokens.cache.write'),
-               json_extract(data, '$.path')
+               json_extract(data, '$.path.cwd')
         from message
         where json_extract(data, '$.role') = 'assistant'
         """
@@ -565,7 +565,7 @@ enum OpenCodeSource {
                     requestID: "opencode:\(AgentSourceSupport.int(row["time_created"])):\(usage.totalTokens)",
                     sessionID: nil,
                     projectName: UsageCollector.projectDisplayName(
-                        fromPath: AgentSourceSupport.nonEmpty(row["json_extract(data, '$.path')"])
+                        fromPath: AgentSourceSupport.nonEmpty(row["json_extract(data, '$.path.cwd')"])
                     )
                 )
             )
