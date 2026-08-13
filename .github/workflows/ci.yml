@@ -26,5 +26,7 @@ jobs:
         run: ./script/test_project_extraction.sh
       - name: Run agent sources checks
         run: ./script/test_agent_sources.sh
+      - name: Run device sync checks
+        run: ./script/test_device_sync.sh
       - name: Build TokenStep
         run: ./script/build_swiftui_and_run.sh --no-launch

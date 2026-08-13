@@ -853,6 +853,11 @@ struct TokenStepSettings: Codable {
     /// G-A1：逐源启用的实验 Agent 源（显示名）。nil = 主开关即旧三源语义；
     /// 显式列表决定 T1 新源是否参与采集，新源永不因 legacy 布尔迁移被开启。
     var experimentalAgentSources: [String]?
+    /// G-S1：多设备同步（默认关闭；服务端契约冻结前不提供启用入口）。
+    var deviceSyncEnabled: Bool = false
+    var mergeTodayAllDevices: Bool = false
+    var mergeHistoryAllDevices: Bool = false
+    var hiddenDeviceIDs: [String] = []
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
 
@@ -871,6 +876,10 @@ struct TokenStepSettings: Codable {
         case legacyShowAgentWorkRank = "show_agent_work_rank"
         case showExperimentalAgentSources = "show_experimental_agent_sources"
         case experimentalAgentSources = "experimental_agent_sources"
+        case deviceSyncEnabled = "device_sync_enabled"
+        case mergeTodayAllDevices = "merge_today_all_devices"
+        case mergeHistoryAllDevices = "merge_history_all_devices"
+        case hiddenDeviceIDs = "hidden_device_ids"
         case language
         case skippedUpdateVersion = "skipped_update_version"
     }
@@ -959,6 +968,10 @@ struct TokenStepSettings: Codable {
         }
         showExperimentalAgentSources = try container.decodeIfPresent(Bool.self, forKey: .showExperimentalAgentSources) ?? defaults.showExperimentalAgentSources
         experimentalAgentSources = try container.decodeIfPresent([String].self, forKey: .experimentalAgentSources) ?? defaults.experimentalAgentSources
+        deviceSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .deviceSyncEnabled) ?? false
+        mergeTodayAllDevices = try container.decodeIfPresent(Bool.self, forKey: .mergeTodayAllDevices) ?? false
+        mergeHistoryAllDevices = try container.decodeIfPresent(Bool.self, forKey: .mergeHistoryAllDevices) ?? false
+        hiddenDeviceIDs = try container.decodeIfPresent([String].self, forKey: .hiddenDeviceIDs) ?? []
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
     }
