@@ -1,7 +1,7 @@
 import Foundation
 
-// 已下线（2026-08-13）：Codex 取消 5 小时额度，读取与展示暂停。
-// 新额度模型确定后参考 docs/sync 式契约重新接入；Claude 额度见 ClaudeQuotaService。
+// 注意（2026-08-13）：Codex 已取消 5 小时额度；本服务继续读取（周额度仍在），
+// UI 层对 Codex 仅展示 sevenDay 窗口，fiveHour 数据不再展示。
 enum CodexQuotaService {
     private static let requestID = 2
 

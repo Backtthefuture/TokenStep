@@ -60,7 +60,7 @@ TokenStep 适合这些人：
 - 多种主题色，菜单栏、圆环、活动墙和按钮会一起变化。
 - 一键截图分享当前页面。
 - 一键生成「昨日 AI 节奏」分享卡，展示 24 小时使用波形、峰值时段和节奏标签。
-- Claude Code 剩余额度可在设置中打开，默认关闭（Codex 已取消 5 小时额度，相关展示已下线）。
+- Codex / Claude Code 剩余额度可在设置中打开，默认关闭（Codex 仅每周额度，5 小时额度已取消）。
 - 自动检查更新，发现新版后可下载已签名公证的 DMG。
 - 本地数据存放在 `~/Library/Application Support/TokenStep`。
 
@@ -69,7 +69,7 @@ TokenStep 适合这些人：
 - Codex：读取本地 JSONL 用量元数据并维护逐会话增量缓存；缓存异常时自动重建，必要时回退 Codex 本地 SQLite 汇总。
 - Claude Code：读取 `~/.claude/projects/**/*.jsonl` 里的 usage 元数据。
 - CC Switch：实验支持，读取本机 `proxy_request_logs` 中成功且 token 数大于 0 的请求行。
-- 额度显示：Claude Code 在本机读取钥匙串凭证并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度；Codex 已取消 5 小时额度，相关展示已下线。
+- 额度显示：Codex 读取本机账户限额（仅每周额度）；Claude Code 在本机读取钥匙串凭证并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度。
 
 更多 AI 编程工具支持会逐步加入。
 

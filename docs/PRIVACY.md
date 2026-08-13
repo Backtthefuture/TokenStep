@@ -24,7 +24,7 @@ The Agent quota display is off by default.
 When enabled, TokenStep may read local account metadata needed by supported tools:
 
 - Claude Code quota is read by using the local macOS Keychain item for Claude Code and requesting Anthropic's OAuth usage endpoint.
-- Codex quota reading is offline (2026-08-13): Codex retired the 5-hour quota model.
+- Codex quota (weekly window only; the 5-hour quota was retired on 2026-08-13) is read from the local Codex account/rate limit interface.
 
 TokenStep uses this only to show remaining quota. The account token is not stored by TokenStep and is not uploaded to a TokenStep server.
 

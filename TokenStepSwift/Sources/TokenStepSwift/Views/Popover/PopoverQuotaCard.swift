@@ -21,9 +21,17 @@ struct PopoverQuotaCard: View {
                     }
                 }
 
-                if appState.claudeQuota.isAvailable || appState.claudeQuotaFreshness.kind != .neverSucceeded {
-                    // Codex 已取消 5 小时额度，额度卡仅保留 Claude（2026-08-13）。
+                if appState.hasAnyQuota || appState.codexQuotaFreshness.kind != .neverSucceeded
+                    || appState.claudeQuotaFreshness.kind != .neverSucceeded {
+                    // G-V1：两家额度分别显示状态；Codex 已取消 5 小时额度，
+                    // 仅展示 7 天窗口（2026-08-13），Claude 两个窗口不变。
                     VStack(spacing: 12) {
+                        quotaSection(
+                            title: "Codex",
+                            quota: appState.codexQuota,
+                            freshness: appState.codexQuotaFreshness,
+                            showsFiveHourWindow: false
+                        )
                         quotaSection(
                             title: "Claude Code",
                             quota: appState.claudeQuota,
@@ -41,7 +49,7 @@ struct PopoverQuotaCard: View {
                             Text(L("暂未读取到 Agent 额度"))
                                 .font(.caption.weight(.heavy))
                                 .foregroundStyle(Color.tokenInk.opacity(0.76))
-                            Text(L("打开并登录 Claude Code 后会自动显示。"))
+                            Text(L("打开并登录 Codex / Claude Code 后会自动显示。"))
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
@@ -56,7 +64,8 @@ struct PopoverQuotaCard: View {
     private func quotaSection(
         title: String,
         quota: CodexQuotaSnapshot,
-        freshness: UsageFreshness
+        freshness: UsageFreshness,
+        showsFiveHourWindow: Bool = true
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -68,7 +77,9 @@ struct PopoverQuotaCard: View {
             }
             if quota.isAvailable {
                 VStack(spacing: 8) {
-                    quotaRow(quota.fiveHour, fallbackTitle: L("5 小时"))
+                    if showsFiveHourWindow {
+                        quotaRow(quota.fiveHour, fallbackTitle: L("5 小时"))
+                    }
                     quotaRow(quota.sevenDay, fallbackTitle: L("7 天"))
                 }
             } else if freshness.kind == .stale, let keeps = freshness.keepsLastValueLabel {
