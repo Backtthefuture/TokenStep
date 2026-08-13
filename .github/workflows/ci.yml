@@ -24,5 +24,7 @@ jobs:
         run: ./script/test_freshness_model.sh
       - name: Run project extraction checks
         run: ./script/test_project_extraction.sh
+      - name: Run agent sources checks
+        run: ./script/test_agent_sources.sh
       - name: Build TokenStep
         run: ./script/build_swiftui_and_run.sh --no-launch

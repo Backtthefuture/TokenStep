@@ -850,6 +850,9 @@ struct TokenStepSettings: Codable {
     var showCodexQuota: Bool
     var agentWorkRankVisibility: AgentWorkRankVisibility
     var showExperimentalAgentSources: Bool
+    /// G-A1：逐源启用的实验 Agent 源（显示名）。nil = 主开关即旧三源语义；
+    /// 显式列表决定 T1 新源是否参与采集，新源永不因 legacy 布尔迁移被开启。
+    var experimentalAgentSources: [String]?
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
 
@@ -867,6 +870,7 @@ struct TokenStepSettings: Codable {
         case agentWorkRankVisibility = "agent_work_rank_visibility"
         case legacyShowAgentWorkRank = "show_agent_work_rank"
         case showExperimentalAgentSources = "show_experimental_agent_sources"
+        case experimentalAgentSources = "experimental_agent_sources"
         case language
         case skippedUpdateVersion = "skipped_update_version"
     }
@@ -884,6 +888,7 @@ struct TokenStepSettings: Codable {
         showCodexQuota: false,
         agentWorkRankVisibility: .hidden,
         showExperimentalAgentSources: false,
+        experimentalAgentSources: nil,
         language: .system,
         skippedUpdateVersion: nil
     )
@@ -901,6 +906,7 @@ struct TokenStepSettings: Codable {
         showCodexQuota: Bool,
         agentWorkRankVisibility: AgentWorkRankVisibility,
         showExperimentalAgentSources: Bool,
+        experimentalAgentSources: [String]? = nil,
         language: TokenStepLanguage,
         skippedUpdateVersion: String?
     ) {
@@ -916,6 +922,7 @@ struct TokenStepSettings: Codable {
         self.showCodexQuota = showCodexQuota
         self.agentWorkRankVisibility = agentWorkRankVisibility
         self.showExperimentalAgentSources = showExperimentalAgentSources
+        self.experimentalAgentSources = experimentalAgentSources
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
     }
@@ -951,6 +958,7 @@ struct TokenStepSettings: Codable {
             agentWorkRankVisibility = defaults.agentWorkRankVisibility
         }
         showExperimentalAgentSources = try container.decodeIfPresent(Bool.self, forKey: .showExperimentalAgentSources) ?? defaults.showExperimentalAgentSources
+        experimentalAgentSources = try container.decodeIfPresent([String].self, forKey: .experimentalAgentSources) ?? defaults.experimentalAgentSources
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
     }

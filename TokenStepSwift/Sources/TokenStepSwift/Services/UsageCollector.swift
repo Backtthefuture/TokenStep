@@ -46,6 +46,7 @@ enum UsageCollector {
         zCodeDatabaseURL: URL? = nil,
         hermesDatabaseURL: URL? = nil,
         workBuddyRootURLs: [URL]? = nil,
+        experimentalAgentSourceIDs: [String]? = nil,
         forceFullValidation: Bool = false
     ) -> UsageSnapshot {
         let cacheLoad = loadCache()
@@ -75,6 +76,13 @@ enum UsageCollector {
         let workBuddy = includeExperimentalAgentSources
             ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs, modifiedSince: sourceCutoff)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        // G-A1：T1 实验源（默认关闭；逐源开关；失败只影响该源状态）。
+        let agentSourceResults = AgentSourceRegistry.collect(
+            enabledIDs: AgentSourceRegistry.enabledIDs(
+                masterEnabled: includeExperimentalAgentSources,
+                perSource: experimentalAgentSourceIDs
+            )
+        )
         if codexOutcome.usedIncrementalStore {
             cache.files = cache.files.filter { $0.value.tool != "Codex" && livePaths.contains($0.key) }
         } else {
@@ -90,8 +98,9 @@ enum UsageCollector {
         if includeCCSwitchProxyUsage {
             ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
         }
+        let agentSourceRecords = agentSourceResults.values.flatMap(\.records)
         let records = recordsInHistoryWindow(
-            deduped.records + zCode.records + hermes.records + workBuddy.records,
+            deduped.records + zCode.records + hermes.records + workBuddy.records + agentSourceRecords,
             historyDays: historyDays,
             now: Date()
         )
@@ -104,7 +113,10 @@ enum UsageCollector {
                 "ZCode": zCode.source,
                 "Hermes Agent": hermes.source,
                 "WorkBuddy": workBuddy.source
-            ]
+            ].merging(
+                agentSourceResults.mapValues { $0.source },
+                uniquingKeysWith: { current, _ in current }
+            )
         )
     }
 
@@ -2583,7 +2595,7 @@ enum UsageCollector {
 
     private static func isAgentWorkRecord(_ record: UsageRecord) -> Bool {
         switch record.source {
-        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy:
+        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy, .experimentalAgent:
             return true
         case .unknown:
             return false
@@ -3369,7 +3381,7 @@ enum UsageCollector {
     }()
 }
 
-private struct CollectorResult {
+struct CollectorResult {
     var records: [UsageRecord]
     var source: SourceInfo
 }
@@ -4262,7 +4274,7 @@ private struct CodexCollectionDiagnostics: Codable, Equatable {
     }
 }
 
-private struct UsageRecord: Codable, Equatable {
+struct UsageRecord: Codable, Equatable {
     var date: String
     var timestamp: String?
     var timestampEpoch: TimeInterval? = nil
@@ -4362,7 +4374,7 @@ private struct UsageRecord: Codable, Equatable {
     }
 }
 
-private enum UsageRecordSource: String, Codable, Equatable {
+enum UsageRecordSource: String, Codable, Equatable {
     case nativeCodex
     case nativeCodexSQLite
     case nativeClaudeCode
@@ -4370,6 +4382,7 @@ private enum UsageRecordSource: String, Codable, Equatable {
     case zcode
     case hermes
     case workbuddy
+    case experimentalAgent
     case unknown
 }
 
@@ -4429,7 +4442,7 @@ private struct ClaudeUsageCandidate {
     }
 }
 
-private struct TokenUsageCounts: Codable, Equatable {
+struct TokenUsageCounts: Codable, Equatable {
     var inputTokens = 0
     var outputTokens = 0
     var cacheCreationInputTokens = 0

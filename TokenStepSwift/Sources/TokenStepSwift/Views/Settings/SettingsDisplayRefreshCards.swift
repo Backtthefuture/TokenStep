@@ -282,3 +282,69 @@ struct SettingsExperimentalAgentSourcesCard: View {
         }
     }
 }
+
+/// G-A1：T1 新 Agent 源（默认逐源关闭，主开关开启后可单独勾选）。
+struct SettingsT1AgentSourcesCard: View {
+    @EnvironmentObject private var appState: AppState
+
+    private var observations: [AgentSourceObservation] {
+        AgentSourceRegistry.observeAll()
+    }
+
+    private var enabledList: [String] {
+        appState.settings.experimentalAgentSources ?? []
+    }
+
+    var body: some View {
+        SettingsCard(title: L("更多 Agent 数据源"), symbol: "square.grid.3x3.middle.filled", height: 320) {
+            VStack(alignment: .leading, spacing: 10) {
+                if !appState.settings.showExperimentalAgentSources {
+                    Text(L("先在左侧启用实验 Agent 来源后，可单独勾选以下新数据源。"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(observations, id: \.sourceID) { observation in
+                    sourceRow(observation)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func sourceRow(_ observation: AgentSourceObservation) -> some View {
+        let enabled = enabledList.contains(observation.sourceID)
+        let detected = observation.status == "installed"
+        let collected = appState.snapshot.sources[observation.sourceID]?.status
+        return HStack(spacing: 8) {
+            Toggle("", isOn: Binding(
+                get: { enabled },
+                set: { appState.setExperimentalAgentSource(observation.sourceID, enabled: $0) }
+            ))
+            .labelsHidden()
+            .disabled(!appState.settings.showExperimentalAgentSources)
+            .frame(width: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(observation.sourceID)
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk.opacity(0.82))
+                Text(statusText(detected: detected, collected: collected, enabled: enabled))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+
+    private func statusText(detected: Bool, collected: String?, enabled: Bool) -> String {
+        if !enabled {
+            return detected ? L("已安装，未启用") : L("未检测到")
+        }
+        switch collected {
+        case "ok": return L("已计入实验统计")
+        case "missing_valid_rows": return L("暂无可用 usage")
+        case "missing", "missing_db": return L("未发现数据源")
+        default: return L("等待刷新")
+        }
+    }
+}

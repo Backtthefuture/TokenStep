@@ -499,6 +499,19 @@ final class AppState: ObservableObject {
         refresh()
     }
 
+    /// G-A1：T1 新源逐源开关（仅主开关开启时生效）。
+    func setExperimentalAgentSource(_ sourceID: String, enabled: Bool) {
+        var list = settings.experimentalAgentSources ?? []
+        if enabled, !list.contains(sourceID) {
+            list.append(sourceID)
+        } else if !enabled {
+            list.removeAll { $0 == sourceID }
+        }
+        settings.experimentalAgentSources = list
+        saveSettingsAndReload()
+        refresh()
+    }
+
     func refreshTokenRank(force: Bool = false, now: Date = Date()) {
         guard settings.agentWorkRankVisibility.readsLocalIdentity else {
             clearTokenRankState()

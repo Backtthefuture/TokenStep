@@ -71,6 +71,9 @@ struct SettingsView: View {
             }
             HStack(alignment: .top, spacing: 18) {
                 SettingsExperimentalAgentSourcesCard()
+                SettingsT1AgentSourcesCard()
+            }
+            HStack(alignment: .top, spacing: 18) {
                 SettingsPrivacyCard()
             }
         }

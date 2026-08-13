@@ -68,6 +68,7 @@ enum DataService {
         let collectedSnapshot = UsageCollector.collect(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources,
+            experimentalAgentSourceIDs: settings.experimentalAgentSources,
             forceFullValidation: force || existingCheckpoint?.isFresh(at: Date()) != true
         )
         try validateRecalibrationCandidate(

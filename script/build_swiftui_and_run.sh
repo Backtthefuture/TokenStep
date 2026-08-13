@@ -100,6 +100,7 @@ HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/FreshnessPolicy.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/AgentSources/AgentSources.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"
   "$SWIFT_DIR/Sources/TokenStepHelper/main.swift"
 )
