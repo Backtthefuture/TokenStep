@@ -10,6 +10,8 @@ struct UsageSnapshot: Codable {
     var tools: [ToolUsage]
     var models: [ModelUsage]
     var sources: [String: SourceInfo]
+    /// 生成该快照的采集尝试信息（G-V1）。旧快照缺失时按 nil 解码。
+    var sourceAttempt: RefreshAttemptRecord?
 
     enum CodingKeys: String, CodingKey {
         case generatedAt = "generated_at"
@@ -21,6 +23,7 @@ struct UsageSnapshot: Codable {
         case tools
         case models
         case sources
+        case sourceAttempt = "source_attempt"
     }
 
     init(
@@ -32,7 +35,8 @@ struct UsageSnapshot: Codable {
         agentWork: [DailyAgentWork] = [],
         tools: [ToolUsage],
         models: [ModelUsage],
-        sources: [String: SourceInfo]
+        sources: [String: SourceInfo],
+        sourceAttempt: RefreshAttemptRecord? = nil
     ) {
         self.generatedAt = generatedAt
         self.timezone = timezone
@@ -43,6 +47,7 @@ struct UsageSnapshot: Codable {
         self.tools = tools
         self.models = models
         self.sources = sources
+        self.sourceAttempt = sourceAttempt
     }
 
     init(from decoder: Decoder) throws {
@@ -56,6 +61,7 @@ struct UsageSnapshot: Codable {
         tools = try container.decodeIfPresent([ToolUsage].self, forKey: .tools) ?? []
         models = try container.decodeIfPresent([ModelUsage].self, forKey: .models) ?? []
         sources = try container.decodeIfPresent([String: SourceInfo].self, forKey: .sources) ?? [:]
+        sourceAttempt = try container.decodeIfPresent(RefreshAttemptRecord.self, forKey: .sourceAttempt)
     }
 
     func rhythm(for date: String) -> DailyRhythm? {

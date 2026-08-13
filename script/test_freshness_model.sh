@@ -3,13 +3,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
-BUILD_DIR="$SWIFT_DIR/.build/usage-recalibration-fixture"
+BUILD_DIR="/tmp/tokenstep-freshness-fixture-$UID-$$"
 OVERLAY_DIR="$BUILD_DIR/vfs-overlay"
 OVERLAY_FILE="$OVERLAY_DIR/overlay.yaml"
 EMPTY_MODULEMAP="$OVERLAY_DIR/empty.modulemap"
-EXECUTABLE="$BUILD_DIR/usage-recalibration-fixture-check"
-TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tokenstep-recalibration-test.XXXXXX")"
-trap 'rm -rf "$TEST_ROOT"' EXIT
+EXECUTABLE="$BUILD_DIR/freshness-model-fixture-check"
+
+cleanup() {
+  rm -rf "$BUILD_DIR"
+}
+trap cleanup EXIT
 
 mkdir -p "$BUILD_DIR" "$OVERLAY_DIR"
 cat > "$EMPTY_MODULEMAP" <<'EOF'
@@ -35,7 +38,6 @@ cat > "$OVERLAY_FILE" <<EOF
 EOF
 
 swiftc \
-  -D TOKENSTEP_TESTING \
   -target arm64-apple-macos14.0 \
   -vfsoverlay "$OVERLAY_FILE" \
   -Xcc -ivfsoverlay \
@@ -43,14 +45,11 @@ swiftc \
   -parse-as-library \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/AppPaths.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Localization.swift" \
-  "$SWIFT_DIR/Sources/TokenStepSwift/Support/MemoryPressure.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/EnergyRefreshPolicy.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/FreshnessPolicy.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
-  "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift" \
-  "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift" \
-  "$SWIFT_DIR/Tests/Fixtures/UsageRecalibrationMigrationFixtureCheck.swift" \
+  "$SWIFT_DIR/Tests/Fixtures/FreshnessModelFixtureCheck.swift" \
   -o "$EXECUTABLE"
 
-TOKENSTEP_TEST_APP_SUPPORT_ROOT="$TEST_ROOT/app-support" "$EXECUTABLE"
+"$EXECUTABLE"

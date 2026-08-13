@@ -96,6 +96,8 @@ HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Localization.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/MemoryPressure.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Support/EnergyRefreshPolicy.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Support/FreshnessPolicy.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"

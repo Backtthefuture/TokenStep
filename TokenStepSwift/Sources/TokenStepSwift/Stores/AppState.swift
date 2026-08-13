@@ -24,6 +24,12 @@ final class AppState: ObservableObject {
     @Published private(set) var tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable
     @Published private(set) var showsUsageRecalibrationNotice = false
     @Published var lastError: String?
+    // G-V1 / V1-T01：统一新鲜度状态（六态），采集与两家额度分别呈现。
+    @Published private(set) var collectionFreshness = UsageFreshness(kind: .neverSucceeded)
+    @Published private(set) var codexQuotaFreshness = UsageFreshness(kind: .neverSucceeded)
+    @Published private(set) var claudeQuotaFreshness = UsageFreshness(kind: .neverSucceeded)
+
+    private var freshnessState = FreshnessState()
 
     private var timer: Timer?
     private var foregroundTimer: Timer?
@@ -36,6 +42,8 @@ final class AppState: ObservableObject {
     private var lastUsageObservedAt: Date?
 
     init() {
+        loadFreshnessState()
+        recomputeFreshness()
         load()
         refreshIfSnapshotIsStale()
         applyDefaultAutostartIfNeeded()
@@ -154,6 +162,9 @@ final class AppState: ObservableObject {
             }
         }
         autostartEnabled = AutostartService.isEnabled
+        // 快照重载后来源级状态可能变化；把采集尝试信息同步到内存快照并重算新鲜度。
+        snapshot.sourceAttempt = freshnessState.collection
+        recomputeFreshness()
     }
 
     func refresh(forceCollection: Bool = true) {
@@ -180,6 +191,8 @@ final class AppState: ObservableObject {
         }
         isRefreshing = true
         lastError = nil
+        freshnessState.collection = freshnessState.collection.attempting(at: refreshStartedAt)
+        recomputeFreshness(now: refreshStartedAt)
         let historyDays = settings.historyDays
         Task {
             var outcome: CollectionRunOutcome = .unchanged
@@ -193,14 +206,20 @@ final class AppState: ObservableObject {
                 }.value
                 collectionSucceeded = true
             } catch {
-                lastError = error.localizedDescription
+                let kind = FreshnessPolicy.classify(error: error)
+                freshnessState.collection = freshnessState.collection.failing(kind: kind, at: Date())
+                // 用户可见错误使用安全分类文案，不透出原始错误正文。
+                lastError = kind.localizedSummary
             }
             if outcome != .unchanged {
                 load()
             }
             if collectionSucceeded, outcome != .updatedWhileSourcesChanged {
                 lastUsageObservedAt = Date()
+                freshnessState.collection = freshnessState.collection.succeeding(at: lastUsageObservedAt!)
             }
+            recomputeFreshness()
+            persistFreshnessState()
             isRefreshing = false
             if pendingRefreshAfterCurrent {
                 let force = pendingForcedRefresh
@@ -242,6 +261,7 @@ final class AppState: ObservableObject {
             codexQuota = .unavailable
             claudeQuota = .unavailable
             isRefreshingCodexQuota = false
+            recomputeFreshness(now: now)
             return
         }
         guard !isRefreshingCodexQuota else { return }
@@ -255,31 +275,104 @@ final class AppState: ObservableObject {
         }
         lastQuotaRefreshAttemptAt = now
         isRefreshingCodexQuota = true
+        // Codex 与 Claude 分别记录尝试，成功/失败互不掩盖（V1-T01）。
+        freshnessState.codexQuota = freshnessState.codexQuota.attempting(at: now)
+        freshnessState.claudeQuota = freshnessState.claudeQuota.attempting(at: now)
+        recomputeFreshness(now: now)
         Task {
             let quotas = await Task.detached(priority: .utility) {
                 let codex = Result { try CodexQuotaService.read() }
                 let claude = Result { try ClaudeQuotaService.read() }
-                return (try? codex.get(), try? claude.get())
+                return (codex, claude)
             }.value
 
-            if let quota = quotas.0 {
+            let finishedAt = Date()
+            switch quotas.0 {
+            case .success(let quota):
                 codexQuota = quota
-            } else if !codexQuota.isAvailable {
-                codexQuota = .unavailable
+                freshnessState.codexQuota = freshnessState.codexQuota.succeeding(at: finishedAt)
+            case .failure(let error):
+                if !codexQuota.isAvailable {
+                    codexQuota = .unavailable
+                }
+                freshnessState.codexQuota = freshnessState.codexQuota.failing(
+                    kind: FreshnessPolicy.classify(error: error),
+                    at: finishedAt
+                )
             }
 
-            if let quota = quotas.1 {
+            switch quotas.1 {
+            case .success(let quota):
                 claudeQuota = quota
-            } else if !claudeQuota.isAvailable {
-                claudeQuota = .unavailable
+                freshnessState.claudeQuota = freshnessState.claudeQuota.succeeding(at: finishedAt)
+            case .failure(let error):
+                if !claudeQuota.isAvailable {
+                    claudeQuota = .unavailable
+                }
+                freshnessState.claudeQuota = freshnessState.claudeQuota.failing(
+                    kind: FreshnessPolicy.classify(error: error),
+                    at: finishedAt
+                )
             }
 
+            recomputeFreshness(now: finishedAt)
+            persistFreshnessState()
             isRefreshingCodexQuota = false
         }
     }
 
     var hasAnyQuota: Bool {
         codexQuota.isAvailable || claudeQuota.isAvailable
+    }
+
+    // MARK: - Freshness（G-V1 / V1-T01）
+
+    /// 用集中策略重算三通道新鲜度；来源级 partial 依赖当前快照的 source diagnostics。
+    private func recomputeFreshness(now: Date = Date()) {
+        let collectionTTL = FreshnessPolicy.collectionNormalTTL(
+            refreshIntervalSeconds: settings.refreshIntervalSeconds
+        )
+        let sourceStatuses = snapshot.sources.reduce(into: [String: String]()) { result, entry in
+            result[entry.key] = entry.value.status
+        }
+        collectionFreshness = FreshnessPolicy.classify(
+            enabled: true,
+            record: freshnessState.collection,
+            normalTTL: collectionTTL,
+            now: now,
+            sourceStatuses: sourceStatuses
+        )
+        codexQuotaFreshness = FreshnessPolicy.classify(
+            enabled: settings.showCodexQuota,
+            record: freshnessState.codexQuota,
+            normalTTL: FreshnessPolicy.quotaNormalTTL,
+            now: now
+        )
+        claudeQuotaFreshness = FreshnessPolicy.classify(
+            enabled: settings.showCodexQuota,
+            record: freshnessState.claudeQuota,
+            normalTTL: FreshnessPolicy.quotaNormalTTL,
+            now: now
+        )
+    }
+
+    private func loadFreshnessState() {
+        guard let data = try? Data(contentsOf: AppPaths.freshnessStateJSON),
+              let state = try? JSONDecoder().decode(FreshnessState.self, from: data)
+        else { return }
+        freshnessState = state
+    }
+
+    private func persistFreshnessState() {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(freshnessState) else { return }
+        let url = AppPaths.freshnessStateJSON
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: url, options: .atomic)
     }
 
     func quota(for tool: String) -> CodexQuotaSnapshot {
