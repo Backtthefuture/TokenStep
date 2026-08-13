@@ -5,10 +5,27 @@
 
 | 任务 | 状态 | 备注 |
 |---|---|---|
-| V1-T01 统一新鲜度与失败状态模型 | **verified（待 CI swift test）** | 见下 |
-| V1-T02 可信标签与界面整合 | ready | manual_gate: MG-UX |
-| V1-T03 Trust 与 Privacy 文档同步 | ready | 依赖 T02 |
+| V1-T01 统一新鲜度与失败状态模型 | **verified（待 CI swift test）** | 提交 `b4eed7d`；交付物见下 |
+| V1-T02 可信标签与界面整合 | **verified（待 MG-UX 决策）** | 提交 `d936198`；9 状态渲染件 `screenshots/freshness-states.png`（`script/render_freshness_states.sh` 生成） |
+| V1-T03 Trust 与 Privacy 文档同步 | **verified** | DATA_TRUST 增补六态词表/诊断状态语义/本地数据与网络表/来源口径表；PRIVACY 增补新鲜度说明与估算措辞；AGENT_SUPPORT 核对无不一致（正式仅 Codex+Claude，实验区表述与实现相符） |
 | V1-T04 十人理解度测试 | blocked（需用户招募 Beta） | manual_gate: MG-BETA |
+
+## V1-T02 交付物
+
+- `Views/FreshnessBadge.swift`：统一徽章（状态图标 + 标签 + 最后成功时间 + tooltip 汇总含失败来源与安全错误分类）。
+- Popover 头部胶囊改为新鲜度驱动（同步中 / 六态徽章，需注意状态附带最后成功时间）。
+- PopoverTodayRingCard / TodayView hero：从未成功显示"暂无数据"不显示 0；金额 Pill 标注"消耗金额（估算）"+ tooltip"按 API 列表价估算，不代表订阅或实际账单。"
+- PopoverQuotaCard：Codex/Claude 双供应商常驻各自徽章，部分失败不被隐藏；无数据供应商行显示"暂无数据"或"显示最后成功数据"。
+- PrivacyView 新增"数据状态说明"卡（五状态图例 + 估算声明），与 DATA_TRUST 词表一致。
+- 三语本地化新增 17 键（en/zhHant），check_localization + check_language_refresh 通过。
+- TodayView 顶部新增紧凑徽章行（非新卡片）。
+
+## 本地验收（V1-T02/T03，2026-08-13）
+
+- `build_swiftui_and_run --no-launch` ✅；fixture×4 + helper 事务 ✅；本地化×2 ✅
+- `render_freshness_states.sh` ✅ → `screenshots/freshness-states.png`（10 行：9 fixtures + 金额示例行）
+
+Goal 状态：active；待 MG-UX 决策 → 之后仅剩 V1-T04（用户招募）
 
 ## V1-T01 交付物
 

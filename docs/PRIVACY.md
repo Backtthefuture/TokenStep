@@ -36,11 +36,22 @@ Generated app data is stored at:
 ~/Library/Application Support/TokenStep
 ```
 
-This folder contains settings, token summaries, and login item logs.
+This folder contains settings, token summaries, freshness records (timestamps and
+safe error categories only — no paths, no error text), and login item logs.
 
 ## Cost Estimates
 
-The "spend" value is a rough local estimate based on bundled pricing assumptions. It is meant for trend tracking and is not a bill.
+The "spend" value is a rough local estimate based on bundled API list prices
+(UI label: 消耗金额（估算）). It is meant for trend tracking and is not a bill,
+a subscription entitlement, or an actual invoice.
+
+## Data Freshness States
+
+TokenStep distinguishes the freshness of every number it shows: 已同步 (fresh),
+数据待更新 (aging), 同步失败 · 显示最后成功数据 (stale, keeps the last successful
+value), 部分来源失败 (partial), and 暂无数据 (never captured — never displayed as 0).
+Quota channels (Codex / Claude Code) report these states independently; one provider
+failing never masks the other. See `docs/DATA_TRUST.md` for the full vocabulary.
 
 ## Agent Work Rank (Opt-In)
 
