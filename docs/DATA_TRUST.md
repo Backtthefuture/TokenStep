@@ -88,7 +88,7 @@ complete?" and feed the trust labels.
 |---|---|---|---|
 | Usage warehouse | `data/usage.json` | none | local only, follows user data |
 | Collector caches | `cache/collector-cache.json`, `cache/codex-incremental.sqlite3`, `cache/collection-checkpoint.json` | none | rebuilt on demand |
-| Quota caches | `cache/claude-quota-cache.json` (+ in-memory Codex) | Anthropic usage API when quota feature is on; Codex via local CLI/app-server | TTL 15 min |
+| Quota caches | `cache/claude-quota-cache.json` | Anthropic usage API when quota feature is on（Codex 额度读取已下线：5 小时额度取消） | TTL 15 min |
 | Freshness records (V1) | `cache/freshness-state.json` | none | timestamps + safe error kinds only; no paths, no error text |
 | Settings | `config/settings.json` | none | local only |
 | Agent rank (opt-in) | in-memory + public leaderboard API | zhenganhuo.com only when explicitly enabled | 30 min cache |

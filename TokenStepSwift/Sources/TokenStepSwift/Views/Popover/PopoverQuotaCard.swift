@@ -21,15 +21,9 @@ struct PopoverQuotaCard: View {
                     }
                 }
 
-                if appState.hasAnyQuota || appState.codexQuotaFreshness.kind != .neverSucceeded
-                    || appState.claudeQuotaFreshness.kind != .neverSucceeded {
-                    // G-V1：两家额度分别显示状态，部分失败不被隐藏。
+                if appState.claudeQuota.isAvailable || appState.claudeQuotaFreshness.kind != .neverSucceeded {
+                    // Codex 已取消 5 小时额度，额度卡仅保留 Claude（2026-08-13）。
                     VStack(spacing: 12) {
-                        quotaSection(
-                            title: "Codex",
-                            quota: appState.codexQuota,
-                            freshness: appState.codexQuotaFreshness
-                        )
                         quotaSection(
                             title: "Claude Code",
                             quota: appState.claudeQuota,
@@ -47,7 +41,7 @@ struct PopoverQuotaCard: View {
                             Text(L("暂未读取到 Agent 额度"))
                                 .font(.caption.weight(.heavy))
                                 .foregroundStyle(Color.tokenInk.opacity(0.76))
-                            Text(L("打开并登录 Codex / Claude Code 后会自动显示。"))
+                            Text(L("打开并登录 Claude Code 后会自动显示。"))
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }

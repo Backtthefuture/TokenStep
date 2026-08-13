@@ -135,7 +135,7 @@ private struct TokenIslandExpandedView: View {
             TokenIslandToolSplitView(tools: appState.today.tools, total: appState.today.totalTokens)
 
             if appState.settings.showCodexQuota, appState.hasAnyQuota {
-                TokenIslandQuotaMiniView(codexQuota: appState.codexQuota, claudeQuota: appState.claudeQuota)
+                TokenIslandQuotaMiniView(claudeQuota: appState.claudeQuota)
             }
 
             HStack(spacing: 8) {
@@ -296,7 +296,6 @@ private struct TokenIslandSplitRow: View {
 }
 
 private struct TokenIslandQuotaMiniView: View {
-    var codexQuota: CodexQuotaSnapshot
     var claudeQuota: CodexQuotaSnapshot
 
     var body: some View {
@@ -304,12 +303,7 @@ private struct TokenIslandQuotaMiniView: View {
             Image(systemName: "hourglass.circle.fill")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Color.tokenGreen)
-            if codexQuota.isAvailable {
-                quotaBlock(title: "Codex", quota: codexQuota)
-            }
-            if codexQuota.isAvailable, claudeQuota.isAvailable {
-                Divider().frame(height: 15).overlay(Color.black.opacity(0.10))
-            }
+            // Codex 已取消 5 小时额度：额度岛仅显示 Claude（2026-08-13）。
             if claudeQuota.isAvailable {
                 quotaBlock(title: "Claude", quota: claudeQuota)
             }

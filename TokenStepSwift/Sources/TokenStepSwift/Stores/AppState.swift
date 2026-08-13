@@ -292,28 +292,16 @@ final class AppState: ObservableObject {
         freshnessState.claudeQuota = freshnessState.claudeQuota.attempting(at: now)
         recomputeFreshness(now: now)
         Task {
-            let quotas = await Task.detached(priority: .utility) {
-                let codex = Result { try CodexQuotaService.read() }
-                let claude = Result { try ClaudeQuotaService.read() }
-                return (codex, claude)
+            let claudeResult = await Task.detached(priority: .utility) {
+                Result { try ClaudeQuotaService.read() }
             }.value
 
             let finishedAt = Date()
-            switch quotas.0 {
-            case .success(let quota):
-                codexQuota = quota
-                freshnessState.codexQuota = freshnessState.codexQuota.succeeding(at: finishedAt)
-            case .failure(let error):
-                if !codexQuota.isAvailable {
-                    codexQuota = .unavailable
-                }
-                freshnessState.codexQuota = freshnessState.codexQuota.failing(
-                    kind: FreshnessPolicy.classify(error: error),
-                    at: finishedAt
-                )
-            }
-
-            switch quotas.1 {
+            // Codex 已取消 5 小时额度（2026-08-13）：相关读取与展示整体下线，
+            // codexQuota 保持 unavailable、freshness 归 disabled；Claude 额度不受影响。
+            codexQuota = .unavailable
+            freshnessState.codexQuota = RefreshAttemptRecord()
+            switch claudeResult {
             case .success(let quota):
                 claudeQuota = quota
                 freshnessState.claudeQuota = freshnessState.claudeQuota.succeeding(at: finishedAt)
