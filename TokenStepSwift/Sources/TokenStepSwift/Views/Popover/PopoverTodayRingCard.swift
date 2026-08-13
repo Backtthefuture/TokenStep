@@ -3,6 +3,10 @@ import SwiftUI
 struct PopoverTodayRingCard: View {
     @EnvironmentObject private var appState: AppState
 
+    private var hasNoData: Bool {
+        appState.collectionFreshness.kind == .neverSucceeded
+    }
+
     var body: some View {
         let lap = appState.todayLap
         return TokenCard {
@@ -21,11 +25,20 @@ struct PopoverTodayRingCard: View {
                     ZStack {
                         ProgressRingView(progress: lap.currentLapProgress, lineWidth: 16, color: lap.color)
                         VStack(spacing: 3) {
-                            Text(TokenStepFormat.tokens(appState.today.totalTokens))
-                                .font(.system(size: 31, weight: .heavy, design: .rounded))
-                                .foregroundStyle(Color.tokenInk)
-                                .minimumScaleFactor(0.52)
-                                .lineLimit(1)
+                            if hasNoData {
+                                // 从未成功：显示"暂无数据"，不显示 0（G-V1）。
+                                Text(L("暂无数据"))
+                                    .font(.callout.weight(.heavy))
+                                    .foregroundStyle(.secondary)
+                                    .minimumScaleFactor(0.6)
+                                    .lineLimit(1)
+                            } else {
+                                Text(TokenStepFormat.tokens(appState.today.totalTokens))
+                                    .font(.system(size: 31, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(Color.tokenInk)
+                                    .minimumScaleFactor(0.52)
+                                    .lineLimit(1)
+                            }
                             Text(LFormat("/ %@ 每圈", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                                 .font(.callout.weight(.bold))
                                 .foregroundStyle(.secondary)
@@ -47,7 +60,11 @@ struct PopoverTodayRingCard: View {
                             .foregroundStyle(.secondary)
 
                         VStack(alignment: .leading, spacing: 8) {
-                            MetricPill(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
+                            MetricPill(
+                                label: L("消耗金额（估算）"),
+                                value: hasNoData ? "—" : TokenStepFormat.money(appState.today.cost)
+                            )
+                            .help(L("按 API 列表价估算，不代表订阅或实际账单。"))
                             MetricPill(label: L("活跃"), value: localizedDays(appState.snapshot.totals.activeDays))
                         }
                     }

@@ -53,18 +53,26 @@ struct PopoverPanelView: View {
                     .foregroundStyle(Color.tokenInk)
             }
             Spacer()
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(appState.isRefreshing ? Color.secondary.opacity(0.68) : Color.tokenGreen)
-                    .frame(width: 7, height: 7)
-                Text(appState.isRefreshing ? L("同步中") : L("已同步"))
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk.opacity(0.72))
+            if appState.isRefreshing {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color.secondary.opacity(0.68))
+                        .frame(width: 7, height: 7)
+                    Text(L("同步中"))
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(Color.tokenInk.opacity(0.72))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Color.tokenSurface, in: Capsule())
+                .overlay(Capsule().stroke(Color.black.opacity(0.055)))
+            } else {
+                // G-V1：头部状态反映统一新鲜度；需要注意时附带最后成功时间。
+                FreshnessBadge(
+                    freshness: appState.collectionFreshness,
+                    showsLastSucceeded: appState.collectionFreshness.needsAttention
+                )
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(Color.tokenSurface, in: Capsule())
-            .overlay(Capsule().stroke(Color.black.opacity(0.055)))
 
             if !isScreenshotRendering {
                 PopoverCaptureMenuButton(

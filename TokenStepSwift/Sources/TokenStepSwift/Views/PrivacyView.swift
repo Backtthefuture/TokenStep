@@ -27,6 +27,52 @@ struct PrivacyView: View {
                 }
                 .textSelection(.enabled)
             }
+
+            TokenCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(L("数据状态说明"))
+                        .font(.title3.weight(.heavy))
+                        .foregroundStyle(Color.tokenInk)
+                    // G-V1：与浮层、主窗口和 docs/DATA_TRUST.md 使用同一套术语。
+                    VStack(alignment: .leading, spacing: 10) {
+                        statusLegend(symbol: "checkmark.circle.fill", color: .tokenGreen,
+                                     title: L("已同步"),
+                                     description: L("数据在正常刷新周期内成功获取。"))
+                        statusLegend(symbol: "clock.fill", color: .orange,
+                                     title: L("数据待更新"),
+                                     description: L("超过正常刷新周期，最近一次尝试没有失败。"))
+                        statusLegend(symbol: "exclamationmark.triangle.fill", color: .red,
+                                     title: L("同步失败"),
+                                     description: L("最近一次尝试失败，当前展示最后成功数据。"))
+                        statusLegend(symbol: "exclamationmark.arrow.triangle.2.circlepath", color: .orange,
+                                     title: L("部分来源失败"),
+                                     description: L("同一轮刷新中部分数据来源失败，其余正常。"))
+                        statusLegend(symbol: "circle.dashed", color: .secondary,
+                                     title: L("暂无数据"),
+                                     description: L("该数据从未成功获取，不会显示为 0。"))
+                    }
+                    Text(L("按 API 列表价估算，不代表订阅或实际账单。"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func statusLegend(symbol: String, color: Color, title: String, description: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(color)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk)
+                Text(description)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

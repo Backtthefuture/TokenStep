@@ -3,8 +3,20 @@ import SwiftUI
 struct TodayView: View {
     @EnvironmentObject private var appState: AppState
 
+    private var hasNoData: Bool {
+        appState.collectionFreshness.kind == .neverSucceeded
+    }
+
     var body: some View {
         VStack(spacing: 22) {
+            HStack {
+                Spacer()
+                // G-V1：主窗口与浮层共用同一套新鲜度术语。
+                FreshnessBadge(
+                    freshness: appState.collectionFreshness,
+                    showsLastSucceeded: appState.collectionFreshness.needsAttention
+                )
+            }
             hero
             todayBreakdownStrip
             TodayAgentWorkCard()
@@ -19,11 +31,20 @@ struct TodayView: View {
                 ZStack {
                     ProgressRingView(progress: lap.currentLapProgress, lineWidth: 20, color: lap.color)
                     VStack(spacing: 6) {
-                        Text(TokenStepFormat.tokens(appState.today.totalTokens))
-                            .font(.system(size: 42, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.tokenInk)
-                            .minimumScaleFactor(0.42)
-                            .lineLimit(1)
+                        if hasNoData {
+                            // 从未成功：显示"暂无数据"，不显示 0（G-V1）。
+                            Text(L("暂无数据"))
+                                .font(.title3.weight(.heavy))
+                                .foregroundStyle(.secondary)
+                                .minimumScaleFactor(0.5)
+                                .lineLimit(1)
+                        } else {
+                            Text(TokenStepFormat.tokens(appState.today.totalTokens))
+                                .font(.system(size: 42, weight: .heavy, design: .rounded))
+                                .foregroundStyle(Color.tokenInk)
+                                .minimumScaleFactor(0.42)
+                                .lineLimit(1)
+                        }
                         Text(LFormat("/ %@ 每圈", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.secondary)
@@ -54,7 +75,11 @@ struct TodayView: View {
                     }
 
                     HStack(spacing: 10) {
-                        MetricPill(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
+                        MetricPill(
+                            label: L("消耗金额（估算）"),
+                            value: hasNoData ? "—" : TokenStepFormat.money(appState.today.cost)
+                        )
+                        .help(L("按 API 列表价估算，不代表订阅或实际账单。"))
                         MetricPill(label: L("本月均值"), value: TokenStepFormat.tokens(appState.monthAverage, compact: true))
                     }
                 }

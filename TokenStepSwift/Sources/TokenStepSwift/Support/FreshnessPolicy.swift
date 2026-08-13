@@ -279,4 +279,57 @@ enum FreshnessPolicy {
         }
         return .unknown
     }
+
+    /// 相对时间描述（与额度卡"刚刚 / N 分钟前"同一套口径）。
+    static func relativeTime(since date: Date, now: Date = Date()) -> String {
+        let seconds = max(0, Int(now.timeIntervalSince(date).rounded()))
+        if seconds < 60 {
+            return L("刚刚")
+        }
+        if seconds < 3_600 {
+            return LFormat("%d 分钟前", max(1, seconds / 60))
+        }
+        if seconds < 86_400 {
+            return LFormat("%d 小时前", max(1, seconds / 3_600))
+        }
+        return LFormat("%d 天前", max(1, seconds / 86_400))
+    }
+}
+
+// MARK: - 展示术语（浮层 / 主窗口 / 设置 / 文档统一）
+
+extension UsageFreshness {
+    /// 状态主标签。
+    var statusLabel: String {
+        switch kind {
+        case .neverSucceeded: return L("暂无数据")
+        case .fresh: return L("已同步")
+        case .aging: return L("数据待更新")
+        case .stale: return L("同步失败")
+        case .partial: return L("部分来源失败")
+        case .disabled: return L("已关闭")
+        }
+    }
+
+    /// 失败但保留旧值时的补充说明。
+    var keepsLastValueLabel: String? {
+        switch kind {
+        case .stale: return L("显示最后成功数据")
+        default: return nil
+        }
+    }
+
+    /// "最后成功 …"标签；从未成功时为 nil。
+    func lastSucceededLabel(now: Date = Date()) -> String? {
+        guard let lastSucceededAt else { return nil }
+        return LFormat("最后成功 %@", FreshnessPolicy.relativeTime(since: lastSucceededAt, now: now))
+    }
+
+    /// 是否需要用户注意（非 fresh/disabled）。
+    var needsAttention: Bool {
+        switch kind {
+        case .fresh, .disabled: return false
+        case .neverSucceeded, .aging, .stale, .partial: return true
+        }
+    }
 }

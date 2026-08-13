@@ -18,25 +18,23 @@ struct PopoverQuotaCard: View {
                         ProgressView()
                             .controlSize(.small)
                             .scaleEffect(0.72)
-                    } else if let fetchedAt = appState.codexQuota.fetchedAt {
-                        Text(quotaFetchedText(fetchedAt))
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.secondary)
-                    } else if let fetchedAt = appState.claudeQuota.fetchedAt {
-                        Text(quotaFetchedText(fetchedAt))
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.secondary)
                     }
                 }
 
-                if appState.hasAnyQuota {
+                if appState.hasAnyQuota || appState.codexQuotaFreshness.kind != .neverSucceeded
+                    || appState.claudeQuotaFreshness.kind != .neverSucceeded {
+                    // G-V1：两家额度分别显示状态，部分失败不被隐藏。
                     VStack(spacing: 12) {
-                        if appState.codexQuota.isAvailable {
-                            quotaSection(title: "Codex", quota: appState.codexQuota)
-                        }
-                        if appState.claudeQuota.isAvailable {
-                            quotaSection(title: "Claude Code", quota: appState.claudeQuota)
-                        }
+                        quotaSection(
+                            title: "Codex",
+                            quota: appState.codexQuota,
+                            freshness: appState.codexQuotaFreshness
+                        )
+                        quotaSection(
+                            title: "Claude Code",
+                            quota: appState.claudeQuota,
+                            freshness: appState.claudeQuotaFreshness
+                        )
                     }
                 } else {
                     HStack(spacing: 10) {
@@ -61,14 +59,32 @@ struct PopoverQuotaCard: View {
         .padding(.vertical, -2)
     }
 
-    private func quotaSection(title: String, quota: CodexQuotaSnapshot) -> some View {
+    private func quotaSection(
+        title: String,
+        quota: CodexQuotaSnapshot,
+        freshness: UsageFreshness
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(Color.tokenInk.opacity(0.76))
-            VStack(spacing: 8) {
-                quotaRow(quota.fiveHour, fallbackTitle: L("5 小时"))
-                quotaRow(quota.sevenDay, fallbackTitle: L("7 天"))
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk.opacity(0.76))
+                Spacer()
+                FreshnessBadge(freshness: freshness, showsLastSucceeded: freshness.needsAttention)
+            }
+            if quota.isAvailable {
+                VStack(spacing: 8) {
+                    quotaRow(quota.fiveHour, fallbackTitle: L("5 小时"))
+                    quotaRow(quota.sevenDay, fallbackTitle: L("7 天"))
+                }
+            } else if freshness.kind == .stale, let keeps = freshness.keepsLastValueLabel {
+                Text(keeps)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(L("暂无数据"))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -122,13 +138,5 @@ struct PopoverQuotaCard: View {
         }
         let days = max(1, Int(ceil(Double(seconds) / 86_400)))
         return LFormat("%d 天后重置", days)
-    }
-
-    private func quotaFetchedText(_ date: Date) -> String {
-        let seconds = max(0, Int(Date().timeIntervalSince(date).rounded()))
-        if seconds < 60 {
-            return L("刚刚")
-        }
-        return LFormat("%d 分钟前", max(1, seconds / 60))
     }
 }

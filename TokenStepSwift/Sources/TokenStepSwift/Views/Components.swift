@@ -234,22 +234,6 @@ struct MetricPill: View {
     }
 }
 
-struct TokenCard<Content: View>: View {
-    var content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .padding(24)
-            .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.black.opacity(0.06)))
-            .shadow(color: Color.black.opacity(0.055), radius: 24, x: 0, y: 14)
-    }
-}
-
 struct ScreenshotMenuButton: View {
     var copyTitle: String
     var saveTitle: String
