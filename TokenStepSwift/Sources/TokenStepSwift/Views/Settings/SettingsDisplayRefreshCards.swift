@@ -113,6 +113,17 @@ struct SettingsTokenRankCard: View {
                     tint: statusTint
                 )
 
+                if !appState.shouldShowAgentWorkRank {
+                    // 隐藏态说明：解释本卡用途与隐私默认，避免大片空白。
+                    Text(L("记录你在 Agent 用量榜的排名。默认隐藏：不读取本地榜单身份、不请求榜单接口。选择「显示」后才会读取本机榜单身份并拉取公开榜单数据。"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.tokenTrack.opacity(0.45), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
                 if appState.shouldShowAgentWorkRank {
                     StatusLine(
                         symbol: "arrow.triangle.2.circlepath",
@@ -211,155 +222,125 @@ struct SettingsTokenRankCard: View {
     }
 }
 
-struct SettingsExperimentalAgentSourcesCard: View {
+/// 数据来源（统一卡，原型 4）：正式源状态 + 实验源主开关与逐源开关。
+struct SettingsAgentSourcesCard: View {
     @EnvironmentObject private var appState: AppState
 
+    /// 全部实验源 = 旧三源 + G-A1 七源；启用语义见 AgentSourceRegistry.enabledIDs。
+    private var experimentalSourceIDs: [String] {
+        ["ZCode", "Hermes Agent", "WorkBuddy"] + AgentSourceRegistry.allSourceIDs
+    }
+
+    private var installedT1IDs: Set<String> {
+        Set(AgentSourceRegistry.observeAll().filter { $0.status == "installed" }.map(\.sourceID))
+    }
+
+    private var effectiveEnabled: Set<String> {
+        Set(AgentSourceRegistry.enabledIDs(
+            masterEnabled: appState.settings.showExperimentalAgentSources,
+            perSource: appState.settings.experimentalAgentSources
+        ))
+    }
+
     var body: some View {
-        SettingsCard(title: L("实验 Agent 来源"), symbol: "point.3.connected.trianglepath.dotted", height: 282) {
-            VStack(alignment: .leading, spacing: 13) {
+        SettingsCard(title: L("数据来源"), symbol: "square.grid.3x3.middle.filled", height: 460) {
+            VStack(alignment: .leading, spacing: 12) {
+                StatusLine(
+                    symbol: "checkmark.circle.fill",
+                    title: "Codex",
+                    value: statusText(for: "Codex", experimental: false),
+                    tint: .tokenGreen
+                )
+                StatusLine(
+                    symbol: "checkmark.circle.fill",
+                    title: "Claude Code",
+                    value: statusText(for: "Claude Code", experimental: false),
+                    tint: .tokenGreen
+                )
+                StatusLine(
+                    symbol: "point.3.connected.trianglepath.dotted",
+                    title: "CC Switch Proxy",
+                    value: statusText(for: ccSwitchName(), experimental: false),
+                    tint: .tokenGreen
+                )
+
+                Divider()
+
                 SettingsToggleRow(
-                    title: L("启用 ZCode / Hermes / WorkBuddy"),
+                    title: L("启用实验数据源"),
                     isOn: Binding(
                         get: { appState.settings.showExperimentalAgentSources },
                         set: { appState.setExperimentalAgentSourcesVisible($0) }
                     )
                 )
-
-                Text(L("只读取本地 usage 字段，不读取对话正文。"))
-                    .font(.caption.weight(.semibold))
+                Text(L("实验源默认关闭；开启后检测到已安装的 Agent 自动纳入统计，可单独关闭某个来源。只读 usage 字段，不读对话正文。"))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                VStack(spacing: 8) {
-                    experimentalSourceLine(name: "ZCode", sourceKey: "ZCode")
-                    experimentalSourceLine(name: "Hermes Agent", sourceKey: "Hermes Agent")
-                    experimentalSourceLine(name: "WorkBuddy", sourceKey: "WorkBuddy")
-                }
-
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private func experimentalSourceLine(name: String, sourceKey: String) -> some View {
-        let rawStatus = appState.snapshot.sources[sourceKey]?.status
-        let status = normalizedExperimentalStatus(rawStatus)
-        let active = status == "ok"
-        let discoveredOnly = status == "discovered_no_usage"
-        return StatusLine(
-            symbol: active ? "checkmark.circle.fill" : discoveredOnly ? "magnifyingglass.circle.fill" : "circle.dashed",
-            title: name,
-            value: statusText(status),
-            tint: active ? .tokenGreen : discoveredOnly ? .orange : .gray
-        )
-    }
-
-    private func normalizedExperimentalStatus(_ status: String?) -> String {
-        guard appState.settings.showExperimentalAgentSources else {
-            return "disabled"
-        }
-        if appState.isRefreshing {
-            return "refreshing"
-        }
-        if status == nil || status == "disabled" {
-            return "pending_refresh"
-        }
-        return status ?? "missing"
-    }
-
-    private func statusText(_ status: String?) -> String {
-        switch status {
-        case "ok": return L("已计入实验统计")
-        case "discovered_no_usage": return L("已发现，暂不可统计")
-        case "refreshing": return L("刷新中")
-        case "pending_refresh": return L("等待刷新")
-        case "disabled": return L("默认关闭")
-        case "missing_db", "missing": return L("未发现数据源")
-        case "missing_valid_rows": return L("暂无可用 usage")
-        case "schema_mismatch", "schema_unreadable", "missing_table": return L("结构待适配")
-        case "unreadable_db": return L("无法读取")
-        default: return L("等待同步")
-        }
-    }
-}
-
-/// G-A1：T1 新 Agent 源（默认逐源关闭，主开关开启后可单独勾选）。
-struct SettingsT1AgentSourcesCard: View {
-    @EnvironmentObject private var appState: AppState
-
-    private var observations: [AgentSourceObservation] {
-        AgentSourceRegistry.observeAll()
-    }
-
-    /// 有效启用集：显式列表优先；nil = 自动纳入已安装的源（用户裁决的默认语义）。
-    private var enabledList: [String] {
-        AgentSourceRegistry.enabledIDs(
-            masterEnabled: appState.settings.showExperimentalAgentSources,
-            perSource: appState.settings.experimentalAgentSources
-        )
-    }
-
-    var body: some View {
-        SettingsCard(title: L("更多 Agent 数据源"), symbol: "square.grid.3x3.middle.filled", height: 330) {
-            VStack(alignment: .leading, spacing: 10) {
-                if !appState.settings.showExperimentalAgentSources {
-                    Text(L("检测到已安装的 Agent 会自动纳入统计；主开关关闭时不采集任何实验源。"))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button {
-                        appState.setExperimentalAgentSourcesVisible(true)
-                    } label: {
-                        Label(L("启用实验 Agent 来源"), systemImage: "bolt.fill")
-                            .font(.caption.weight(.heavy))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
-                            .background(Color.tokenGreen, in: Capsule())
+                let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+                    ForEach(experimentalSourceIDs, id: \.self) { sourceID in
+                        sourceRow(sourceID)
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    Text(L("检测到已安装的 Agent 自动计入；可单独关闭某个来源。"))
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
                 }
-                ForEach(observations, id: \.sourceID) { observation in
-                    sourceRow(observation)
-                }
-                Spacer(minLength: 0)
             }
         }
     }
 
-    private func sourceRow(_ observation: AgentSourceObservation) -> some View {
-        let enabled = enabledList.contains(observation.sourceID)
-        let detected = observation.status == "installed"
-        let collected = appState.snapshot.sources[observation.sourceID]?.status
+    private func ccSwitchName() -> String {
+        // 快照里的键名带口径后缀，展示用通用名。
+        "CC Switch Proxy"
+    }
+
+    private func sourceRow(_ sourceID: String) -> some View {
+        let enabled = effectiveEnabled.contains(sourceID)
+        let isT1 = AgentSourceRegistry.allSourceIDs.contains(sourceID)
+        let detected = !isT1 || installedT1IDs.contains(sourceID)
         return HStack(spacing: 8) {
             Toggle("", isOn: Binding(
                 get: { enabled },
-                set: { appState.setExperimentalAgentSource(observation.sourceID, enabled: $0) }
+                set: { appState.setExperimentalAgentSource(sourceID, enabled: $0) }
             ))
             .labelsHidden()
             .disabled(!appState.settings.showExperimentalAgentSources)
             .frame(width: 30)
             VStack(alignment: .leading, spacing: 1) {
-                Text(observation.sourceID)
+                Text(sourceID)
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(Color.tokenInk.opacity(0.82))
-                Text(statusText(detected: detected, collected: collected, enabled: enabled))
+                    .lineLimit(1)
+                Text(statusText(for: sourceID, experimental: true, detected: detected, enabled: enabled))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.tokenTrack.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private func statusText(detected: Bool, collected: String?, enabled: Bool) -> String {
-        if !enabled {
+    private func statusText(
+        for sourceID: String,
+        experimental: Bool,
+        detected: Bool = true,
+        enabled: Bool? = nil
+    ) -> String {
+        let status = appState.snapshot.sources[sourceID]?.status
+            ?? appState.snapshot.sources.keys.first(where: { $0.hasPrefix(sourceID) })
+                .flatMap { appState.snapshot.sources[$0]?.status }
+        if !experimental {
+            return status == "ok" ? L("已计入统计") : L("等待同步")
+        }
+        guard appState.settings.showExperimentalAgentSources else {
+            return detected ? L("默认关闭") : L("未检测到")
+        }
+        if let enabled, !enabled {
             return detected ? L("已安装，未启用") : L("未检测到")
         }
-        switch collected {
+        switch status {
         case "ok": return L("已计入实验统计")
         case "missing_valid_rows": return L("暂无可用 usage")
         case "missing", "missing_db": return L("未发现数据源")
@@ -367,3 +348,4 @@ struct SettingsT1AgentSourcesCard: View {
         }
     }
 }
+

@@ -70,8 +70,7 @@ struct SettingsView: View {
                 SettingsAutostartCard()
             }
             HStack(alignment: .top, spacing: 18) {
-                SettingsExperimentalAgentSourcesCard()
-                SettingsT1AgentSourcesCard()
+                SettingsAgentSourcesCard()
             }
             HStack(alignment: .top, spacing: 18) {
                 SettingsPrivacyCard()
