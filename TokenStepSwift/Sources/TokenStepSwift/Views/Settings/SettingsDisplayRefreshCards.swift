@@ -122,6 +122,12 @@ struct SettingsTokenRankCard: View {
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.tokenTrack.opacity(0.45), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    StatusLine(
+                        symbol: "lock.shield.fill",
+                        title: L("隐私状态"),
+                        value: L("零身份读取 · 零网络请求"),
+                        tint: .tokenGreen
+                    )
                 }
 
                 if appState.shouldShowAgentWorkRank {
@@ -243,7 +249,8 @@ struct SettingsAgentSourcesCard: View {
     }
 
     var body: some View {
-        SettingsCard(title: L("数据来源"), symbol: "square.grid.3x3.middle.filled", height: 460) {
+        // 自然高度（height 0）：内容驱动，永不裁剪。
+        SettingsCard(title: L("数据来源"), symbol: "square.grid.3x3.middle.filled", height: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 StatusLine(
                     symbol: "checkmark.circle.fill",
@@ -293,6 +300,7 @@ struct SettingsAgentSourcesCard: View {
         "CC Switch Proxy"
     }
 
+    /// 单行紧凑源行：开关 + 名称 + 右侧状态。
     private func sourceRow(_ sourceID: String) -> some View {
         let enabled = effectiveEnabled.contains(sourceID)
         let isT1 = AgentSourceRegistry.allSourceIDs.contains(sourceID)
@@ -304,21 +312,19 @@ struct SettingsAgentSourcesCard: View {
             ))
             .labelsHidden()
             .disabled(!appState.settings.showExperimentalAgentSources)
-            .frame(width: 30)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(sourceID)
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk.opacity(0.82))
-                    .lineLimit(1)
-                Text(statusText(for: sourceID, experimental: true, detected: detected, enabled: enabled))
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
+            .frame(width: 32)
+            Text(sourceID)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.tokenInk.opacity(0.82))
+                .lineLimit(1)
+            Spacer(minLength: 2)
+            Text(statusText(for: sourceID, experimental: true, detected: detected, enabled: enabled))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.vertical, 8)
         .background(Color.tokenTrack.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 

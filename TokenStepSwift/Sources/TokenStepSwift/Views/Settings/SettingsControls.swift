@@ -69,7 +69,7 @@ struct SettingsCard<Content: View>: View {
         .padding(.horizontal, 22)
         .padding(.top, 24)
         .padding(.bottom, 22)
-        .frame(height: height)
+        .frame(height: height > 0 ? height : nil)
         .frame(maxWidth: .infinity)
         .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.black.opacity(0.06)))
