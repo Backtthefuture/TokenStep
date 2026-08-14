@@ -72,13 +72,15 @@ struct SettingsCardsRender {
         }
         // 断言 2：榜单卡分段选择器必须有"墨水"——
         // macOS 15 下空标题/labelsHidden 会连分段文字一起隐藏（2026-08-14 真机回归）。
-        guard let rankPNG = NSBitmapImageRep(contentsOf: outputURL) else {
+        guard let pngData = try? Data(contentsOf: outputURL),
+              let rankPNG = NSBitmapImageRep(data: pngData) else {
             throw NSError(domain: "SettingsCardsRender", code: 4)
         }
+        // 组合渲染为 @2x 位图；矩形直接用图像像素坐标（榜单卡 picker 带）。
         let pickerInk = countDarkPixels(
             in: rankPNG,
-            rect: CGRect(x: 120, y: 1210, width: 700, height: 120),
-            scale: 2
+            rect: CGRect(x: 230, y: 1195, width: 670, height: 105),
+            scale: 1
         )
         guard pickerInk > 100 else {
             throw NSError(domain: "SettingsCardsRender", code: 5, userInfo: [
@@ -91,8 +93,12 @@ struct SettingsCardsRender {
 
 
 private func countDarkPixels(in rep: NSBitmapImageRep, rect: CGRect, scale: CGFloat) -> Int {
-    let xRange = Int(rect.minX * scale)..<(Int(rect.maxX) * scale)
-    let yRange = Int(rect.minY * scale)..<(Int(rect.maxY) * scale)
+    let xStart = Int(Double(rect.minX) * Double(scale))
+    let xEnd = Int(Double(rect.maxX) * Double(scale))
+    let yStart = Int(Double(rect.minY) * Double(scale))
+    let yEnd = Int(Double(rect.maxY) * Double(scale))
+    let xRange = xStart..<max(xStart + 1, xEnd)
+    let yRange = yStart..<max(yStart + 1, yEnd)
     var count = 0
     for y in yRange where y >= 0 && y < rep.pixelsHigh {
         for x in xRange where x >= 0 && x < rep.pixelsWide {
