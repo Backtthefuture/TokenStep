@@ -95,7 +95,9 @@ struct SettingsTokenRankCard: View {
     var body: some View {
         SettingsCard(title: L("Agent 消耗榜"), symbol: "list.number", height: 282) {
             VStack(alignment: .leading, spacing: 13) {
-                Picker("", selection: Binding(
+                // 注意：segmented Picker 必须用非空标题且不用 labelsHidden——
+                // macOS 15 下空标题/labelsHidden 会连分段文字一起隐藏（渲染实测）。
+                Picker(L("榜单可见性"), selection: Binding(
                     get: { appState.settings.agentWorkRankVisibility },
                     set: { appState.setAgentWorkRankVisibility($0) }
                 )) {
@@ -103,7 +105,6 @@ struct SettingsTokenRankCard: View {
                     Text(L("显示")).tag(AgentWorkRankVisibility.visible)
                     Text(L("隐藏")).tag(AgentWorkRankVisibility.hidden)
                 }
-                .labelsHidden()
                 .pickerStyle(.segmented)
 
                 StatusLine(

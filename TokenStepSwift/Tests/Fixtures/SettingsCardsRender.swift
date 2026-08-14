@@ -38,6 +38,7 @@ struct SettingsCardsRender {
         }
 
         let sourcesSize = try measure(SettingsAgentSourcesCard(), width: 840, label: "sources-card")
+
         _ = try measure(SettingsTokenRankCard(), width: 406, label: "rank-card")
 
         let content = VStack(spacing: 18) {
@@ -63,11 +64,43 @@ struct SettingsCardsRender {
         }
         try png.write(to: outputURL, options: .atomic)
         print("combined render: \(bitmap.pixelsWide/2)x\(bitmap.pixelsHigh/2) -> \(outputURL.path)")
-        // 断言：来源卡自然高度应为有限正值（自适应模式不再被 460 裁剪）。
+        // 断言 1：来源卡自然高度应为有限正值（自适应模式不再被裁剪）。
         guard sourcesSize.height > 300, sourcesSize.height < 1200 else {
             throw NSError(domain: "SettingsCardsRender", code: 3, userInfo: [
                 NSLocalizedDescriptionKey: "sources card height out of range: \(sourcesSize.height)"
             ])
         }
+        // 断言 2：榜单卡分段选择器必须有"墨水"——
+        // macOS 15 下空标题/labelsHidden 会连分段文字一起隐藏（2026-08-14 真机回归）。
+        guard let rankPNG = NSBitmapImageRep(contentsOf: outputURL) else {
+            throw NSError(domain: "SettingsCardsRender", code: 4)
+        }
+        let pickerInk = countDarkPixels(
+            in: rankPNG,
+            rect: CGRect(x: 120, y: 1210, width: 700, height: 120),
+            scale: 2
+        )
+        guard pickerInk > 100 else {
+            throw NSError(domain: "SettingsCardsRender", code: 5, userInfo: [
+                NSLocalizedDescriptionKey: "rank picker band has no ink (segmented labels missing?): \(pickerInk)"
+            ])
+        }
+        print("rank picker ink: \(pickerInk)")
     }
+}
+
+
+private func countDarkPixels(in rep: NSBitmapImageRep, rect: CGRect, scale: CGFloat) -> Int {
+    let xRange = Int(rect.minX * scale)..<(Int(rect.maxX) * scale)
+    let yRange = Int(rect.minY * scale)..<(Int(rect.maxY) * scale)
+    var count = 0
+    for y in yRange where y >= 0 && y < rep.pixelsHigh {
+        for x in xRange where x >= 0 && x < rep.pixelsWide {
+            if let color = rep.colorAt(x: x, y: y) {
+                let brightness = (color.redComponent + color.greenComponent + color.blueComponent) / 3
+                if brightness < 0.6 { count += 1 }
+            }
+        }
+    }
+    return count
 }
