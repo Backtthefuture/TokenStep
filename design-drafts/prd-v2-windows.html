@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TokenStep 0.2.0 · 仪表盘与设置</title>
+<style>
+:root{
+  --paper:#efe9dc; --ink:#1b241c; --muted:#6a7468; --line:rgba(27,36,28,.1);
+  --forest:#1f6a48; --lime:#8fbf3a; --card:#f7f2e8; --chip:#fffdf8; --green:#2f9e55;
+  --warn:#c2571f; --danger:#b3341f; --violet:#6b5bd2;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,"SF Pro Text","PingFang SC",sans-serif}
+body{padding:30px 34px 70px}
+h1{font-size:27px;letter-spacing:-.03em;margin:0 0 8px}
+.lede{max-width:780px;color:var(--muted);line-height:1.65;margin-bottom:16px;font-size:14px}
+.lede b{color:var(--ink)}
+.tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{border:1px solid var(--line);background:0;border-radius:999px;padding:7px 12px;font:600 12.5px/1 -apple-system,sans-serif;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--paper)}
+.panel{display:none}.panel.active{display:block}
+.note{margin-bottom:13px;color:var(--muted);font-size:13.5px;line-height:1.65;max-width:820px}
+.note b{color:var(--ink)}
+.stage{background:#d8d3c6;border-radius:20px;padding:38px 18px 26px;display:flex;justify-content:center;position:relative;margin-bottom:14px;overflow-x:auto}
+.stage::before{content:attr(data-label);position:absolute;top:11px;left:15px;font:600 10.5px/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:#5c6358}
+.rule{background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:11px 14px;font-size:13px;color:var(--muted);line-height:1.7;max-width:920px}
+.rule b{color:var(--ink)}
+.rule code{background:#efe8da;padding:1px 5px;border-radius:4px;font-size:12px}
+
+/* window shell */
+.win{width:1000px;background:var(--card);border:1px solid #ddd4c4;border-radius:16px;overflow:hidden;box-shadow:0 14px 32px rgba(28,40,30,.14)}
+.tb{height:46px;display:flex;align-items:center;gap:9px;padding:0 15px;border-bottom:1px solid #ebe3d4}
+.dots{display:flex;gap:6px;margin-right:6px}
+.dots i{width:11px;height:11px;border-radius:50%;background:#d6ccb9;display:block}
+.seg{margin-left:auto;display:flex;gap:3px;background:#e9e1d1;border-radius:9px;padding:3px}
+.seg span{font:700 12px/1 -apple-system,sans-serif;padding:7px 14px;border-radius:7px;color:#4d5648}
+.seg span.on{background:var(--chip);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.body{padding:16px 16px 20px}
+.grid2{display:grid;grid-template-columns:1.25fr .75fr;gap:13px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+.card{background:var(--chip);border:1px solid #e8dfd0;border-radius:14px;padding:14px}
+.card h3{margin:0 0 3px;font-size:13.5px}
+.card .sub{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:11px}
+.big{font-size:33px;font-weight:800;letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1.05}
+.k{font-size:10.5px;color:var(--muted);font-weight:700}
+
+/* ring hero */
+.hero{display:flex;gap:20px;align-items:center}
+.ring{width:132px;height:132px;border-radius:50%;background:conic-gradient(var(--lime) 223deg,#e3dbca 0);display:grid;place-items:center;flex:0 0 auto}
+.ring span{width:100px;height:100px;background:var(--chip);border-radius:50%;display:grid;place-items:center;text-align:center;font-weight:800;font-size:20px;letter-spacing:-.03em}
+.ring em{display:block;font-style:normal;font-size:10.5px;color:var(--muted);font-weight:700}
+.mets{display:flex;gap:9px;margin-top:11px;flex-wrap:wrap}
+.met{background:#f2ebdc;border:1px solid #e4dbc9;border-radius:9px;padding:7px 10px;font-size:11px;font-weight:700}
+.met b{display:block;font-size:15px;margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* bars/rows */
+.row{display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid #efe7d8;font-size:12px}
+.row:first-of-type{border-top:0}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.row .nm{font-weight:600}
+.row .vl{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700}
+.track{height:5px;background:#e6dece;border-radius:99px;overflow:hidden;margin-top:5px}
+.track i{display:block;height:100%;border-radius:99px}
+
+/* hour chart */
+.hours{display:flex;align-items:flex-end;gap:3px;height:78px;margin-top:6px}
+.hours div{flex:1;background:linear-gradient(180deg,var(--lime),var(--forest));border-radius:3px 3px 0 0}
+.hlab{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);font-weight:700;margin-top:4px}
+
+/* contribution wall: 34 weeks (cols) x 7 weekdays (rows) — matches ContributionWallView */
+.wallwrap{display:flex;gap:7px;align-items:flex-start}
+.wdays{display:grid;grid-template-rows:repeat(7,13px);gap:4px;font-size:9px;color:var(--muted);font-weight:700;padding-top:17px}
+.wdays span{line-height:13px;height:13px}
+.wallcol{flex:1;min-width:0}
+.months{display:flex;font-size:9.5px;color:var(--muted);font-weight:700;margin-bottom:4px}
+.wall{display:flex;gap:4px}
+.wall .wk{display:grid;grid-template-rows:repeat(7,13px);gap:4px;flex:1}
+.wall i{border-radius:3px;background:#e6dece;display:block;height:13px}
+.wall i.a1{background:#dde8c4}.wall i.a2{background:#bcd792}.wall i.a3{background:#8cba57}
+.wall i.a4{background:#5f9c3a}.wall i.a5{background:var(--forest)}.wall i.a6{background:#123f2a}
+.wall i.future{background:transparent}
+.wall i.today{box-shadow:inset 0 0 0 1.5px #123f2a}
+.legend{display:flex;align-items:center;gap:9px;font-size:10.5px;color:var(--muted);font-weight:700;margin-top:11px}
+.legend .sc{display:flex;align-items:center;gap:4px;margin-left:auto}
+.legend .sc i{width:13px;height:13px;border-radius:3px;display:block}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;color:var(--muted);font-weight:600;padding:0 6px 7px;font-size:10.5px}
+th.n,td.n{text-align:right;font-variant-numeric:tabular-nums}
+td{padding:7px 6px;border-top:1px solid #efe7d8}
+
+/* settings */
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.srow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #efe7d8;font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .t{font-weight:600}
+.srow .d{font-size:10.5px;color:var(--muted);font-weight:600;margin-top:1px}
+.srow .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.tg{width:40px;height:23px;border-radius:99px;background:#ddd4c2;position:relative;flex:0 0 auto}
+.tg::after{content:"";position:absolute;top:2.5px;left:2.5px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.tg.on{background:var(--green)}
+.tg.on::after{left:19px}
+.badge{font:800 9.5px/1 -apple-system,sans-serif;letter-spacing:.04em;border-radius:5px;padding:3px 6px;border:1px solid #ded4c2;color:var(--muted);background:#f4eee0}
+.badge.ok{color:#1c5c3a;border-color:#c3dcc6;background:#e6f2e4}
+.badge.warn{color:#8f4a17;border-color:#e6cdb4;background:#f8ecdd}
+.badge.off{color:#7b8378}
+.badge.l1{color:#1c5c3a;border-color:#c3dcc6}
+.badge.l2{color:#3c4c8f;border-color:#c6cde6;background:#e8ecf8}
+.badge.l3{color:#5b3f96;border-color:#d5cbe8;background:#efeafa}
+.pickers{display:flex;gap:5px}
+.pickers span{font:700 11px/1 -apple-system,sans-serif;padding:7px 10px;border-radius:8px;border:1px solid #e0d6c4;background:#f4eee0;color:#4d5648}
+.pickers span.on{background:var(--forest);color:#eef7d8;border-color:var(--forest)}
+.swatch{display:flex;gap:6px}
+.swatch i{width:22px;height:22px;border-radius:7px;display:block;border:2px solid transparent}
+.swatch i.on{border-color:var(--ink)}
+.gsteps{display:flex;align-items:center;gap:9px}
+.gsteps .b{width:31px;height:31px;border-radius:9px;border:1px solid #e0d6c4;background:#f4eee0;display:grid;place-items:center;font-weight:800;font-size:14px;color:#4d5648}
+.mono{font:600 11px/1.6 ui-monospace,monospace;color:var(--muted);background:#f2ebdc;border:1px solid #e4dbc9;border-radius:8px;padding:8px 10px;word-break:break-all}
+.foot{display:flex;gap:9px;justify-content:flex-end;padding-top:13px;border-top:1px solid #ebe3d4;margin-top:14px}
+.btn{height:38px;padding:0 15px;border-radius:10px;border:1px solid #e0d6c4;background:#f4eee0;font:700 12.5px/1 -apple-system,"PingFang SC",sans-serif;color:#3c463d;display:flex;align-items:center}
+.btn.p{background:var(--green);color:#fff;border-color:var(--green)}
+.hint{font-size:11px;color:var(--muted);font-weight:600;line-height:1.55;margin-top:8px}
+.hint b{color:var(--ink)}
+</style>
+</head>
+<body>
+<h1>0.2.0 仪表盘与设置 · 设计稿 B</h1>
+<p class="lede">主窗口 1000 宽起（可缩放）。这一版新增的都在这里：<b>Agent 已采字段补全</b>、<b>Cursor 产出卡（L3）</b>、<b>数据源分层管理</b>、<b>6 家额度提供商清单</b>、<b>隐私页写清 Cursor 读了什么</b>。</p>
+
+<div class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="today">仪表盘 · 今日</button>
+  <button role="tab" aria-selected="false" data-tab="history">仪表盘 · 历史</button>
+  <button role="tab" aria-selected="false" data-tab="privacy">仪表盘 · 隐私</button>
+  <button role="tab" aria-selected="false" data-tab="set1">设置 · 数据源</button>
+  <button role="tab" aria-selected="false" data-tab="set2">设置 · 额度</button>
+  <button role="tab" aria-selected="false" data-tab="set3">设置 · 通用</button>
+</div>
+
+<!-- 今日 -->
+<section class="panel active" id="today">
+  <p class="note">左上 hero 环不变。改动有三处：<b>Agent 强度卡</b>补上已采但从没展示的 <code>modelRequestCount</code> / <code>toolCallCount</code> / <code>outputTokens</code>；<b>分时柱</b>沿用 <code>hourlyBuckets</code>，活跃小时统一由它重算；新增 <b>Cursor 产出卡</b>，明确标 L3 不计入环。</p>
+  <div class="stage" data-label="dashboard · today">
+    <article class="win">
+      <div class="tb"><div class="dots"><i></i><i></i><i></i></div><b style="font-size:13px">TokenStep</b>
+        <div class="seg"><span class="on">今日</span><span>历史</span><span>隐私</span></div></div>
+      <div class="body">
+        <div class="grid2" style="margin-bottom:12px">
+          <div class="card">
+            <div class="hero">
+              <div class="ring"><span>1.24亿<em>/ 1亿 每圈</em></span></div>
+              <div style="flex:1">
+                <h3 style="font-size:15px">第 2 圈 · 62%</h3>
+                <div class="sub">今日 2026-08-17 · 已达标 1 圈</div>
+                <div class="mets">
+                  <div class="met">消耗金额<b>$4.80</b></div>
+                  <div class="met">活跃小时<b>11 h</b></div>
+                  <div class="met">累计<b>184亿</b></div>
+                  <div class="met">达标天<b>63 天</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Agent 工作强度</h3>
+            <div class="sub">本版补全：请求数 / 工具调用 / 输出</div>
+            <div class="grid3" style="gap:8px">
+              <div><div class="k">模型请求</div><div class="big" style="font-size:24px">233</div></div>
+              <div><div class="k">工具调用</div><div class="big" style="font-size:24px">891</div></div>
+              <div><div class="k">缓存命中</div><div class="big" style="font-size:24px">41%</div></div>
+            </div>
+            <div style="margin-top:11px">
+              <div class="row"><span class="nm">输入</span><span class="vl">6280万</span></div>
+              <div class="row"><span class="nm">缓存读取</span><span class="vl">2570万</span></div>
+              <div class="row"><span class="nm">输出</span><span class="vl">1510万</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-bottom:12px">
+          <div class="card">
+            <h3>今日分时</h3>
+            <div class="sub">来自 hourlyBuckets · 活跃小时由此重算</div>
+            <div class="hours">
+              <div style="height:6%"></div><div style="height:3%"></div><div style="height:0%"></div><div style="height:0%"></div>
+              <div style="height:0%"></div><div style="height:0%"></div><div style="height:9%"></div><div style="height:22%"></div>
+              <div style="height:48%"></div><div style="height:71%"></div><div style="height:96%"></div><div style="height:83%"></div>
+              <div style="height:34%"></div><div style="height:27%"></div><div style="height:58%"></div><div style="height:77%"></div>
+              <div style="height:69%"></div><div style="height:44%"></div><div style="height:31%"></div><div style="height:19%"></div>
+              <div style="height:26%"></div><div style="height:41%"></div><div style="height:23%"></div><div style="height:11%"></div>
+            </div>
+            <div class="hlab"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
+            <div class="hint">无时间戳 <b>310万</b> 已单列，不摊进任何小时。</div>
+          </div>
+          <div class="card">
+            <h3>今日来源</h3>
+            <div class="sub">仅 L1 本地账本 · 计入圆环</div>
+            <div class="row"><i class="dot" style="background:#1f6a48"></i><span class="nm">Codex</span><span class="vl">7720万</span></div>
+            <div class="track"><i style="width:62%;background:#1f6a48"></i></div>
+            <div class="row"><i class="dot" style="background:#3d7ca8"></i><span class="nm">Claude Code</span><span class="vl">2610万</span></div>
+            <div class="track"><i style="width:21%;background:#3d7ca8"></i></div>
+            <div class="row"><i class="dot" style="background:#c48c3c"></i><span class="nm">ZCode</span><span class="vl">1120万</span></div>
+            <div class="track"><i style="width:9%;background:#c48c3c"></i></div>
+            <div class="row"><i class="dot" style="background:#8a8a8a"></i><span class="nm">其他 2 个来源</span><span class="vl">990万</span></div>
+            <div class="track"><i style="width:8%;background:#8a8a8a"></i></div>
+          </div>
+        </div>
+
+        <div class="card" style="border-color:#ded5e8;background:#faf8fd">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:3px">
+            <h3 style="margin:0">Cursor 代码产出</h3><span class="badge l3">L3 · 不计入圆环</span>
+            <span class="badge off" style="margin-left:auto">纯本地 · ai-code-tracking.db</span>
+          </div>
+          <div class="sub">Cursor 本地没有 token 数，只有产出量。这里回答「AI 帮我写了多少」，不参与 Token 总量。</div>
+          <div class="grid3">
+            <div><div class="k">AI 代码块</div><div class="big" style="font-size:26px">7230</div></div>
+            <div><div class="k">今日新增行</div><div class="big" style="font-size:26px">1240</div></div>
+            <div><div class="k">AI 占比</div><div class="big" style="font-size:26px">68%</div></div>
+          </div>
+          <div style="margin-top:11px">
+            <div class="row"><i class="dot" style="background:var(--violet)"></i><span class="nm">claude-4.6-opus</span><span class="vl">612 块</span></div>
+            <div class="row"><i class="dot" style="background:#8f7fe0"></i><span class="nm">composer-2.5</span><span class="vl">438 块</span></div>
+            <div class="row"><i class="dot" style="background:#b3a8ec"></i><span class="nm">其他模型</span><span class="vl">190 块</span></div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </div>
+  <div class="rule"><b>Cursor 卡必须视觉上「不属于圆环体系」。</b>用紫调 + L3 徽标 + 单独一张卡，别和「今日来源」并排同色，否则用户会以为它计入了 Token。<code>scored_commits</code> 本机当前 0 行，「今日新增行 / AI 占比」在没有数据时应整块隐去，只留「AI 代码块」。</div>
+</section>
+
+<!-- 历史 -->
+<section class="panel" id="history">
+  <p class="note">这页按现有 <code>ContributionWallView</code> 的真实排法重画：<b>34 列（周）× 7 行（周一→周日）</b>，方块 15×15、间距 5、<b>今天带描边</b>、未来日期留空、图例 <b>6 档</b>（0 / 25% / 70% / 目标 / 2× / 3×）。三块顺序也和现在一致：活动墙 → StatsView → 全部明细。</p>
+  <div class="stage" data-label="dashboard · history (34w x 7d wall)">
+    <article class="win">
+      <div class="tb"><div class="dots"><i></i><i></i><i></i></div><b style="font-size:13px">TokenStep</b>
+        <div class="seg"><span>今日</span><span class="on">历史</span><span>隐私</span></div></div>
+      <div class="body">
+        <div class="card" style="margin-bottom:12px">
+          <div style="display:flex;align-items:flex-start;margin-bottom:11px">
+            <div><h3 style="font-size:15px">近 8 个月活动墙</h3><div class="sub" style="margin:0">颜色越深，用量越高；描边是今天</div></div>
+            <div style="margin-left:auto"><span class="badge ok" style="font-size:11px;padding:6px 10px">147 个活跃日</span></div>
+          </div>
+          <div class="wallwrap">
+            <div class="wdays"><span>一</span><span></span><span>三</span><span></span><span>五</span><span></span><span>日</span></div>
+            <div class="wallcol">
+              <div class="months" id="months"></div>
+              <div class="wall" id="wall"></div>
+            </div>
+          </div>
+          <div class="legend">
+            <span class="badge">活跃 147 天</span><span class="badge">达标 63 天</span><span class="badge">最高 3.11亿</span>
+            <span class="sc">少 <i style="background:#e6dece"></i><i style="background:#dde8c4"></i><i style="background:#bcd792"></i><i style="background:#8cba57"></i><i style="background:#5f9c3a"></i><i style="background:#1f6a48"></i><i style="background:#123f2a"></i> 多</span>
+          </div>
+          <div class="hint"><b>本版唯一改动：</b>hover 提示补上「当天各来源占比」，数据用已有 <code>DailyUsage.tools</code>，不新增采集。月份标签是现在缺的，建议一并补。</div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
+          <h3>累计与趋势</h3><div class="sub">对应现有 StatsView，嵌在历史页内</div>
+          <div class="grid3" style="margin:11px 0 13px">
+            <div><div class="k">累计 Token</div><div class="big" style="font-size:27px">184亿</div><div class="hint">自 2026-02-09</div></div>
+            <div><div class="k">活跃 / 达标</div><div class="big" style="font-size:27px">147 / 63</div><div class="hint">达标率 43%</div></div>
+            <div><div class="k">日均</div><div class="big" style="font-size:27px">1.25亿</div><div class="hint">近 7 日 1.61亿 ↑</div></div>
+          </div>
+          <div class="k" style="margin-bottom:5px">近 30 日 · 按来源堆叠</div>
+          <div class="hours" style="height:64px" id="bars30"></div>
+          <div class="hlab"><span>30 天前</span><span>15 天前</span><span>今天</span></div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:flex-start;margin-bottom:11px">
+            <div><h3 style="font-size:15px">全部明细</h3><div class="sub" style="margin:0">147 条记录，向下滚动查看完整历史</div></div>
+            <div style="margin-left:auto;display:flex;gap:11px;font-size:11px;font-weight:700;color:var(--muted);padding-top:3px">
+              <span><i class="dot" style="background:#1f6a48;display:inline-block;margin-right:4px"></i>Codex</span>
+              <span><i class="dot" style="background:#3d7ca8;display:inline-block;margin-right:4px"></i>Claude Code</span>
+              <span><i class="dot" style="background:#c48c3c;display:inline-block;margin-right:4px"></i>ZCode</span>
+            </div>
+          </div>
+          <table>
+            <thead><tr><th style="width:118px">日期</th><th style="width:150px">Token 消耗</th><th style="width:126px">消耗金额</th><th>主力工具</th></tr></thead>
+            <tbody>
+              <tr><td>2026-08-17</td><td style="font-weight:800">1.24亿</td><td>$4.80</td><td><i class="dot" style="background:#1f6a48;display:inline-block;margin-right:6px"></i>Codex</td></tr>
+              <tr><td>2026-08-16</td><td style="font-weight:800">2.06亿</td><td>$7.90</td><td><i class="dot" style="background:#1f6a48;display:inline-block;margin-right:6px"></i>Codex</td></tr>
+              <tr><td>2026-08-15</td><td style="font-weight:800">8900万</td><td>$3.40</td><td><i class="dot" style="background:#3d7ca8;display:inline-block;margin-right:6px"></i>Claude Code</td></tr>
+              <tr><td>2026-08-14</td><td style="font-weight:800">3.11亿</td><td>$11.60</td><td><i class="dot" style="background:#1f6a48;display:inline-block;margin-right:6px"></i>Codex</td></tr>
+              <tr><td>2026-08-13</td><td style="font-weight:800">1.72亿</td><td>$6.30</td><td><i class="dot" style="background:#c48c3c;display:inline-block;margin-right:6px"></i>ZCode</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+  </div>
+  <div class="rule"><b>明细表保持现有 4 列</b>（日期 / Token 消耗 / 消耗金额 / 主力工具），不要按来源拆成一堆数字列——那是仪表盘今日页和 StatsView 的职责，明细表要能一眼扫日期。工具图例改为查数据源登记表，新增源自动出现，不再写死 Codex/Claude 二分色。</div>
+</section>
+
+<!-- 隐私 -->
+<section class="panel" id="privacy">
+  <p class="note">这页是本版<b>最需要认真写</b>的一页。新增了走网络的 Cursor 额度，必须逐条讲清读了什么、发到哪、不读什么。含糊会直接损伤 local-first 的信任。</p>
+  <div class="stage" data-label="dashboard · privacy">
+    <article class="win">
+      <div class="tb"><div class="dots"><i></i><i></i><i></i></div><b style="font-size:13px">TokenStep</b>
+        <div class="seg"><span>今日</span><span>历史</span><span class="on">隐私</span></div></div>
+      <div class="body">
+        <div class="card" style="margin-bottom:12px">
+          <h3>本地优先</h3>
+          <div class="sub">默认不联网、不上传。Token 统计全部来自本机日志。</div>
+          <div class="row"><span class="nm">读取</span><span class="vl" style="font-weight:600;color:var(--muted)">日期 · 模型名 · 客户端名 · token 计数</span></div>
+          <div class="row"><span class="nm">不读取</span><span class="vl" style="font-weight:600;color:var(--muted)">prompt · 代码正文 · 对话内容</span></div>
+          <div class="row"><span class="nm">不做</span><span class="vl" style="font-weight:600;color:var(--muted)">不开代理 · 不按字数估算 token</span></div>
+        </div>
+
+        <div class="grid2" style="margin-bottom:12px">
+          <div class="card">
+            <h3>联网项（全部默认关闭）</h3>
+            <div class="sub">开启后才会发起请求，逐项独立</div>
+            <div class="row"><span class="badge l2">L2</span><span class="nm">Codex 额度</span><span class="vl" style="font-weight:600;color:var(--muted)">本机 codex 登录态</span></div>
+            <div class="row"><span class="badge l2">L2</span><span class="nm">Claude 额度</span><span class="vl" style="font-weight:600;color:var(--muted)">钥匙串 OAuth → Anthropic</span></div>
+            <div class="row"><span class="badge l2">L2</span><span class="nm">Cursor 额度</span><span class="vl" style="font-weight:600;color:var(--muted)">state.vscdb token → cursor.com</span></div>
+            <div class="row"><span class="badge l2">L2</span><span class="nm">GLM / Kimi / Grok</span><span class="vl" style="font-weight:600;color:var(--muted)">各自本机凭证</span></div>
+            <div class="row"><span class="badge ok">榜</span><span class="nm">消耗榜</span><span class="vl" style="font-weight:600;color:var(--muted)">仅在开启后上报</span></div>
+          </div>
+          <div class="card" style="border-color:#ded5e8;background:#faf8fd">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><h3 style="margin:0">Cursor 明细</h3><span class="badge l3">L3 本地</span></div>
+            <div class="sub">额度走网络，代码产出纯本地，两者独立开关</div>
+            <div class="row"><span class="nm">读 accessToken</span><span class="vl" style="font-weight:600;color:var(--muted)">仅内存 · 不落盘不上传</span></div>
+            <div class="row"><span class="nm">读代码块计数</span><span class="vl" style="font-weight:600;color:var(--muted)">ai_code_hashes 的 count 与 model</span></div>
+            <div class="row"><span class="nm">明确不读</span><span class="vl" style="font-weight:600;color:#8f3517">tracked_file_content（代码正文）</span></div>
+            <div class="row"><span class="nm">明确不读</span><span class="vl" style="font-weight:600;color:#8f3517">conversation_summaries（对话摘要）</span></div>
+            <div class="hint">Cursor 的用量接口<b>非官方公开契约</b>，可能随时变更。失效时只影响这一项。</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>本地文件</h3>
+          <div class="sub">可直接查看或删除</div>
+          <div class="mono">~/Library/Application Support/TokenStep/data/usage.json<br>~/Library/Application Support/TokenStep/config/settings.json</div>
+          <div class="hint">「花费」是按内置粗略定价的<b>本地估算</b>，用于看趋势，<b>不是账单</b>。Cursor 额度里的美元来自 Cursor 自己的计费口径，两者不要相加。</div>
+          <div class="foot"><div class="btn">在 Finder 中显示</div><div class="btn">清除本地数据</div></div>
+        </div>
+      </div>
+    </article>
+  </div>
+  <div class="rule"><b>两套「花费」必须分开表述。</b>圆环旁的 $4.80 是本地估算；Cursor 额度里的 $8.8/$20 是 Cursor 实际计费。PRD 第 9 条把这列为遗留问题，UI 上先靠措辞区分，不做合并。</div>
+</section>
+
+<!-- 设置 · 数据源 -->
+<section class="panel" id="set1">
+  <p class="note">新增卡片。按 <b>L1 本地账本 / L2 配额探针 / L3 产出信号</b> 分组，每行显示真实状态（<code>SourceInfo.status</code>）。用户一眼能看出「哪些进圆环、哪些只是额度」。</p>
+  <div class="stage" data-label="settings · data sources">
+    <article class="win" style="width:920px">
+      <div class="tb"><div class="dots"><i></i><i></i><i></i></div><b style="font-size:13px">设置</b>
+        <div class="seg"><span class="on">数据源</span><span>额度</span><span>通用</span></div></div>
+      <div class="body">
+        <div class="card" style="margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><h3 style="margin:0">L1 · 本地账本</h3><span class="badge l1">计入圆环与总量</span></div>
+          <div class="sub">本地日志有可核对的 token 数，才会计入 Token 总量</div>
+          <div class="srow"><div><div class="t">Codex</div><div class="d">~/.codex/sessions · JSONL 增量</div></div>
+            <div class="right"><span class="badge ok">正常 · 148 请求</span><div class="tg on"></div></div></div>
+          <div class="srow"><div><div class="t">Claude Code</div><div class="d">~/.claude/projects · 按 message.id 去重</div></div>
+            <div class="right"><span class="badge ok">正常 · 36 请求</span><div class="tg on"></div></div></div>
+          <div class="srow"><div><div class="t">CC Switch Proxy</div><div class="d">~/.cc-switch/cc-switch.db · 与原生跨源去重</div></div>
+            <div class="right"><span class="badge">已全部去重</span><div class="tg on"></div></div></div>
+          <div class="srow"><div><div class="t">ZCode</div><div class="d">~/.zcode/cli/db/db.sqlite · 实验</div></div>
+            <div class="right"><span class="badge ok">正常 · 22 请求</span><div class="tg on"></div></div></div>
+          <div class="srow"><div><div class="t">Hermes</div><div class="d">~/.hermes/state.db · 实验</div></div>
+            <div class="right"><span class="badge warn">数据库未找到</span><div class="tg"></div></div></div>
+          <div class="srow"><div><div class="t">WorkBuddy</div><div class="d">~/.workbuddy/projects · 实验</div></div>
+            <div class="right"><span class="badge off">未启用</span><div class="tg"></div></div></div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px;border-color:#ced6ea;background:#f8f9fd">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><h3 style="margin:0">L2 · 配额探针</h3><span class="badge l2">只进额度栏</span></div>
+          <div class="sub">这些工具本地拿不到 token 数，只能读到额度或花费，因此不计入圆环</div>
+          <div class="srow"><div><div class="t">Cursor</div><div class="d">本地无 token 数 · 额度需访问 cursor.com</div></div>
+            <div class="right"><span class="badge l2">去额度页配置</span></div></div>
+          <div class="srow"><div><div class="t">GLM / Kimi / Grok</div><div class="d">各自本机登录态</div></div>
+            <div class="right"><span class="badge l2">去额度页配置</span></div></div>
+        </div>
+
+        <div class="card" style="border-color:#ded5e8;background:#faf8fd">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><h3 style="margin:0">L3 · 产出信号</h3><span class="badge l3">独立展示</span></div>
+          <div class="sub">不是 token，是「AI 写了多少」。纯本地读取，不计入任何 Token 口径</div>
+          <div class="srow"><div><div class="t">Cursor 代码产出</div><div class="d">~/.cursor/ai-tracking/ai-code-tracking.db · 只读计数与模型</div></div>
+            <div class="right"><span class="badge ok">7230 块可读</span><div class="tg on"></div></div></div>
+          <div class="hint">不读取 <b>tracked_file_content</b>（代码正文）与 <b>conversation_summaries</b>（对话摘要）。</div>
+        </div>
+      </div>
+    </article>
+  </div>
+  <div class="rule"><b>状态文案要说人话。</b>底层 <code>missing_db</code> / <code>all_deduped</code> 要翻成「数据库未找到」「已全部去重」。「已全部去重」尤其要解释清楚——那不是错误，是 CC Switch 的请求已经被原生日志覆盖了。</div>
+</section>
+
+<!-- 设置 · 额度 -->
+<section class="panel" id="set2">
+  <p class="note">现状是一个 <code>showCodexQuota</code> 开关管两家。本版改成 <b>6 家独立开关</b>，每行显示凭证来源与最近成功时间。迁移规则：旧值 true → 开启 Codex + Claude。</p>
+  <div class="stage" data-label="settings · quota providers">
+    <article class="win" style="width:920px">
+      <div class="tb"><div class="dots"><i></i><i></i><i></i></div><b style="font-size:13px">设置</b>
+        <div class="seg"><span>数据源</span><span class="on">额度</span><span>通用</span></div></div>
+      <div class="body">
+        <div class="card" style="margin-bottom:12px">
+          <h3>订阅额度提供商</h3>
+          <div class="sub">全部默认关闭 · 只读本机登录态 · 逐项独立失败</div>
+          <div class="srow"><div><div class="t">Codex</div><div class="d">本机 codex CLI 登录态 · 5 小时 / 7 天</div></div>
+            <div class="right"><span class="badge ok">2 分钟前</span><div class="tg on"></div></div></div>
+          <div class="srow"><div><div class="t">Claude</div><div class="d">钥匙串 Claude Code-credentials · 5 小时 / 7 天</div></div>
+            <div class="right"><span class="badge ok">2 分钟前</span><div class="tg on"></div></div></div>
+          <div class="srow"><div><div class="t">Cursor</div><div class="d">state.vscdb accessToken → cursor.com · 周期额度与花费</div></div>
+            <div class="right"><span class="badge warn">暂不可用 · 上次 12 分钟前</span><div class="tg on"></div></div></div>
+          <div class="srow"><div><div class="t">GLM</div><div class="d">ZAI_API_KEY · 需 Coding Plan，按量 key 无额度</div></div>
+            <div class="right"><span class="pickers"><span class="on">global</span><span>cn</span></span><div class="tg on"></div></div></div>
+          <div class="srow"><div><div class="t">Kimi</div><div class="d">~/.kimi OAuth · 不要用开放平台 key</div></div>
+            <div class="right"><span class="badge">未登录</span><div class="tg"></div></div></div>
+          <div class="srow"><div><div class="t">Grok</div><div class="d">~/.grok/auth.json · 需 grok login，xAI key 无效</div></div>
+            <div class="right"><span class="badge ok">已登录</span><div class="tg"></div></div></div>
+          <div class="hint">读取失败时<b>显示「暂不可用」并保留上次值</b>，绝不显示 0%。刷新节流 15 分钟，电池或低电量时 30 分钟。</div>
+        </div>
+
+        <div class="sgrid">
+          <div class="card">
+            <h3>预警</h3><div class="sub">额度紧张时的提示强度</div>
+            <div class="srow"><div><div class="t">菜单栏预警点</div><div class="d">任一额度剩余低于阈值时，图标加红点</div></div>
+              <div class="right"><div class="tg on"></div></div></div>
+            <div class="srow"><div><div class="t">阈值</div><div class="d">剩余百分比</div></div>
+              <div class="right"><div class="pickers"><span>10%</span><span class="on">20%</span><span>30%</span></div></div></div>
+            <div class="srow"><div><div class="t">告急卡置顶</div><div class="d">浮窗额度栏把最紧张的排最前</div></div>
+              <div class="right"><div class="tg on"></div></div></div>
+          </div>
+          <div class="card">
+            <h3>消耗榜</h3><div class="sub">显示策略与参榜身份</div>
+            <div class="srow"><div><div class="t">显示方式</div><div class="d">自动 = 有身份才显示</div></div>
+              <div class="right"><div class="pickers"><span class="on">自动</span><span>显示</span><span>隐藏</span></div></div></div>
+            <div class="srow"><div><div class="t">榜栏主指标</div><div class="d">本版固定为全榜今日消耗</div></div>
+              <div class="right"><span class="badge">全榜今日</span></div></div>
+            <div class="srow"><div><div class="t">参榜身份</div><div class="d">未关联时浮窗整列隐藏</div></div>
+              <div class="right"><div class="btn" style="height:31px;font-size:11.5px">打开榜单页</div></div></div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </div>
+  <div class="rule"><b>凭证提示写在行内。</b>GLM 用按量 key、Grok 用普通 xAI key 是两个最常见的踩坑，直接把「按量 key 无额度」「需 grok login」写在描述里，比等用户看到失败再猜要好。</div>
+</section>
+
+<!-- 设置 · 通用 -->
+<section class="panel" id="set3">
+  <p class="note">原有设置项保留位置不变，只补一个缺口：<code>historyDays</code> 一直有字段无 UI（默认 180，只在 normalize 里 clamp），本版给它入口。</p>
+  <div class="stage" data-label="settings · general">
+    <article class="win" style="width:920px">
+      <div class="tb"><div class="dots"><i></i><i></i><i></i></div><b style="font-size:13px">设置</b>
+        <div class="seg"><span>数据源</span><span>额度</span><span class="on">通用</span></div></div>
+      <div class="body">
+        <div class="sgrid" style="margin-bottom:12px">
+          <div class="card">
+            <h3>每日目标</h3><div class="sub">一圈等于多少 Token</div>
+            <div class="gsteps"><div class="b">−</div><div class="big" style="font-size:27px">1亿</div><div class="b">+</div>
+              <div class="pickers" style="margin-left:auto"><span>5千万</span><span class="on">1亿</span><span>2亿</span></div></div>
+          </div>
+          <div class="card">
+            <h3>历史范围 <span class="badge ok">本版新增入口</span></h3><div class="sub">采集与图表回溯天数（7–365）</div>
+            <div class="gsteps"><div class="b">−</div><div class="big" style="font-size:27px">180 天</div><div class="b">+</div>
+              <div class="pickers" style="margin-left:auto"><span>90</span><span class="on">180</span><span>365</span></div></div>
+            <div class="hint">调大会增加首次采集耗时。</div>
+          </div>
+        </div>
+
+        <div class="sgrid" style="margin-bottom:12px">
+          <div class="card">
+            <h3>外观</h3><div class="sub">主题色与语言</div>
+            <div class="srow"><div><div class="t">主题色</div></div>
+              <div class="right"><div class="swatch"><i class="on" style="background:#1f6a48"></i><i style="background:#2f6fa8"></i><i style="background:#a8562f"></i><i style="background:#6b5bd2"></i><i style="background:#3c463d"></i></div></div></div>
+            <div class="srow"><div><div class="t">语言</div></div>
+              <div class="right"><div class="pickers"><span class="on">系统</span><span>简体</span><span>English</span><span>日本語</span></div></div></div>
+          </div>
+          <div class="card">
+            <h3>显示位置</h3><div class="sub">菜单栏或灵动岛，二选一</div>
+            <div class="srow"><div><div class="t">位置</div></div>
+              <div class="right"><div class="pickers"><span class="on">菜单栏</span><span>刘海左</span><span>刘海右</span><span>顶部居中</span></div></div></div>
+            <div class="srow"><div><div class="t">图标显示</div><div class="d">环 + 今日 Token</div></div>
+              <div class="right"><div class="pickers"><span class="on">环+数值</span><span>仅环</span></div></div></div>
+          </div>
+        </div>
+
+        <div class="sgrid">
+          <div class="card">
+            <h3>刷新</h3><div class="sub">后台节奏 · 前台打开时总会即时刷</div>
+            <div class="srow"><div><div class="t">间隔</div></div>
+              <div class="right"><div class="pickers"><span>1 分钟</span><span class="on">5 分钟</span><span>15 分钟</span><span>手动</span></div></div></div>
+            <div class="srow"><div><div class="t">省电策略</div><div class="d">电池或低电量时后台最短 30 分钟</div></div>
+              <div class="right"><span class="badge ok">始终启用</span></div></div>
+          </div>
+          <div class="card">
+            <h3>更新与启动</h3><div class="sub">当前 0.2.0</div>
+            <div class="srow"><div><div class="t">自动检查更新</div></div><div class="right"><div class="tg on"></div></div></div>
+            <div class="srow"><div><div class="t">下载前询问</div></div><div class="right"><div class="tg on"></div></div></div>
+            <div class="srow"><div><div class="t">仅安装公证版本</div></div><div class="right"><div class="tg on"></div></div></div>
+            <div class="srow"><div><div class="t">开机启动</div></div><div class="right"><div class="tg"></div></div></div>
+          </div>
+        </div>
+        <div class="foot"><div class="btn">恢复默认</div><div class="btn p">完成</div></div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<script>
+document.querySelectorAll("[data-tab]").forEach((t)=>{
+  t.addEventListener("click",()=>{
+    document.querySelectorAll("[data-tab]").forEach((x)=>x.setAttribute("aria-selected",x===t?"true":"false"));
+    document.querySelectorAll(".panel").forEach((p)=>p.classList.toggle("active",p.id===t.dataset.tab));
+  });
+});
+
+// Contribution wall: mirrors ContributionWallView (34 weeks x 7 weekdays, Monday-first, today outlined)
+(function(){
+  const WEEKS = 34;
+  const wall = document.getElementById("wall");
+  const months = document.getElementById("months");
+  if (!wall) return;
+
+  const today = new Date(2026, 7, 17);
+  const raw = new Date(today);
+  raw.setDate(raw.getDate() - (WEEKS * 7 - 1));
+  // shift back to Monday, same as (weekday + 5) % 7 in Swift
+  const mondayOffset = (raw.getDay() + 6) % 7;
+  const start = new Date(raw);
+  start.setDate(start.getDate() - mondayOffset);
+
+  // deterministic pseudo-random so the draft looks stable across reloads
+  let seed = 20260817;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const level = (d) => {
+    const dow = d.getDay();
+    // weekends are lighter but not empty, so the bottom rows still read as data
+    if (dow === 0 || dow === 6) return rnd() < 0.22 ? 0 : 1 + Math.floor(rnd() * 4);
+    const r = rnd();
+    if (r < 0.07) return 0;
+    return 1 + Math.floor(rnd() * 6);
+  };
+
+  const monthSpans = [];
+  for (let w = 0; w < WEEKS; w++) {
+    const col = document.createElement("div");
+    col.className = "wk";
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(start);
+      day.setDate(day.getDate() + w * 7 + d);
+      const cell = document.createElement("i");
+      if (day > today) {
+        cell.className = "future";
+      } else {
+        const lv = level(day);
+        if (lv > 0) cell.className = "a" + lv;
+        if (day.toDateString() === today.toDateString()) cell.classList.add("today");
+      }
+      cell.title = day.toISOString().slice(0, 10);
+      col.appendChild(cell);
+    }
+    wall.appendChild(col);
+    const firstOfCol = new Date(start);
+    firstOfCol.setDate(firstOfCol.getDate() + w * 7);
+    monthSpans.push(firstOfCol.getMonth());
+  }
+
+  // month labels: mark the column where the month changes
+  let prev = -1;
+  monthSpans.forEach((m) => {
+    const s = document.createElement("span");
+    s.style.flex = "1";
+    s.textContent = m !== prev ? (m + 1) + "月" : "";
+    prev = m;
+    months.appendChild(s);
+  });
+
+  // 30-day stacked bars
+  const bars = document.getElementById("bars30");
+  if (bars) {
+    for (let i = 0; i < 30; i++) {
+      const b = document.createElement("div");
+      b.style.height = (14 + Math.round(rnd() * 86)) + "%";
+      bars.appendChild(b);
+    }
+  }
+})();
+</script>
+</body>
+</html>

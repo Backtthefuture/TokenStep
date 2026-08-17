@@ -301,7 +301,7 @@ struct PopoverAgentWorkStrip: View {
     private var popoverSummary: String {
         [
             TokenStepFormat.tokens(work.totalTokens, compact: true),
-            AgentWorkCopy.recordedShort("\(work.activeHours)/24"),
+            AgentWorkCopy.recordedShort("\(work.recordedActiveHours)/24"),
             "\(AgentWorkCopy.cacheShort) \(cacheRateText(work.cacheHitRate))"
         ]
         .joined(separator: " · ")
@@ -874,16 +874,15 @@ private enum AgentWorkSourceFilter: String, CaseIterable, Identifiable {
     var tint: Color {
         switch self {
         case .all: return Color.tokenInk
-        case .codex: return tokenToolColor("Codex")
-        case .hermes: return tokenToolColor("Hermes Agent")
-        case .other: return Color(red: 0.20, green: 0.52, blue: 0.92)
+        case .codex: return AgentSourceRegistry.color(for: "Codex")
+        case .hermes: return AgentSourceRegistry.color(for: "Hermes Agent")
+        case .other: return AgentSourceRegistry.color(for: "ZCode")
         }
     }
 
     func includes(_ source: String) -> Bool {
-        let normalized = source.lowercased()
-        let isCodex = normalized == "codex" || normalized.hasPrefix("codex via")
-        let isHermes = normalized.contains("hermes")
+        let isCodex = AgentSourceRegistry.matches(source, family: "codex")
+        let isHermes = AgentSourceRegistry.matches(source, family: "hermes")
         switch self {
         case .all:
             return true

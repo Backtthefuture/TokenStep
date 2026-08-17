@@ -1,10 +1,27 @@
 import AppKit
 import SwiftUI
 
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case dataSources
+    case quotas
+    case general
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .dataSources: L("数据源")
+        case .quotas: L("额度")
+        case .general: L("通用")
+        }
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.isScreenshotRendering) private var isScreenshotRendering
     var captureMode = false
+    @State private var pane: SettingsPane = .dataSources
 
     var body: some View {
         Group {
@@ -20,12 +37,19 @@ struct SettingsView: View {
     private var windowBody: some View {
         ZStack {
             TokenStepBackdrop()
-
-            ScrollView(.vertical, showsIndicators: false) {
-                settingsContent
-                    .padding(.top, 36)
-                    .padding(.horizontal, 34)
-                    .padding(.bottom, 24)
+            VStack(spacing: 0) {
+                header
+                    .padding(.top, 28)
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 14)
+                ScrollView(.vertical, showsIndicators: false) {
+                    paneContent
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 16)
+                }
+                footer
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 14)
             }
         }
         .frame(width: 920, height: 760)
@@ -34,77 +58,57 @@ struct SettingsView: View {
     private var captureBody: some View {
         ZStack {
             TokenStepBackdrop()
-            settingsContent
-                .padding(.top, 36)
-                .padding(.horizontal, 34)
-                .padding(.bottom, 24)
+            VStack(alignment: .leading, spacing: 18) {
+                header
+                SettingsDataSourcesPane(openQuotaTab: {})
+                SettingsQuotaProvidersPane()
+                SettingsGeneralPane()
+                footer
+            }
+            .padding(.top, 28)
+            .padding(.horizontal, 22)
+            .padding(.bottom, 18)
         }
         .frame(width: 920)
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var settingsContent: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            header
-            cardGrid
-            footer
-        }
-    }
-
-    private var cardGrid: some View {
-        VStack(spacing: 18) {
-            HStack(alignment: .top, spacing: 18) {
-                SettingsGoalCard()
-                SettingsThemeCard()
+    @ViewBuilder
+    private var paneContent: some View {
+        switch pane {
+        case .dataSources:
+            SettingsDataSourcesPane {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    pane = .quotas
+                }
             }
-            HStack(alignment: .top, spacing: 18) {
-                SettingsLanguageCard()
-                SettingsDisplayCard()
-            }
-            HStack(alignment: .top, spacing: 18) {
-                SettingsTokenRankCard()
-                SettingsRefreshCard()
-            }
-            HStack(alignment: .top, spacing: 18) {
-                SettingsUpdateCard()
-                SettingsAutostartCard()
-            }
-            HStack(alignment: .top, spacing: 18) {
-                SettingsAgentSourcesCard()
-            }
-            HStack(alignment: .top, spacing: 18) {
-                SettingsPrivacyCard()
-            }
+        case .quotas:
+            SettingsQuotaProvidersPane()
+        case .general:
+            SettingsGeneralPane()
         }
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            TokenStepMark(size: 54)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(L("设置"))
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.tokenInk)
-                Text(L("让 TokenStep 按你的节奏记录 Token 消耗"))
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
+        HStack(spacing: 12) {
+            TokenStepMark(size: 28)
+            Text(L("设置"))
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.tokenInk)
 
             Spacer()
 
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(Color.tokenGreen)
-                    .frame(width: 8, height: 8)
-                Text(L("本地统计"))
-                    .font(.callout.weight(.heavy))
-                    .foregroundStyle(Color.tokenGreenDark)
+            HStack(spacing: 3) {
+                ForEach(SettingsPane.allCases) { item in
+                    DashboardSettingsTab(title: item.title, selected: pane == item) {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            pane = item
+                        }
+                    }
+                }
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 10)
-            .background(Color.tokenMint.opacity(0.22), in: Capsule())
-            .overlay(Capsule().stroke(Color.tokenGreen.opacity(0.12)))
+            .padding(3)
+            .background(Color.tokenTrack.opacity(0.55), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
 
             if !isScreenshotRendering && !captureMode {
                 ScreenshotMenuButton(
@@ -157,18 +161,7 @@ struct SettingsView: View {
             Spacer()
 
             Button {
-                appState.setGoal(TokenStepSettings.defaults.dailyGoalTokens)
-                appState.setRefreshInterval(TokenStepSettings.defaults.refreshIntervalSeconds)
-                appState.setTheme(TokenStepSettings.defaults.theme)
-                appState.setLanguage(TokenStepSettings.defaults.language)
-                appState.setAutoUpdateEnabled(TokenStepSettings.defaults.autoUpdateEnabled)
-                appState.setAskBeforeDownloadingUpdates(TokenStepSettings.defaults.askBeforeDownloadingUpdates)
-                appState.setRequireVerifiedUpdates(TokenStepSettings.defaults.requireVerifiedUpdates)
-                appState.setTokenIslandPlacement(TokenStepSettings.defaults.tokenIslandPlacement)
-                appState.setCodexQuotaVisible(TokenStepSettings.defaults.showCodexQuota)
-                appState.setAgentWorkRankVisibility(TokenStepSettings.defaults.agentWorkRankVisibility)
-                appState.setExperimentalAgentSourcesVisible(TokenStepSettings.defaults.showExperimentalAgentSources)
-                appState.setAutostart(true)
+                resetDefaults()
             } label: {
                 Text(L("恢复默认"))
                     .font(.callout.weight(.bold))
@@ -186,6 +179,53 @@ struct SettingsView: View {
             }
             .buttonStyle(SettingsPrimaryButtonStyle())
         }
+        .padding(.top, 12)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.black.opacity(0.06))
+                .frame(height: 1)
+        }
     }
 
+    private func resetDefaults() {
+        appState.setGoal(TokenStepSettings.defaults.dailyGoalTokens)
+        appState.setRefreshInterval(TokenStepSettings.defaults.refreshIntervalSeconds)
+        appState.setTheme(TokenStepSettings.defaults.theme)
+        appState.setLanguage(TokenStepSettings.defaults.language)
+        appState.setAutoUpdateEnabled(TokenStepSettings.defaults.autoUpdateEnabled)
+        appState.setAskBeforeDownloadingUpdates(TokenStepSettings.defaults.askBeforeDownloadingUpdates)
+        appState.setRequireVerifiedUpdates(TokenStepSettings.defaults.requireVerifiedUpdates)
+        appState.setTokenIslandPlacement(TokenStepSettings.defaults.tokenIslandPlacement)
+        appState.setCodexQuotaVisible(false)
+        for provider in QuotaProviderID.allCases {
+            appState.setQuotaProvider(provider, enabled: false, confirmNetworkAccess: false)
+        }
+        appState.setCursorCodeSignalEnabled(false)
+        appState.setHistoryDays(TokenStepSettings.defaults.historyDays)
+        appState.setAgentWorkRankVisibility(TokenStepSettings.defaults.agentWorkRankVisibility)
+        appState.setExperimentalAgentSourcesVisible(TokenStepSettings.defaults.showExperimentalAgentSources)
+        appState.setAutostart(true)
+    }
+}
+
+private struct DashboardSettingsTab: View {
+    var title: String
+    var selected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(selected ? Color.tokenInk : Color.tokenInk.opacity(0.55))
+                .padding(.horizontal, 14)
+                .frame(height: 28)
+                .background(
+                    selected ? Color.tokenSurface : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
+                .shadow(color: selected ? Color.black.opacity(0.07) : .clear, radius: 3, y: 1)
+        }
+        .buttonStyle(.plain)
+    }
 }

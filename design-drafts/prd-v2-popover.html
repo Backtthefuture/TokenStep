@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TokenStep 0.2.0 · 浮窗全状态</title>
+<style>
+:root{
+  --paper:#efe9dc; --ink:#1b241c; --muted:#6a7468; --line:rgba(27,36,28,.1);
+  --forest:#1f6a48; --lime:#8fbf3a; --card:#f7f2e8; --chip:#fffdf8; --green:#2f9e55;
+  --warn:#c2571f; --danger:#b3341f;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,"SF Pro Text","PingFang SC",sans-serif}
+body{padding:30px 34px 70px}
+h1{font-size:27px;letter-spacing:-.03em;margin:0 0 8px}
+.lede{max-width:760px;color:var(--muted);line-height:1.65;margin-bottom:16px;font-size:14px}
+.lede b{color:var(--ink)}
+.tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{border:1px solid var(--line);background:0;border-radius:999px;padding:7px 12px;font:600 12.5px/1 -apple-system,sans-serif;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--paper)}
+.panel{display:none}.panel.active{display:block}
+.note{margin-bottom:13px;color:var(--muted);font-size:13.5px;line-height:1.65;max-width:800px}
+.note b{color:var(--ink)}
+.stage{background:#d8d3c6;border-radius:20px;padding:38px 16px 26px;display:flex;justify-content:center;gap:20px;flex-wrap:wrap;position:relative;margin-bottom:14px}
+.stage::before{content:attr(data-label);position:absolute;top:11px;left:15px;font:600 10.5px/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:#5c6358}
+.rule{background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:11px 14px;font-size:13px;color:var(--muted);line-height:1.7;max-width:900px}
+.rule b{color:var(--ink)}
+.rule code{background:#efe8da;padding:1px 5px;border-radius:4px;font-size:12px}
+
+/* popover shell */
+.pop{width:900px;background:var(--card);border:1px solid #ddd4c4;border-radius:18px;overflow:hidden;box-shadow:0 12px 28px rgba(28,40,30,.12)}
+.pop.narrow{width:660px}
+.head{height:46px;display:flex;align-items:center;gap:10px;padding:0 15px}
+.mark{width:27px;height:27px;border-radius:8px;background:var(--forest);color:#e8f6c8;display:grid;place-items:center;font:800 13px/1 -apple-system,sans-serif}
+.head b{font-size:16.5px;letter-spacing:-.02em}
+.sync{margin-left:auto;font:700 11.5px/1 -apple-system,sans-serif;background:var(--chip);border:1px solid #e4dacb;border-radius:999px;padding:6px 10px;display:flex;align-items:center;gap:6px}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.cam{width:29px;height:29px;border-radius:50%;background:var(--chip);border:1px solid #e4dacb;display:grid;place-items:center;color:#4a534b;font-size:12.5px}
+
+/* notice band */
+.band{margin:0 15px 10px;border-radius:11px;padding:9px 12px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+.band.err{background:#f7e4dc;border:1px solid #eccbbd;color:#8f3517}
+.band.upd{background:#e9f0dc;border:1px solid #d5e0b9;color:#41551f}
+.band .x{margin-left:auto;opacity:.55;font-weight:800}
+
+/* grid */
+.cols{display:grid;border-top:1px solid #ebe3d4;min-height:236px}
+.g4{grid-template-columns:186px minmax(230px,1.1fr) 206px 196px}
+.g3{grid-template-columns:186px minmax(260px,1.3fr) 206px}
+.g3r{grid-template-columns:186px minmax(240px,1.2fr) 200px}
+.col{padding:13px 14px 15px;border-left:1px solid #ebe3d4}
+.col:first-child{border-left:0}
+.hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;font-size:12.5px;font-weight:700}
+.hd span{color:var(--muted);font-size:10.5px;font-weight:600}
+
+/* ring */
+.ringwrap{display:flex;flex-direction:column;align-items:center;padding-top:3px}
+.ring{width:114px;height:114px;border-radius:50%;background:conic-gradient(var(--lime) 223deg,#ddd6c6 0);display:grid;place-items:center}
+.ring.hot{background:conic-gradient(var(--warn) 310deg,#ddd6c6 0)}
+.ring span{width:85px;height:85px;background:var(--card);border-radius:50%;display:grid;place-items:center;text-align:center;font-weight:800;font-size:17px;letter-spacing:-.03em}
+.ring em{display:block;font-style:normal;font-size:10.5px;color:var(--muted);font-weight:700;margin-top:1px}
+.lap{margin-top:9px;text-align:center;font-size:11.5px;color:var(--muted);font-weight:600;line-height:1.45}
+.lap b{color:var(--ink)}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+th{text-align:left;color:var(--muted);font-weight:600;padding:0 5px 6px;font-size:10px}
+th.n,td.n{text-align:right;font-variant-numeric:tabular-nums}
+td{padding:6px 5px;border-top:1px solid #efe7d8}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.l3{margin-top:9px;background:var(--chip);border:1px solid #e8dfd0;border-radius:10px;padding:8px 10px;font-size:11.5px;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.l3 b{font-variant-numeric:tabular-nums}
+.l3 .tag{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.03em;color:var(--muted);border:1px solid #e0d6c4;border-radius:5px;padding:2px 5px;flex:0 0 auto}
+
+/* quota chips */
+.chip{background:var(--chip);border:1px solid #e8dfd0;border-radius:11px;padding:8px 10px;margin-bottom:6px}
+.chip:last-child{margin-bottom:0}
+.chip small{display:block;color:var(--muted);font-weight:700;font-size:10px}
+.chip strong{display:block;font-size:17px;margin:2px 0 5px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.chip .sub{font-size:10px;color:var(--muted);font-weight:600}
+.bar{height:4px;background:#e6dece;border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--forest);width:var(--w)}
+.chip.low strong{color:var(--danger)}
+.chip.low .bar i{background:var(--danger)}
+.chip.dead strong{font-size:13px;color:var(--muted)}
+.q2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.q2 .chip{margin:0}
+.more{margin-top:6px;text-align:center;font-size:10.5px;font-weight:700;color:var(--muted)}
+
+/* rank */
+.hash{font-size:25px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.hint{font-size:10.5px;color:var(--muted);margin:4px 0 9px}
+.board{background:#1d3a2c;color:#e7f3c8;border-radius:11px;padding:10px}
+.board small{display:block;font-size:9.5px;opacity:.7;font-weight:700}
+.board .num{font-size:22px;font-weight:800;margin:3px 0 1px;letter-spacing:-.03em}
+.board .ppl{font-size:10.5px;opacity:.78}
+.mine{margin-top:7px;font-size:11.5px;color:var(--muted)}
+.mine b{color:var(--ink)}
+
+/* footer */
+.chrome{padding:10px 15px 13px;border-top:1px solid #ebe3d4}
+.metaline{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);font-weight:700;margin-bottom:8px}
+.actions{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.dash{height:42px;padding:0 17px;border:0;border-radius:11px;background:var(--green);color:#fff;font:700 13.5px/1 -apple-system,"PingFang SC",sans-serif;white-space:nowrap}
+.utils{display:flex;gap:7px}
+.pill{height:42px;padding:0 11px;border:1px solid #e4dacb;border-radius:11px;background:var(--chip);display:flex;align-items:center;gap:5px;font:700 11.5px/1 -apple-system,"PingFang SC",sans-serif;color:#3c463d}
+.pill i{font-style:normal;font-size:12.5px;opacity:.7}
+
+/* island + menubar */
+.island{width:356px;background:#f7f2e8;border:1px solid #ddd4c4;border-radius:16px;box-shadow:0 10px 24px rgba(28,40,30,.14);overflow:hidden}
+.islandbar{background:#12160f;border-radius:14px;padding:6px 14px;display:inline-flex;align-items:center;gap:9px;color:#e7f3c8;font:700 12px/1 -apple-system,sans-serif}
+.miniring{width:19px;height:19px;border-radius:50%;background:conic-gradient(var(--lime) 223deg,#3a4231 0)}
+.mb{background:#dcd7ca;border:1px solid #cbc4b4;border-radius:9px;padding:5px 11px;display:inline-flex;align-items:center;gap:7px;font:700 12px/1 -apple-system,sans-serif;color:#26301f}
+.mb .r{width:15px;height:15px;border-radius:50%;background:conic-gradient(var(--lime) 223deg,#c3bdad 0);position:relative}
+.mb .r.alert::after{content:"";position:absolute;right:-2px;top:-2px;width:6px;height:6px;border-radius:50%;background:var(--danger);border:1.5px solid #dcd7ca}
+.mbrow{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.caption{font-size:11px;color:#5c6358;font-weight:700;margin-top:7px;text-align:center}
+.matrix{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:12px;max-width:920px}
+.matrix div{background:var(--chip);border:1px solid var(--line);border-radius:11px;padding:11px 13px}
+.matrix h3{margin:0 0 5px;font-size:12.5px}
+.matrix p{margin:0;font-size:12px;color:var(--muted);line-height:1.55}
+</style>
+</head>
+<body>
+<h1>0.2.0 浮窗全状态 · 设计稿 A</h1>
+<p class="lede">按 <b>PRD-0.2.0</b> 出的浮窗状态矩阵。守三条：<b>不允许整列深色</b>、<b>主按钮不拉满</b>、<b>底栏永不因内容缺失而变化</b>。宽 900，深色只出现在 T 标识和「全榜今日消耗」小卡。</p>
+
+<div class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="s1">① 默认态</button>
+  <button role="tab" aria-selected="false" data-tab="s2">② 额度 0 / 2 家</button>
+  <button role="tab" aria-selected="false" data-tab="s3">③ 额度 6 家</button>
+  <button role="tab" aria-selected="false" data-tab="s4">④ 无榜身份</button>
+  <button role="tab" aria-selected="false" data-tab="s5">⑤ 告急 + 失败</button>
+  <button role="tab" aria-selected="false" data-tab="s6">⑥ 通知带</button>
+  <button role="tab" aria-selected="false" data-tab="s7">⑦ 灵动岛 / 菜单栏</button>
+</div>
+
+<!-- ① 默认 -->
+<section class="panel active" id="s1">
+  <p class="note">3 家额度 + 有榜身份 + 开了 Cursor 代码产出（L3）。Cursor 的产出<b>不进圆环</b>，只作为 Agent 栏底部一行，右侧标 <code>L3</code> 提示它不是 token。</p>
+  <div class="stage" data-label="state 1 · default (L1 ring + L2 quota + L3 signal)">
+    <article class="pop">
+      <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync"><i></i>已同步</div><div class="cam">◎</div></div>
+      <div class="cols g4">
+        <div class="col">
+          <div class="hd"><b>今日消耗</b><span>第 2 圈</span></div>
+          <div class="ringwrap"><div class="ring"><span>1.24亿<em>/ 1亿 每圈</em></span></div><div class="lap"><b>62%</b> · 消耗 $4.80</div></div>
+        </div>
+        <div class="col">
+          <div class="hd"><b>Agent 用量</b><span>记录 11/24 · 缓存 41%</span></div>
+          <table>
+            <thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">工具</th><th class="n">缓存</th></tr></thead>
+            <tbody>
+              <tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td><td class="n">612</td><td class="n">46%</td></tr>
+              <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td><td class="n">140</td><td class="n">38%</td></tr>
+              <tr><td><i class="dot" style="background:#c48c3c"></i>ZCode</td><td class="n">1120万</td><td class="n">22</td><td class="n">71</td><td class="n">22%</td></tr>
+              <tr><td><i class="dot" style="background:#8a8a8a"></i>其他</td><td class="n">990万</td><td class="n">27</td><td class="n">68</td><td class="n">—</td></tr>
+            </tbody>
+          </table>
+          <div class="l3"><i class="dot" style="background:#6b5bd2"></i>Cursor 产出 <b>1240 行</b> · 68% AI<span class="tag">L3</span></div>
+        </div>
+        <div class="col">
+          <div class="hd"><b>订阅额度</b><span>3 家</span></div>
+          <div class="chip"><small>Codex · 5 小时</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14 后重置</div></div>
+          <div class="chip"><small>Claude · 7 天</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天后重置</div></div>
+          <div class="chip"><small>GLM · Token 窗</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><div class="sub">11 小时后重置</div></div>
+        </div>
+        <div class="col">
+          <div class="hd"><b>消耗榜</b><span>今日</span></div>
+          <div class="hash">#128</div>
+          <div class="hint">超过 86% · 主力 Codex</div>
+          <div class="board"><small>全榜今日消耗</small><div class="num">86.2亿</div><div class="ppl">2401 人参榜</div></div>
+          <div class="mine">我的今日 <b>1.24亿</b></div>
+        </div>
+      </div>
+      <div class="chrome">
+        <div class="metaline"><span>本地统计</span><span>刷新 5 分钟</span></div>
+        <div class="actions"><button class="dash">打开仪表盘 ↗</button>
+          <div class="utils"><div class="pill"><i>↻</i>刷新</div><div class="pill"><i>⚙</i>设置</div><div class="pill"><i>⏻</i>退出</div></div></div>
+      </div>
+    </article>
+  </div>
+  <div class="rule"><b>L3 行的措辞很关键。</b>写「产出 1240 行」，不要写成 Token 或美元，也不要放进圆环旁边——它和圆环不是同一口径。右侧 <code>L3 不计入环</code> 标签在正式实现里可做成 hover 说明，不必常显。</div>
+</section>
+
+<!-- ② 0/2 家 -->
+<section class="panel" id="s2">
+  <p class="note">额度 <b>0 家</b>：整栏消失，四栏变三栏，剩余宽度给 Agent 表，不留空壳。额度 <b>2 家</b>：全宽竖排，卡片更高，不要为了凑格子留空位。</p>
+  <div class="stage" data-label="state 2a · quota = 0 (column removed)">
+    <article class="pop">
+      <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync"><i></i>已同步</div><div class="cam">◎</div></div>
+      <div class="cols g3r">
+        <div class="col">
+          <div class="hd"><b>今日消耗</b><span>第 2 圈</span></div>
+          <div class="ringwrap"><div class="ring"><span>1.24亿<em>/ 1亿 每圈</em></span></div><div class="lap"><b>62%</b> · 消耗 $4.80</div></div>
+        </div>
+        <div class="col">
+          <div class="hd"><b>Agent 用量</b><span>记录 11/24 · 缓存 41%</span></div>
+          <table>
+            <thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">工具</th><th class="n">输出</th><th class="n">缓存</th></tr></thead>
+            <tbody>
+              <tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td><td class="n">612</td><td class="n">910万</td><td class="n">46%</td></tr>
+              <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td><td class="n">140</td><td class="n">330万</td><td class="n">38%</td></tr>
+              <tr><td><i class="dot" style="background:#c48c3c"></i>ZCode</td><td class="n">1120万</td><td class="n">22</td><td class="n">71</td><td class="n">150万</td><td class="n">22%</td></tr>
+              <tr><td><i class="dot" style="background:#8a8a8a"></i>其他</td><td class="n">990万</td><td class="n">27</td><td class="n">68</td><td class="n">120万</td><td class="n">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="col">
+          <div class="hd"><b>消耗榜</b><span>今日</span></div>
+          <div class="hash">#128</div><div class="hint">超过 86% · 主力 Codex</div>
+          <div class="board"><small>全榜今日消耗</small><div class="num">86.2亿</div><div class="ppl">2401 人参榜</div></div>
+          <div class="mine">我的今日 <b>1.24亿</b></div>
+        </div>
+      </div>
+      <div class="chrome"><div class="metaline"><span>本地统计</span><span>刷新 5 分钟</span></div>
+        <div class="actions"><button class="dash">打开仪表盘 ↗</button><div class="utils"><div class="pill"><i>↻</i>刷新</div><div class="pill"><i>⚙</i>设置</div><div class="pill"><i>⏻</i>退出</div></div></div></div>
+    </article>
+  </div>
+  <div class="stage" data-label="state 2b · quota = 2 (full-width stack)">
+    <article class="pop">
+      <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync"><i></i>已同步</div><div class="cam">◎</div></div>
+      <div class="cols g4">
+        <div class="col"><div class="hd"><b>今日消耗</b><span>第 2 圈</span></div>
+          <div class="ringwrap"><div class="ring"><span>1.24亿<em>/ 1亿 每圈</em></span></div><div class="lap"><b>62%</b> · 消耗 $4.80</div></div></div>
+        <div class="col"><div class="hd"><b>Agent 用量</b><span>记录 11/24</span></div>
+          <table><thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">工具</th></tr></thead>
+            <tbody><tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td><td class="n">612</td></tr>
+            <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td><td class="n">140</td></tr></tbody></table></div>
+        <div class="col"><div class="hd"><b>订阅额度</b><span>2 家</span></div>
+          <div class="chip" style="padding:11px 12px"><small>Codex · 5 小时</small><strong style="font-size:22px">38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14 后重置 · 剩 62 万</div></div>
+          <div class="chip" style="padding:11px 12px"><small>Claude · 7 天</small><strong style="font-size:22px">71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天后重置</div></div></div>
+        <div class="col"><div class="hd"><b>消耗榜</b><span>今日</span></div><div class="hash">#128</div><div class="hint">超过 86%</div>
+          <div class="board"><small>全榜今日消耗</small><div class="num">86.2亿</div><div class="ppl">2401 人参榜</div></div>
+          <div class="mine">我的今日 <b>1.24亿</b></div></div>
+      </div>
+      <div class="chrome"><div class="metaline"><span>本地统计</span><span>刷新 5 分钟</span></div>
+        <div class="actions"><button class="dash">打开仪表盘 ↗</button><div class="utils"><div class="pill"><i>↻</i>刷新</div><div class="pill"><i>⚙</i>设置</div><div class="pill"><i>⏻</i>退出</div></div></div></div>
+    </article>
+  </div>
+  <div class="rule"><b>1–2 家时把绝对值补上。</b>空间富余，显示「剩 62 万」比只给百分比有用。3 家开始只留百分比 + 重置时间。</div>
+</section>
+
+<!-- ③ 6 家 -->
+<section class="panel" id="s3">
+  <p class="note">6 家全开（Codex / Claude / Cursor / GLM / Kimi / Grok）。<b>4 家以上才用 2×2</b>，超出显示 +N，点击进设置或仪表盘看全部。额度栏加宽到 240，其余栏等比压缩。</p>
+  <div class="stage" data-label="state 3 · quota = 6 (2x2 + overflow)">
+    <article class="pop">
+      <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync"><i></i>已同步</div><div class="cam">◎</div></div>
+      <div class="cols" style="grid-template-columns:170px minmax(200px,1fr) 250px 186px">
+        <div class="col"><div class="hd"><b>今日消耗</b><span>第 2 圈</span></div>
+          <div class="ringwrap"><div class="ring"><span>1.24亿<em>/ 1亿</em></span></div><div class="lap"><b>62%</b> · $4.80</div></div></div>
+        <div class="col"><div class="hd"><b>Agent 用量</b><span>缓存 41%</span></div>
+          <table><thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th></tr></thead>
+            <tbody><tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td></tr>
+            <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td></tr>
+            <tr><td><i class="dot" style="background:#c48c3c"></i>ZCode</td><td class="n">1120万</td><td class="n">22</td></tr>
+            <tr><td><i class="dot" style="background:#8a8a8a"></i>其他</td><td class="n">990万</td><td class="n">27</td></tr></tbody></table>
+          <div class="l3"><i class="dot" style="background:#6b5bd2"></i>Cursor 产出 <b>1240 行</b><span class="tag">L3</span></div></div>
+        <div class="col"><div class="hd"><b>订阅额度</b><span>6 家</span></div>
+          <div class="q2">
+            <div class="chip"><small>Codex 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14</div></div>
+            <div class="chip"><small>Claude 7d</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天</div></div>
+            <div class="chip"><small>Cursor 周期</small><strong>44%</strong><div class="bar"><i style="--w:44%"></i></div><div class="sub">$8.8 / $20</div></div>
+            <div class="chip low"><small>GLM Token</small><strong>91%</strong><div class="bar"><i style="--w:91%"></i></div><div class="sub">11 小时</div></div>
+          </div>
+          <div class="more">+2 · Kimi 33% · Grok 12%</div></div>
+        <div class="col"><div class="hd"><b>消耗榜</b><span>今日</span></div><div class="hash">#128</div><div class="hint">超过 86%</div>
+          <div class="board"><small>全榜今日消耗</small><div class="num">86.2亿</div><div class="ppl">2401 人</div></div>
+          <div class="mine">我的 <b>1.24亿</b></div></div>
+      </div>
+      <div class="chrome"><div class="metaline"><span>本地统计</span><span>刷新 5 分钟</span></div>
+        <div class="actions"><button class="dash">打开仪表盘 ↗</button><div class="utils"><div class="pill"><i>↻</i>刷新</div><div class="pill"><i>⚙</i>设置</div><div class="pill"><i>⏻</i>退出</div></div></div></div>
+    </article>
+  </div>
+  <div class="rule"><b>Cursor 额度用美元，不用 Token。</b>写 <code>$8.8 / $20</code>，因为 Cursor 给的是周期额度与花费，本地没有 token 数。这也是它为什么不能进圆环。</div>
+</section>
+
+<!-- ④ 无榜 -->
+<section class="panel" id="s4">
+  <p class="note">未关联榜单身份时，<b>整列消失</b>，不要留「尚未关联」的大空白。底栏四个动作照旧。想参榜的引导放设置页，不占浮窗。</p>
+  <div class="stage" data-label="state 4 · no rank identity">
+    <article class="pop">
+      <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync"><i></i>已同步</div><div class="cam">◎</div></div>
+      <div class="cols g3">
+        <div class="col"><div class="hd"><b>今日消耗</b><span>第 2 圈</span></div>
+          <div class="ringwrap"><div class="ring"><span>1.24亿<em>/ 1亿 每圈</em></span></div><div class="lap"><b>62%</b> · 消耗 $4.80</div></div></div>
+        <div class="col"><div class="hd"><b>Agent 用量</b><span>记录 11/24 · 缓存 41%</span></div>
+          <table><thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">工具</th><th class="n">输出</th><th class="n">缓存</th></tr></thead>
+            <tbody><tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td><td class="n">612</td><td class="n">910万</td><td class="n">46%</td></tr>
+            <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td><td class="n">140</td><td class="n">330万</td><td class="n">38%</td></tr>
+            <tr><td><i class="dot" style="background:#c48c3c"></i>ZCode</td><td class="n">1120万</td><td class="n">22</td><td class="n">71</td><td class="n">150万</td><td class="n">22%</td></tr></tbody></table>
+          <div class="l3"><i class="dot" style="background:#6b5bd2"></i>Cursor 产出 <b>1240 行</b> · 68% AI<span class="tag">L3</span></div></div>
+        <div class="col"><div class="hd"><b>订阅额度</b><span>3 家</span></div>
+          <div class="chip"><small>Codex · 5 小时</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14 后重置</div></div>
+          <div class="chip"><small>Claude · 7 天</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天后重置</div></div>
+          <div class="chip"><small>GLM · Token 窗</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><div class="sub">11 小时后重置</div></div></div>
+      </div>
+      <div class="chrome"><div class="metaline"><span>本地统计</span><span>刷新 5 分钟</span></div>
+        <div class="actions"><button class="dash">打开仪表盘 ↗</button><div class="utils"><div class="pill"><i>↻</i>刷新</div><div class="pill"><i>⚙</i>设置</div><div class="pill"><i>⏻</i>退出</div></div></div></div>
+    </article>
+  </div>
+</section>
+
+<!-- ⑤ 告急+失败 -->
+<section class="panel" id="s5">
+  <p class="note">GLM 剩 9% 走告急红；Cursor 端点挂了显示「暂不可用」并<b>保留上次值与时间</b>。<b>失败绝不显示 0%</b>——0% 会让人以为额度用完。圆环超过一圈用暖色，但底栏和布局完全不动。</p>
+  <div class="stage" data-label="state 5 · low quota + provider failure">
+    <article class="pop">
+      <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync"><i style="background:#c2571f"></i>部分失败</div><div class="cam">◎</div></div>
+      <div class="cols g4">
+        <div class="col"><div class="hd"><b>今日消耗</b><span>第 4 圈</span></div>
+          <div class="ringwrap"><div class="ring hot"><span>3.86亿<em>/ 1亿 每圈</em></span></div><div class="lap"><b>86%</b> · 消耗 $14.20</div></div></div>
+        <div class="col"><div class="hd"><b>Agent 用量</b><span>记录 24/24 · 缓存 39%</span></div>
+          <table><thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">工具</th><th class="n">缓存</th></tr></thead>
+            <tbody><tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">2.41亿</td><td class="n">402</td><td class="n">1866</td><td class="n">44%</td></tr>
+            <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">1.02亿</td><td class="n">128</td><td class="n">509</td><td class="n">31%</td></tr>
+            <tr><td><i class="dot" style="background:#c48c3c"></i>ZCode</td><td class="n">4300万</td><td class="n">61</td><td class="n">190</td><td class="n">18%</td></tr></tbody></table>
+          <div class="l3"><i class="dot" style="background:#6b5bd2"></i>Cursor 产出 <b>3180 行</b> · 74% AI<span class="tag">L3</span></div></div>
+        <div class="col"><div class="hd"><b>订阅额度</b><span>4 家</span></div>
+          <div class="chip low"><small>GLM · Token 窗</small><strong>91%</strong><div class="bar"><i style="--w:91%"></i></div><div class="sub">仅剩 9% · 11 小时后重置</div></div>
+          <div class="chip"><small>Codex · 5 小时</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14 后重置</div></div>
+          <div class="chip"><small>Claude · 7 天</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天后重置</div></div>
+          <div class="chip dead"><small>Cursor · 周期</small><strong>暂不可用</strong><div class="sub">上次 44% · 12 分钟前</div></div></div>
+        <div class="col"><div class="hd"><b>消耗榜</b><span>今日</span></div><div class="hash">#12</div><div class="hint">超过 99% · 主力 Codex</div>
+          <div class="board"><small>全榜今日消耗</small><div class="num">86.2亿</div><div class="ppl">2401 人参榜</div></div>
+          <div class="mine">我的今日 <b>3.86亿</b></div></div>
+      </div>
+      <div class="chrome"><div class="metaline"><span>本地统计</span><span>刷新 5 分钟</span></div>
+        <div class="actions"><button class="dash">打开仪表盘 ↗</button><div class="utils"><div class="pill"><i>↻</i>刷新</div><div class="pill"><i>⚙</i>设置</div><div class="pill"><i>⏻</i>退出</div></div></div></div>
+    </article>
+  </div>
+  <div class="rule"><b>告急卡置顶。</b>剩余最少的排最前，让人一眼看到风险；其余按固定顺序。头部同步胶囊改成「部分失败」，但不弹窗、不打断。</div>
+</section>
+
+<!-- ⑥ 通知带 -->
+<section class="panel" id="s6">
+  <p class="note">采集错误、重算提示、更新提醒统一做成<b>标题与四栏之间的通知带</b>。它们会让窗口变高，但<b>绝不能顶掉底栏</b>，也不插进任何一栏内部。</p>
+  <div class="stage" data-label="state 6 · notice bands">
+    <article class="pop">
+      <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync"><i style="background:#c2571f"></i>同步中</div><div class="cam">◎</div></div>
+      <div class="band err">⚠︎ 读取 Codex 会话失败：权限被拒绝<span class="x">✕</span></div>
+      <div class="band upd">↑ 有新版本 0.2.1 可安装<span class="x">查看</span></div>
+      <div class="cols g4">
+        <div class="col"><div class="hd"><b>今日消耗</b><span>第 2 圈</span></div>
+          <div class="ringwrap"><div class="ring"><span>1.24亿<em>/ 1亿 每圈</em></span></div><div class="lap"><b>62%</b> · 消耗 $4.80</div></div></div>
+        <div class="col"><div class="hd"><b>Agent 用量</b><span>记录 11/24</span></div>
+          <table><thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">工具</th></tr></thead>
+            <tbody><tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td><td class="n">612</td></tr>
+            <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td><td class="n">140</td></tr></tbody></table></div>
+        <div class="col"><div class="hd"><b>订阅额度</b><span>3 家</span></div>
+          <div class="chip"><small>Codex · 5 小时</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14 后重置</div></div>
+          <div class="chip"><small>Claude · 7 天</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天后重置</div></div>
+          <div class="chip"><small>GLM · Token 窗</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><div class="sub">11 小时后重置</div></div></div>
+        <div class="col"><div class="hd"><b>消耗榜</b><span>今日</span></div><div class="hash">#128</div><div class="hint">超过 86%</div>
+          <div class="board"><small>全榜今日消耗</small><div class="num">86.2亿</div><div class="ppl">2401 人参榜</div></div>
+          <div class="mine">我的今日 <b>1.24亿</b></div></div>
+      </div>
+      <div class="chrome"><div class="metaline"><span>本地统计</span><span>刷新 5 分钟</span></div>
+        <div class="actions"><button class="dash">打开仪表盘 ↗</button><div class="utils"><div class="pill"><i>↻</i>刷新</div><div class="pill"><i>⚙</i>设置</div><div class="pill"><i>⏻</i>退出</div></div></div></div>
+    </article>
+  </div>
+</section>
+
+<!-- ⑦ 岛+菜单栏 -->
+<section class="panel" id="s7">
+  <p class="note">灵动岛与菜单栏图标同步改：额度从写死两家改成<b>剩余最少的那一家</b>，并在剩余低于 20% 时加预警点。岛展开层<b>动作集合不变</b>（仪表盘 / 刷新 / 设置），只改密度。</p>
+  <div class="stage" data-label="state 7a · menu bar icon">
+    <div>
+      <div class="mbrow">
+        <div class="mb"><span class="r"></span>1.24亿</div>
+        <div class="mb"><span class="r alert"></span>1.24亿</div>
+        <div class="mb"><span class="r"></span>第 2 圈 · 62%</div>
+      </div>
+      <div class="caption">常态 / 额度告急加红点 / 圈数模式</div>
+    </div>
+  </div>
+  <div class="stage" data-label="state 7b · token island collapsed + expanded">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:18px">
+      <div><div class="islandbar"><span class="miniring"></span>1.24亿 · 62%</div><div class="caption" style="color:#4d5448">折叠：单圈 + 今日</div></div>
+      <div class="island">
+        <div style="padding:12px 14px 0;display:flex;align-items:center;gap:9px">
+          <div class="mark" style="width:24px;height:24px;font-size:11px">T</div>
+          <div><div style="font:800 12px/1.2 -apple-system,sans-serif">TokenStep</div><div style="font:700 10px/1.2 -apple-system,sans-serif;color:var(--muted)">每日 Token 消耗追踪</div></div>
+          <div class="sync" style="font-size:10px;padding:4px 8px"><i></i>已同步</div>
+        </div>
+        <div style="display:flex;gap:12px;padding:10px 14px;align-items:center">
+          <div class="ring" style="width:74px;height:74px"><span style="width:56px;height:56px;font-size:12px">1.24亿</span></div>
+          <div style="font-size:11.5px;line-height:1.6">
+            <div style="font-weight:800">第 2 圈 · 62%</div>
+            <div style="color:var(--muted);font-weight:600">目标 1 亿 / 圈</div>
+            <div style="color:var(--muted);font-weight:600">消耗 $4.80</div>
+          </div>
+        </div>
+        <div style="padding:0 14px 10px">
+          <div class="chip low" style="padding:7px 9px"><small>剩余最少 · GLM Token 窗</small><strong style="font-size:15px">91%</strong><div class="bar"><i style="--w:91%"></i></div></div>
+        </div>
+        <div style="padding:0 14px 13px;display:flex;gap:7px">
+          <button class="dash" style="height:36px;font-size:12px;padding:0 12px">仪表盘</button>
+          <div class="pill" style="height:36px;padding:0 10px"><i>↻</i>刷新</div>
+          <div class="pill" style="height:36px;padding:0 10px"><i>⚙</i>设置</div>
+        </div>
+      </div>
+      <div class="caption" style="color:#4d5448">展开：环 + 最紧张的一家额度 + 三个动作</div>
+    </div>
+  </div>
+  <div class="rule"><b>岛上只显示一家额度。</b>现在写死 Codex+Claude 两个 mini 条，多提供商后会挤爆。改成「剩余最少的一家」，因为岛的价值是提前预警，不是罗列。</div>
+</section>
+
+<div class="matrix">
+  <div><h3>底栏不变量</h3><p>任何状态下：打开仪表盘 / 刷新 / 设置 / 退出 四个动作都在，位置不动。内容栏可以消失，动作不行。</p></div>
+  <div><h3>深色配额</h3><p>全窗只允许两处深色：菜单栏 T 标识、榜栏「全榜今日消耗」小卡。出现第三处就是走偏了。</p></div>
+  <div><h3>L2 / L3 隔离</h3><p>Cursor 的美元与代码行数不进圆环、不进总量、不进榜单。只出现在额度栏与 Agent 栏底部一行。</p></div>
+  <div><h3>失败不写 0</h3><p>额度失败显示「暂不可用」+ 上次值 + 时间。0% 等于误报额度耗尽。</p></div>
+</div>
+
+<script>
+document.querySelectorAll("[data-tab]").forEach((t)=>{
+  t.addEventListener("click",()=>{
+    document.querySelectorAll("[data-tab]").forEach((x)=>x.setAttribute("aria-selected",x===t?"true":"false"));
+    document.querySelectorAll(".panel").forEach((p)=>p.classList.toggle("active",p.id===t.dataset.tab));
+  });
+});
+</script>
+</body>
+</html>

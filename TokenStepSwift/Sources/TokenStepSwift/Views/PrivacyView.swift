@@ -1,122 +1,162 @@
 import SwiftUI
 
 struct PrivacyView: View {
+    @EnvironmentObject private var appState: AppState
+
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 12) {
             TokenCard {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(L("本地优先"))
                         .font(.title3.weight(.heavy))
                         .foregroundStyle(Color.tokenInk)
-                    PrivacyRow(index: 1, title: L("只统计 token 数量"), description: L("用于计算今日 Token 消耗、历史趋势和消耗金额。"))
-                    PrivacyRow(index: 2, title: L("不上传代码或对话"), description: L("所有数据文件都保留在这台 Mac 上。"))
-                    PrivacyRow(index: 3, title: L("消耗金额仅供参考"), description: L("按本地价格表粗略估算，不等于真实账单。"))
+                    Text(L("默认不联网、不上传。Token 统计全部来自本机日志。"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    PrivacyFactRow(title: L("读取"), value: L("日期 · 模型名 · 客户端名 · token 计数"))
+                    PrivacyFactRow(title: L("不读取"), value: L("prompt · 代码正文 · 对话内容"))
+                    PrivacyFactRow(title: L("不做"), value: L("不开代理 · 不按字数估算 token"))
                 }
             }
 
+            HStack(alignment: .top, spacing: 13) {
+                TokenCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(L("联网项（全部默认关闭）"))
+                            .font(.title3.weight(.heavy))
+                            .foregroundStyle(Color.tokenInk)
+                        Text(L("开启后才会发起请求，逐项独立"))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        PrivacyNetworkRow(badge: "L2", style: .l2, title: L("Codex 额度"), detail: L("本机 codex 登录态"))
+                        PrivacyNetworkRow(badge: "L2", style: .l2, title: L("Claude 额度"), detail: L("钥匙串 OAuth → Anthropic"))
+                        PrivacyNetworkRow(badge: "L2", style: .l2, title: L("Cursor 额度与官方用量"), detail: L("state.vscdb → cursor.com 事件计入圆环"))
+                        PrivacyNetworkRow(badge: "L2", style: .l2, title: L("GLM / Kimi / Grok"), detail: L("各自本机凭证"))
+                        PrivacyNetworkRow(badge: L("榜"), style: .ok, title: L("消耗榜"), detail: L("仅在开启后上报"))
+                    }
+                }
+
+                TokenCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Text(L("Cursor 明细"))
+                                .font(.title3.weight(.heavy))
+                                .foregroundStyle(Color.tokenInk)
+                            SettingsBadge(text: L("L3 本地"), style: .l3)
+                        }
+                        Text(L("额度走网络；官方用量事件计入圆环；代码产出纯本地。"))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        PrivacyFactRow(title: L("读 accessToken"), value: L("仅内存 · 不落盘不上传"))
+                        PrivacyFactRow(title: L("读代码块计数"), value: L("ai_code_hashes 的 count 与 model"))
+                        PrivacyFactRow(title: L("明确不读"), value: L("tracked_file_content（代码正文）"), emphasis: true)
+                        PrivacyFactRow(title: L("明确不读"), value: L("conversation_summaries（对话摘要）"), emphasis: true)
+                        Text(L("Cursor 的用量接口非官方公开契约，可能随时变更。失效时只影响这一项。"))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color(red: 0.42, green: 0.36, blue: 0.82).opacity(0.16))
+                )
+            }
+
             TokenCard {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text(L("本地文件"))
                         .font(.title3.weight(.heavy))
                         .foregroundStyle(Color.tokenInk)
-                    FilePathRow(label: L("用量数据"), path: AppPaths.usageJSON.path)
-                    FilePathRow(label: L("设置"), path: AppPaths.settingsJSON.path)
-                    Text(L("后续如果接入排行榜，会单独做授权和确认，不会默认上传。"))
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .textSelection(.enabled)
-            }
-
-            TokenCard {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(L("数据状态说明"))
-                        .font(.title3.weight(.heavy))
-                        .foregroundStyle(Color.tokenInk)
-                    // G-V1：与浮层、主窗口和 docs/DATA_TRUST.md 使用同一套术语。
-                    VStack(alignment: .leading, spacing: 10) {
-                        statusLegend(symbol: "checkmark.circle.fill", color: .tokenGreen,
-                                     title: L("已同步"),
-                                     description: L("数据在正常刷新周期内成功获取。"))
-                        statusLegend(symbol: "clock.fill", color: .orange,
-                                     title: L("数据待更新"),
-                                     description: L("超过正常刷新周期，最近一次尝试没有失败。"))
-                        statusLegend(symbol: "exclamationmark.triangle.fill", color: .red,
-                                     title: L("同步失败"),
-                                     description: L("最近一次尝试失败，当前展示最后成功数据。"))
-                        statusLegend(symbol: "exclamationmark.arrow.triangle.2.circlepath", color: .orange,
-                                     title: L("部分来源失败"),
-                                     description: L("同一轮刷新中部分数据来源失败，其余正常。"))
-                        statusLegend(symbol: "circle.dashed", color: .secondary,
-                                     title: L("暂无数据"),
-                                     description: L("该数据从未成功获取，不会显示为 0。"))
-                    }
-                    Text(L("按 API 列表价估算，不代表订阅或实际账单。"))
+                    Text(L("可直接查看或删除"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
+                    Text("\(AppPaths.usageJSON.path)\n\(AppPaths.settingsJSON.path)")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.tokenTrack.opacity(0.45), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    Text(L("今日花费含本地估算，以及已开启的 Cursor 官方 charged 金额。额度栏里的美元/百分比不要和圆环花费加在一起。"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 9) {
+                        Button {
+                            appState.revealLocalDataInFinder()
+                        } label: {
+                            Text(L("在 Finder 中显示"))
+                                .font(.callout.weight(.bold))
+                                .padding(.horizontal, 14)
+                                .frame(height: 36)
+                        }
+                        .buttonStyle(SettingsSecondaryButtonStyle())
+
+                        Button {
+                            appState.clearLocalUsageData()
+                        } label: {
+                            Text(L("清除本地数据"))
+                                .font(.callout.weight(.bold))
+                                .padding(.horizontal, 14)
+                                .frame(height: 36)
+                        }
+                        .buttonStyle(SettingsSecondaryButtonStyle())
+                    }
                 }
             }
         }
     }
-
-    private func statusLegend(symbol: String, color: Color, title: String, description: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .heavy))
-                .foregroundStyle(color)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.callout.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk)
-                Text(description)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
 }
 
-private struct PrivacyRow: View {
-    var index: Int
+private struct PrivacyFactRow: View {
     var title: String
-    var description: String
+    var value: String
+    var emphasis = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Text("\(index)")
-                .font(.headline.weight(.heavy))
-                .foregroundStyle(Color.tokenGreen)
-                .frame(width: 34, height: 34)
-                .background(Color.tokenGreen.opacity(0.12), in: Circle())
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(Color.tokenInk)
-                Text(description)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.tokenInk)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(emphasis ? Color(red: 0.56, green: 0.21, blue: 0.09) : Color.secondary)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.vertical, 7)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.black.opacity(0.05))
+                .frame(height: 1)
         }
     }
 }
 
-private struct FilePathRow: View {
-    var label: String
-    var path: String
+private struct PrivacyNetworkRow: View {
+    var badge: String
+    var style: SettingsBadgeStyle
+    var title: String
+    var detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label)
-                .font(.caption.weight(.bold))
+        HStack(spacing: 8) {
+            SettingsBadge(text: badge, style: style)
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.tokenInk)
+            Spacer()
+            Text(detail)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text(path)
-                .font(.callout.monospaced().weight(.semibold))
-                .foregroundStyle(Color.tokenInk.opacity(0.76))
-                .lineLimit(2)
+                .lineLimit(1)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.tokenTrack.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.vertical, 7)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.black.opacity(0.05))
+                .frame(height: 1)
+        }
     }
 }

@@ -115,12 +115,12 @@ extension Color {
 
 extension ToolUsage {
     var displayColor: Color {
-        tool == "Claude Code" ? .tokenGreenDark : .tokenGreen
+        AgentSourceRegistry.color(for: tool)
     }
 }
 
 extension ModelUsage {
     var displayColor: Color {
-        tool == "Claude Code" ? .tokenGreenDark : .tokenGreen
+        AgentSourceRegistry.color(for: tool ?? model)
     }
 }

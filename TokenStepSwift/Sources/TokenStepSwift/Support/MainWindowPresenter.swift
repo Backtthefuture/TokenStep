@@ -39,7 +39,7 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
     private func makeWindow(appState: AppState) -> NSWindow {
         let rootView = MainWindowView(navigation: navigation)
             .environmentObject(appState)
-            .frame(minWidth: 1080, minHeight: 720)
+            .frame(minWidth: 1000, minHeight: 700)
 
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
@@ -50,11 +50,11 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
         window.toolbarStyle = .unifiedCompact
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.minSize = NSSize(width: 1080, height: 720)
+        window.minSize = NSSize(width: 1000, height: 700)
         window.maxSize = NSSize(width: 1440, height: 980)
-        window.setContentSize(NSSize(width: 1240, height: 820))
+        window.setContentSize(NSSize(width: 1000, height: 740))
         window.center()
-        window.setFrameAutosaveName("TokenStepMainWindow.v2")
+        window.setFrameAutosaveName("TokenStepMainWindow.v3")
         return window
     }
 

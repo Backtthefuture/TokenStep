@@ -4,156 +4,118 @@ struct PopoverQuotaCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 13) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(Color.tokenGreen)
-                        .frame(width: 8, height: 8)
-                    Text(L("Agent 剩余额度"))
-                        .font(.callout.weight(.heavy))
-                        .foregroundStyle(Color.tokenInk)
-                    Spacer()
-                    if appState.isRefreshingCodexQuota {
-                        ProgressView()
-                            .controlSize(.small)
-                            .scaleEffect(0.72)
-                    }
-                }
-
-                // 从未读到额度的供应商整段隐藏（用户裁决 2026-08-13）；
-                // "失败但保留旧值"的段落仍按 G-V1 规则展示。
-                if showsCodexQuotaSection || showsClaudeQuotaSection {
-                    VStack(spacing: 12) {
-                        if showsCodexQuotaSection {
-                            // Codex 已取消 5 小时额度，仅展示 7 天窗口（2026-08-13）。
-                            quotaSection(
-                                title: "Codex",
-                                quota: appState.codexQuota,
-                                freshness: appState.codexQuotaFreshness,
-                                showsFiveHourWindow: false
-                            )
-                        }
-                        if showsClaudeQuotaSection {
-                            quotaSection(
-                                title: "Claude Code",
-                                quota: appState.claudeQuota,
-                                freshness: appState.claudeQuotaFreshness
-                            )
-                        }
-                    }
-                } else {
-                    HStack(spacing: 10) {
-                        Image(systemName: "terminal")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Color.tokenGreen)
-                            .frame(width: 28, height: 28)
-                            .background(Color.tokenMint.opacity(0.22), in: Circle())
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L("暂未读取到 Agent 额度"))
-                                .font(.caption.weight(.heavy))
-                                .foregroundStyle(Color.tokenInk.opacity(0.76))
-                            Text(L("打开并登录 Codex / Claude Code 后会自动显示。"))
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-        .padding(.vertical, -2)
-    }
-
-    private var showsCodexQuotaSection: Bool {
-        appState.codexQuota.isAvailable || appState.codexQuotaFreshness.kind == .stale
-    }
-
-    private var showsClaudeQuotaSection: Bool {
-        appState.claudeQuota.isAvailable || appState.claudeQuotaFreshness.kind == .stale
-    }
-
-    private func quotaSection(
-        title: String,
-        quota: CodexQuotaSnapshot,
-        freshness: UsageFreshness,
-        showsFiveHourWindow: Bool = true
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(title)
+                Text(L("订阅额度"))
                     .font(.caption.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk.opacity(0.76))
+                    .foregroundStyle(Color.tokenInk)
                 Spacer()
-                FreshnessBadge(freshness: freshness, showsLastSucceeded: freshness.needsAttention)
-            }
-            if quota.isAvailable {
-                VStack(spacing: 8) {
-                    if showsFiveHourWindow {
-                        quotaRow(quota.fiveHour, fallbackTitle: L("5 小时"))
-                    }
-                    quotaRow(quota.sevenDay, fallbackTitle: L("7 天"))
-                }
-            } else if freshness.kind == .stale, let keeps = freshness.keepsLastValueLabel {
-                Text(keeps)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(L("暂无数据"))
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func quotaRow(_ window: CodexQuotaWindow?, fallbackTitle: String) -> some View {
-        HStack(spacing: 10) {
-            Text(window?.title ?? fallbackTitle)
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(Color.tokenInk.opacity(0.72))
-                .frame(width: 44, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
-                    Text(window.map { LFormat("剩余 %@", TokenStepFormat.percent($0.remainingPercent)) } ?? L("等待同步"))
-                        .font(.caption.weight(.heavy))
-                        .foregroundStyle(window == nil ? .secondary : Color.tokenInk.opacity(0.82))
-                    Spacer()
-                    Text(window.map { quotaResetText($0.resetsAt) } ?? L("等待重置"))
+                if appState.isRefreshingCodexQuota {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.72)
+                } else if let fetchedAt = latestFetchedAt {
+                    Text(quotaFetchedText(fetchedAt))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.secondary)
                 }
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.tokenGreen.opacity(0.10))
-                        if let window {
-                            Capsule()
-                                .fill(Color.tokenGreen)
-                                .frame(width: max(5, proxy.size.width * window.remainingPercent / 100))
-                        }
+            }
+
+            if visible.isEmpty {
+                Text(L("暂未读取到额度"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            } else if usesGrid {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(visible) { quota in
+                        quotaChip(quota)
                     }
                 }
-                .frame(height: 6)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(visible) { quota in
+                        quotaChip(quota)
+                    }
+                }
             }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var visible: [ProviderQuota] {
+        appState.visibleQuotas.filter(\.isAvailable)
+    }
+
+    private var usesGrid: Bool {
+        visible.count >= 4
+    }
+
+    private var latestFetchedAt: Date? {
+        visible.compactMap(\.fetchedAt).max()
+    }
+
+    private func quotaChip(_ quota: ProviderQuota) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(quota.provider.displayName)
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(Color.tokenInk.opacity(0.76))
+            if quota.isAvailable {
+                ForEach(quota.windows.prefix(2)) { window in
+                    quotaRow(window)
+                }
+            } else {
+                Text(statusText(quota))
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.black.opacity(0.05)))
+    }
+
+    private func quotaRow(_ window: QuotaWindow) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(window.kind.shortTitle)
+                    .font(.system(size: 10.5, weight: .heavy))
+                    .foregroundStyle(Color.tokenInk.opacity(0.62))
+                Spacer()
+                Text(LFormat("剩余 %@", TokenStepFormat.percent(window.remainingPercent)))
+                    .font(.system(size: 10.5, weight: .heavy))
+                    .foregroundStyle(window.isLow ? Color.orange : Color.tokenInk.opacity(0.82))
+            }
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.tokenGreen.opacity(0.10))
+                    Capsule()
+                        .fill(window.isLow ? Color.orange : Color.tokenGreen)
+                        .frame(width: max(5, proxy.size.width * window.remainingPercent / 100))
+                }
+            }
+            .frame(height: 5)
         }
     }
 
-    private func quotaResetText(_ date: Date?) -> String {
-        guard let date else { return L("等待重置") }
-        let seconds = max(0, Int(date.timeIntervalSinceNow.rounded()))
-        if seconds < 60 {
-            return L("即将重置")
+    private func statusText(_ quota: ProviderQuota) -> String {
+        switch quota.status {
+        case .notLoggedIn:
+            return quota.provider == .cursor ? L("未登录 Cursor") : L("未登录")
+        case .wrongKeyType:
+            return L("当前 key 非订阅计划")
+        case .needsLogin:
+            return L("需要 grok login")
+        case .unavailable, .available:
+            return quota.message ?? L("暂不可用")
         }
-        if seconds < 3_600 {
-            return LFormat("%d 分后重置", max(1, seconds / 60))
-        }
-        if seconds < 86_400 {
-            let hours = seconds / 3_600
-            let minutes = (seconds % 3_600) / 60
-            return LFormat("约 %d:%02d 后重置", hours, minutes)
-        }
-        let days = max(1, Int(ceil(Double(seconds) / 86_400)))
-        return LFormat("%d 天后重置", days)
+    }
+
+    private func quotaFetchedText(_ date: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(date).rounded()))
+        if seconds < 60 { return L("刚刚") }
+        return LFormat("%d 分钟前", max(1, seconds / 60))
     }
 }

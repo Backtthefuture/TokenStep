@@ -29,6 +29,10 @@ struct TokenStepLapProgress {
         Self.color(for: currentLap)
     }
 
+    var ringColor: Color {
+        TokenStepThemeRuntime.palette.accent.color
+    }
+
     var lapTitle: String {
         LFormat("第 %d 圈", currentLap)
     }

@@ -46,7 +46,6 @@ enum UsageCollector {
         zCodeDatabaseURL: URL? = nil,
         hermesDatabaseURL: URL? = nil,
         workBuddyRootURLs: [URL]? = nil,
-        experimentalAgentSourceIDs: [String]? = nil,
         forceFullValidation: Bool = false
     ) -> UsageSnapshot {
         let cacheLoad = loadCache()
@@ -76,13 +75,6 @@ enum UsageCollector {
         let workBuddy = includeExperimentalAgentSources
             ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs, modifiedSince: sourceCutoff)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        // G-A1：T1 实验源（默认关闭；逐源开关；失败只影响该源状态）。
-        let agentSourceResults = AgentSourceRegistry.collect(
-            enabledIDs: AgentSourceRegistry.enabledIDs(
-                masterEnabled: includeExperimentalAgentSources,
-                perSource: experimentalAgentSourceIDs
-            )
-        )
         if codexOutcome.usedIncrementalStore {
             cache.files = cache.files.filter { $0.value.tool != "Codex" && livePaths.contains($0.key) }
         } else {
@@ -98,9 +90,8 @@ enum UsageCollector {
         if includeCCSwitchProxyUsage {
             ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
         }
-        let agentSourceRecords = agentSourceResults.values.flatMap(\.records)
         let records = recordsInHistoryWindow(
-            deduped.records + zCode.records + hermes.records + workBuddy.records + agentSourceRecords,
+            deduped.records + zCode.records + hermes.records + workBuddy.records,
             historyDays: historyDays,
             now: Date()
         )
@@ -113,10 +104,7 @@ enum UsageCollector {
                 "ZCode": zCode.source,
                 "Hermes Agent": hermes.source,
                 "WorkBuddy": workBuddy.source
-            ].merging(
-                agentSourceResults.mapValues { $0.source },
-                uniquingKeysWith: { current, _ in current }
-            )
+            ]
         )
     }
 
@@ -394,12 +382,6 @@ enum UsageCollector {
         )
     }
 
-    /// G-B1：一次性项目回填是否仍待执行（checkpoint 跳过判定用）。
-    static func projectBackfillPending(databaseURL: URL) -> Bool {
-        guard let store = try? CodexIncrementalStore(url: databaseURL) else { return false }
-        return !store.hasMetaFlag("project_backfill_v1")
-    }
-
     static func collectorCacheRecalibrationRevisionForTests(cacheURL: URL) -> Int? {
         loadCache(at: cacheURL).recalibratedFromRevision
     }
@@ -532,10 +514,6 @@ enum UsageCollector {
         }
 
         let store = try CodexIncrementalStore(url: databaseURL)
-        // G-B1 一次性回填：B1-lite 之前的旧缓存记录无 projectName；内容未变的会话
-        // 在全量校验中会被 fingerprint 捷径跳过，故用旗标绕过一次，重扫补齐。
-        let projectBackfillKey = "project_backfill_v1"
-        let projectBackfillNeeded = !store.hasMetaFlag(projectBackfillKey)
         let storedMetadata = try store.metadataByPath()
         let currentPaths = Set(paths.map(\.path))
         let deletedPaths = Set(storedMetadata.keys).subtracting(currentPaths)
@@ -594,7 +572,7 @@ enum UsageCollector {
             let metadataMatches = stored?.size == metadata.size
                 && abs((stored?.modificationTime ?? -1) - metadata.modificationTime) < 0.001
             if metadataMatches {
-                if !forceFullValidation, !projectBackfillNeeded {
+                if !forceFullValidation {
                     continue
                 }
                 let fingerprint = contentFingerprint(for: path, size: metadata.size)
@@ -608,14 +586,14 @@ enum UsageCollector {
                     else {
                         throw CodexIncrementalStoreError.unstableSource(path.path)
                     }
-                    if fullFingerprint == stored?.validationFingerprint, !projectBackfillNeeded {
+                    if fullFingerprint == stored?.validationFingerprint {
                         continue
                     }
                     validatedFullFingerprint = fullFingerprint
                 }
             }
 
-            if !forceFullValidation, !projectBackfillNeeded,
+            if !forceFullValidation,
                let stored,
                metadata.size > stored.size,
                contentFingerprint(for: path, size: stored.size) == stored.fingerprint,
@@ -759,9 +737,6 @@ enum UsageCollector {
 
         try store.commitStaged(deletedPaths: deletedPaths)
         committed = true
-        if projectBackfillNeeded {
-            store.setMetaFlag(projectBackfillKey)
-        }
         let cachedSessionCount = try store.sessionCount()
         guard cachedSessionCount == paths.count else {
             throw CodexIncrementalStoreError.incompleteCache(
@@ -978,12 +953,7 @@ enum UsageCollector {
     ) {
         let hour = record.timestampEpoch.map(hour(fromEpoch:))
             ?? hour(fromISO: record.timestamp)
-        let key = CodexSummaryKey(
-            date: record.date,
-            model: record.model,
-            hour: hour,
-            projectName: record.projectName
-        )
+        let key = CodexSummaryKey(date: record.date, model: record.model, hour: hour)
         summaries[key, default: CodexSummaryAccumulator()].add(record)
     }
 
@@ -1001,8 +971,7 @@ enum UsageCollector {
                 source: .nativeCodex,
                 dataSource: "codex_incremental_summary",
                 modelRequestCount: value.modelRequestCount,
-                toolCallCount: value.toolCallCount,
-                projectName: key.projectName
+                toolCallCount: value.toolCallCount
             )
         }.sorted {
             if $0.date != $1.date { return $0.date < $1.date }
@@ -1040,9 +1009,6 @@ enum UsageCollector {
         var cursor = cached.cursor
         diagnostics.rawRecords += tail.events.count
         var seenRequestIDs = Set(records.compactMap(\.requestID))
-        // 项目名继承：tail 段不再含 session_meta，取该会话已存记录的首个项目名。
-        let inheritedProjectName = cached.records.first(where: { $0.projectName != nil })?.projectName
-            ?? cached.summaryRecords.first(where: { $0.projectName != nil })?.projectName
         let scan = CodexSessionScan(
             canonicalSessionID: cached.sessionID,
             createdAt: cached.createdAtEpoch.map { isoFormatter.string(from: Date(timeIntervalSince1970: $0)) },
@@ -1050,8 +1016,7 @@ enum UsageCollector {
             sourcePath: cached.path,
             events: tail.events,
             finalModel: tail.currentModel,
-            relevantLineCount: tail.relevantLineNumber,
-            projectName: inheritedProjectName
+            relevantLineCount: tail.relevantLineNumber
         )
 
         if cursor.hasCumulativeSchema {
@@ -1272,7 +1237,6 @@ enum UsageCollector {
         var canonicalSessionID: String?
         var createdAt: String?
         var parentSessionID: String?
-        var projectName: String?
         var currentModel = "unknown"
         var events: [CodexTokenEvent] = []
         var relevantLineNumber = 0
@@ -1291,9 +1255,6 @@ enum UsageCollector {
                         createdAt = nonEmptyString(obj["timestamp"] as? String)
                             ?? nonEmptyString(payload?["timestamp"] as? String)
                         parentSessionID = codexParentSessionID(from: payload)
-                        if projectName == nil {
-                            projectName = projectDisplayName(fromPath: payload?["cwd"] as? String)
-                        }
                     }
                     if type == "turn_context" {
                         currentModel = modelKey(payload?["model"] as? String ?? currentModel)
@@ -1334,8 +1295,7 @@ enum UsageCollector {
             sourcePath: path.path,
             events: events,
             finalModel: currentModel,
-            relevantLineCount: relevantLineNumber,
-            projectName: projectName
+            relevantLineCount: relevantLineNumber
         )
     }
 
@@ -1573,8 +1533,7 @@ enum UsageCollector {
             sessionID: scan.canonicalSessionID,
             sourcePath: scan.sourcePath,
             lineNumber: event.lineNumber,
-            dataSource: dataSource,
-            projectName: scan.projectName
+            dataSource: dataSource
         )
     }
 
@@ -1719,8 +1678,7 @@ enum UsageCollector {
                         requestID: identity.requestID,
                         responseID: identity.responseID,
                         sessionID: identity.sessionID,
-                        sourcePath: path.path,
-                        projectName: projectDisplayName(fromPath: obj["cwd"] as? String)
+                        sourcePath: path.path
                     )
                     if let existing = responses[identity.deduplicationKey],
                        !candidate.isPreferred(over: existing) {
@@ -1932,46 +1890,38 @@ enum UsageCollector {
         }
 
         let providerTotalExpression = availableColumns.contains("provider_total_tokens")
-            ? "coalesce(model_usage.provider_total_tokens, 0)"
+            ? "coalesce(provider_total_tokens, 0)"
             : "0"
-        // 项目名列与 join 作为条件片段构造（旧库无 session 表时优雅降级），
-        // 不做运行时字符串剥离——多行字面量的缩进剥离会让固定模式失配。
-        let hasSessionTable = sqliteTableExists(database: database, table: "session")
-        let projectColumn = hasSessionTable
-            ? ",\n    coalesce(session.directory, '') as project_directory"
-            : ""
-        let sessionJoin = hasSessionTable
-            ? "left join session on session.id = model_usage.session_id\n"
-            : ""
-        var query = """
+        let query = """
         select
-            model_usage.id,
-            model_usage.session_id,
-            model_usage.started_at,
-            coalesce(nullif(model_usage.model_id, ''), 'unknown') as display_model,
-            coalesce(model_usage.input_tokens, 0) as input_tokens,
-            coalesce(model_usage.output_tokens, 0) as output_tokens,
-            coalesce(model_usage.reasoning_tokens, 0) as reasoning_tokens,
-            coalesce(model_usage.cache_creation_input_tokens, 0) as cache_creation_input_tokens,
-            coalesce(model_usage.cache_read_input_tokens, 0) as cache_read_input_tokens,
-            coalesce(model_usage.computed_total_tokens, 0) as computed_total_tokens,
+            id,
+            session_id,
+            started_at,
+            coalesce(nullif(model_id, ''), 'unknown') as display_model,
+            coalesce(input_tokens, 0) as input_tokens,
+            coalesce(output_tokens, 0) as output_tokens,
+            coalesce(reasoning_tokens, 0) as reasoning_tokens,
+            coalesce(cache_creation_input_tokens, 0) as cache_creation_input_tokens,
+            coalesce(cache_read_input_tokens, 0) as cache_read_input_tokens,
+            coalesce(computed_total_tokens, 0) as computed_total_tokens,
             \(providerTotalExpression) as provider_total_tokens,
-            coalesce(model_usage.tool_call_count, 0) as tool_call_count\(projectColumn)
+            coalesce(tool_call_count, 0) as tool_call_count
         from model_usage
-        \(sessionJoin)where model_usage.status = 'completed'
+        where status = 'completed'
             and (
-                coalesce(model_usage.computed_total_tokens, 0) > 0
+                coalesce(computed_total_tokens, 0) > 0
                 or \(providerTotalExpression) > 0
                 or (
-                    coalesce(model_usage.input_tokens, 0)
-                    + coalesce(model_usage.output_tokens, 0)
-                    + coalesce(model_usage.reasoning_tokens, 0)
-                    + coalesce(model_usage.cache_creation_input_tokens, 0)
-                    + coalesce(model_usage.cache_read_input_tokens, 0)
+                    coalesce(input_tokens, 0)
+                    + coalesce(output_tokens, 0)
+                    + coalesce(reasoning_tokens, 0)
+                    + coalesce(cache_creation_input_tokens, 0)
+                    + coalesce(cache_read_input_tokens, 0)
                 ) > 0
             )
-        order by model_usage.started_at, model_usage.id
+        order by started_at, id
         """
+
         guard let rows = sqliteJSONRows(database: database, query: query) else {
             return CollectorResult(records: [], source: SourceInfo(status: "query_failed", files: 1, records: 0))
         }
@@ -2001,8 +1951,7 @@ enum UsageCollector {
                 requestID: nonEmptyString(row["id"] as? String),
                 sessionID: nonEmptyString(row["session_id"] as? String),
                 modelRequestCount: 1,
-                toolCallCount: integerValue(row["tool_call_count"] as Any),
-                projectName: projectDisplayName(fromPath: nonEmptyString(row["project_directory"] as? String))
+                toolCallCount: integerValue(row["tool_call_count"] as Any)
             )
         }
 
@@ -2010,17 +1959,6 @@ enum UsageCollector {
             records: records,
             source: SourceInfo(status: records.isEmpty ? "missing_valid_rows" : "ok", files: 1, records: records.count)
         )
-    }
-
-    /// SQLite 表存在性探测（ZCode 旧库无 session 表时优雅降级）。
-    private static func sqliteTableExists(database: URL, table: String) -> Bool {
-        guard let rows = sqliteJSONRows(
-            database: database,
-            query: "select count(*) as n from sqlite_master where type = 'table' and name = '\(table)'"
-        ), let first = rows.first, integerValue(first["n"] as Any) > 0 else {
-            return false
-        }
-        return true
     }
 
     private static func collectHermesUsage(databaseURL: URL? = nil) -> CollectorResult {
@@ -2138,17 +2076,6 @@ enum UsageCollector {
         )
     }
 
-    /// WorkBuddy 会话文件路径里的项目目录名（<projects 根>/<项目目录>/<uuid>.jsonl）。
-    private static func workBuddyProjectName(_ path: String) -> String? {
-        let components = path.split(separator: "/").map(String.init)
-        guard let projectsIndex = components.lastIndex(of: "projects"),
-              projectsIndex + 1 < components.count - 1
-        else {
-            return projectDisplayName(fromPath: components.count > 1 ? components[components.count - 2] : nil)
-        }
-        return projectDisplayName(fromPath: components[projectsIndex + 1])
-    }
-
     private static func collectWorkBuddyUsage(
         rootURLs: [URL]? = nil,
         modifiedSince cutoffDate: Date?
@@ -2194,8 +2121,7 @@ enum UsageCollector {
                     sourcePath: file.path,
                     lineNumber: lineNumber,
                     modelRequestCount: 1,
-                    toolCallCount: recordType == "function_call" ? 1 : 0,
-                    projectName: workBuddyProjectName(file.path)
+                    toolCallCount: recordType == "function_call" ? 1 : 0
                 ))
             }
         }
@@ -2548,13 +2474,9 @@ enum UsageCollector {
         var tools = [String: UsageAccumulator]()
         var models = [ModelKey: UsageAccumulator]()
 
-        var projectTotals: [String: ProjectUsageAccumulator] = [:]
         for record in records {
             let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model)
             daily[record.date, default: DailyAccumulator(date: record.date)].add(record: record, cost: cost)
-            let recordProject = record.projectName ?? ""
-            projectTotals[recordProject, default: ProjectUsageAccumulator(name: recordProject)]
-                .add(record: record, cost: cost)
             let recordHour = record.timestampEpoch.map(hour(fromEpoch:))
                 ?? hour(fromISO: record.timestamp)
             if let hour = recordHour {
@@ -2580,10 +2502,7 @@ enum UsageCollector {
                     tools: item.tools,
                     models: item.models,
                     totalTokens: item.totalTokens,
-                    cost: rounded(item.cost, digits: 4),
-                    projects: item.projects.values
-                        .sorted { $0.tokens > $1.tokens }
-                        .map(\.projectUsage)
+                    cost: rounded(item.cost, digits: 4)
                 )
             }
 
@@ -2631,16 +2550,13 @@ enum UsageCollector {
             agentWork: agentWorkRows,
             tools: toolRows,
             models: modelRows,
-            sources: sources,
-            projects: projectTotals.values
-                .sorted { $0.tokens > $1.tokens }
-                .map(\.projectUsage)
+            sources: sources
         )
     }
 
     private static func isAgentWorkRecord(_ record: UsageRecord) -> Bool {
         switch record.source {
-        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy, .experimentalAgent:
+        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy:
             return true
         case .unknown:
             return false
@@ -3285,49 +3201,7 @@ enum UsageCollector {
     }
 
     private static func sqliteJSONRows(database: URL, query: String) -> [[String: Any]]? {
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tokenstep-sqlite-\(UUID().uuidString).json")
-        _ = FileManager.default.createFile(atPath: outputURL.path, contents: nil)
-        guard let outputHandle = try? FileHandle(forWritingTo: outputURL) else {
-            return nil
-        }
-        defer {
-            try? outputHandle.close()
-            try? FileManager.default.removeItem(at: outputURL)
-        }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = ["-readonly", "-json", database.path, query]
-        process.standardOutput = outputHandle
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return nil
-        }
-        guard process.terminationStatus == 0 else { return nil }
-
-        let data = (try? Data(contentsOf: outputURL)) ?? Data()
-        guard !data.isEmpty else { return [] }
-        return try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-    }
-
-    /// 项目显示名：路径末级目录名（脱敏，G-B1）。空/纯符号段返回 nil（UI 归入未命名项目）。
-    static func projectDisplayName(fromPath path: String?) -> String? {
-        guard let path else { return nil }
-        let name = path
-            .split(separator: "/")
-            .last
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        guard let name, !name.isEmpty else { return nil }
-        let meaningful = name.contains { (character: Character) -> Bool in
-            character.isLetter || character.isNumber
-        }
-        guard meaningful else { return nil }
-        return String(name.prefix(64))
+        SQLiteReadonly.jsonRows(database: database, query: query)
     }
 
     private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String) -> Double {
@@ -3426,7 +3300,7 @@ enum UsageCollector {
     }()
 }
 
-struct CollectorResult {
+private struct CollectorResult {
     var records: [UsageRecord]
     var source: SourceInfo
 }
@@ -3493,7 +3367,6 @@ private struct CodexSummaryKey: Hashable {
     var date: String
     var model: String
     var hour: Int?
-    var projectName: String?
 }
 
 private struct CodexSummaryAccumulator {
@@ -4020,21 +3893,6 @@ private final class CodexIncrementalStore {
         try checkFinalStep(statement)
     }
 
-    /// cache_meta 布尔旗标（一次性迁移/回填用）。
-    func hasMetaFlag(_ key: String) -> Bool {
-        guard database != nil else { return false }
-        let statement = try? prepare("SELECT COUNT(*) FROM cache_meta WHERE key = '\(key)'")
-        guard let statement else { return false }
-        defer { sqlite3_finalize(statement) }
-        guard sqlite3_step(statement) == SQLITE_ROW else { return false }
-        return sqlite3_column_int64(statement, 0) > 0
-    }
-
-    func setMetaFlag(_ key: String) {
-        guard database != nil else { return }
-        try? execute("INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('\(key)', '1')")
-    }
-
     func stats() throws -> CodexIncrementalCacheStats {
         let statement = try prepare(
             """
@@ -4267,8 +4125,6 @@ private struct CodexSessionScan: Codable {
     var events: [CodexTokenEvent]
     var finalModel: String? = nil
     var relevantLineCount: Int? = nil
-    /// session_meta.payload.cwd 的末级目录名（G-B1）。旧缓存按 nil 解码。
-    var projectName: String? = nil
 }
 
 private struct CodexTokenEvent: Codable {
@@ -4334,7 +4190,7 @@ private struct CodexCollectionDiagnostics: Codable, Equatable {
     }
 }
 
-struct UsageRecord: Codable, Equatable {
+private struct UsageRecord: Codable, Equatable {
     var date: String
     var timestamp: String?
     var timestampEpoch: TimeInterval? = nil
@@ -4351,8 +4207,6 @@ struct UsageRecord: Codable, Equatable {
     var dataSource: String? = nil
     var modelRequestCount = 1
     var toolCallCount = 0
-    /// 项目显示名（末级目录名，G-B1）。旧缓存缺失按 nil 解码。
-    var projectName: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case date
@@ -4371,7 +4225,6 @@ struct UsageRecord: Codable, Equatable {
         case dataSource
         case modelRequestCount
         case toolCallCount
-        case projectName
     }
 
     init(
@@ -4390,8 +4243,7 @@ struct UsageRecord: Codable, Equatable {
         lineNumber: Int? = nil,
         dataSource: String? = nil,
         modelRequestCount: Int = 1,
-        toolCallCount: Int = 0,
-        projectName: String? = nil
+        toolCallCount: Int = 0
     ) {
         self.date = date
         self.timestamp = timestamp
@@ -4409,7 +4261,6 @@ struct UsageRecord: Codable, Equatable {
         self.dataSource = dataSource
         self.modelRequestCount = modelRequestCount
         self.toolCallCount = toolCallCount
-        self.projectName = projectName
     }
 
     init(from decoder: Decoder) throws {
@@ -4430,11 +4281,10 @@ struct UsageRecord: Codable, Equatable {
         dataSource = try container.decodeIfPresent(String.self, forKey: .dataSource)
         modelRequestCount = try container.decodeIfPresent(Int.self, forKey: .modelRequestCount) ?? 1
         toolCallCount = try container.decodeIfPresent(Int.self, forKey: .toolCallCount) ?? 0
-        projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
     }
 }
 
-enum UsageRecordSource: String, Codable, Equatable {
+private enum UsageRecordSource: String, Codable, Equatable {
     case nativeCodex
     case nativeCodexSQLite
     case nativeClaudeCode
@@ -4442,7 +4292,6 @@ enum UsageRecordSource: String, Codable, Equatable {
     case zcode
     case hermes
     case workbuddy
-    case experimentalAgent
     case unknown
 }
 
@@ -4472,7 +4321,6 @@ private struct ClaudeUsageCandidate {
     var responseID: String?
     var sessionID: String?
     var sourcePath: String
-    var projectName: String? = nil
 
     var record: UsageRecord {
         UsageRecord(
@@ -4486,8 +4334,7 @@ private struct ClaudeUsageCandidate {
             sessionID: sessionID,
             responseID: responseID,
             sourcePath: sourcePath,
-            lineNumber: lineNumber,
-            projectName: projectName
+            lineNumber: lineNumber
         )
     }
 
@@ -4502,7 +4349,7 @@ private struct ClaudeUsageCandidate {
     }
 }
 
-struct TokenUsageCounts: Codable, Equatable {
+private struct TokenUsageCounts: Codable, Equatable {
     var inputTokens = 0
     var outputTokens = 0
     var cacheCreationInputTokens = 0
@@ -4563,41 +4410,12 @@ private struct DailyAccumulator {
     var models: [String: Int] = [:]
     var totalTokens = 0
     var cost = 0.0
-    var projects: [String: ProjectUsageAccumulator] = [:]
 
     mutating func add(record: UsageRecord, cost: Double) {
         tools[record.tool, default: 0] += record.usage.totalTokens
         models[record.model, default: 0] += record.usage.totalTokens
         totalTokens += record.usage.totalTokens
         self.cost += cost
-        let projectName = record.projectName ?? ""
-        projects[projectName, default: ProjectUsageAccumulator(name: projectName)]
-            .add(record: record, cost: cost)
-    }
-}
-
-private struct ProjectUsageAccumulator {
-    var name: String
-    var tokens = 0
-    var cost = 0.0
-    var tools: [String: Int] = [:]
-    var models: [String: Int] = [:]
-
-    mutating func add(record: UsageRecord, cost: Double) {
-        tokens += record.usage.totalTokens
-        self.cost += cost
-        tools[record.tool, default: 0] += record.usage.totalTokens
-        models[record.model, default: 0] += record.usage.totalTokens
-    }
-
-    var projectUsage: ProjectUsage {
-        ProjectUsage(
-            name: name,
-            tokens: tokens,
-            cost: (cost * 10_000).rounded() / 10_000,
-            tools: tools,
-            models: models
-        )
     }
 }
 

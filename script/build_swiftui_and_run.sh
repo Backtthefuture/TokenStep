@@ -21,7 +21,7 @@ RESOURCES="$CONTENTS/Resources"
 EXECUTABLE="$BUILD_DIR/$PRODUCT_NAME"
 HELPER_EXECUTABLE="$BUILD_DIR/$HELPER_NAME"
 ICON_FILE="$ROOT_DIR/TokenUsageMenuApp/assets/TokenStepIcon.icns"
-VERSION="${TOKENSTEP_VERSION:-0.2.0}"
+VERSION="${TOKENSTEP_VERSION:-0.2.1}"
 LAUNCH=true
 VERIFY=false
 
@@ -40,12 +40,10 @@ for arg in "$@"; do
   esac
 done
 
-if [[ "$LAUNCH" == true ]]; then
-  pkill -f "TokenUsageMenu.py" 2>/dev/null || true
-  pkill -x "$PRODUCT_NAME" 2>/dev/null || true
-  pkill -x "$HELPER_NAME" 2>/dev/null || true
-  pkill -x "$APP_NAME" 2>/dev/null || true
-fi
+pkill -f "TokenUsageMenu.py" 2>/dev/null || true
+pkill -x "$PRODUCT_NAME" 2>/dev/null || true
+pkill -x "$HELPER_NAME" 2>/dev/null || true
+pkill -x "$APP_NAME" 2>/dev/null || true
 
 mkdir -p "$BUILD_DIR" "$DIST_DIR" "$OVERLAY_DIR"
 python3 "$ROOT_DIR/script/check_localization.py"
@@ -96,11 +94,10 @@ HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Localization.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/MemoryPressure.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift"
-  "$SWIFT_DIR/Sources/TokenStepSwift/Support/EnergyRefreshPolicy.swift"
-  "$SWIFT_DIR/Sources/TokenStepSwift/Support/FreshnessPolicy.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Support/SQLiteReadonly.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Models/QuotaModels.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
-  "$SWIFT_DIR/Sources/TokenStepSwift/Services/AgentSources/AgentSources.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"
   "$SWIFT_DIR/Sources/TokenStepHelper/main.swift"
 )

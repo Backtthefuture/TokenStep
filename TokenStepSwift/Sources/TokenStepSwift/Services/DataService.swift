@@ -56,12 +56,7 @@ enum DataService {
             includeExperimentalAgentSources: settings.showExperimentalAgentSources
         )
         let existingCheckpoint = loadCollectionCheckpoint()
-        // G-B1：项目回填未完成时不允许 checkpoint 跳过（旧缓存记录无项目名）。
-        let projectBackfillPending = UsageCollector.projectBackfillPending(
-            databaseURL: AppPaths.codexIncrementalCacheSQLite
-        )
-        if !projectBackfillPending,
-           CollectionCheckpointPolicy.shouldSkipCollection(
+        if CollectionCheckpointPolicy.shouldSkipCollection(
             force: force,
             hasSnapshot: previousSnapshot != nil,
             checkpoint: existingCheckpoint,
@@ -73,7 +68,6 @@ enum DataService {
         let collectedSnapshot = UsageCollector.collect(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources,
-            experimentalAgentSourceIDs: settings.experimentalAgentSources,
             forceFullValidation: force || existingCheckpoint?.isFresh(at: Date()) != true
         )
         try validateRecalibrationCandidate(
@@ -301,7 +295,9 @@ enum DataService {
             requireVerifiedUpdates: settings.requireVerifiedUpdates,
             tokenIslandEnabled: placement != .menuBar,
             tokenIslandPlacement: placement,
-            showCodexQuota: settings.showCodexQuota,
+            enabledQuotaProviders: settings.enabledQuotaProviders,
+            cursorQuotaEnabled: settings.cursorQuotaEnabled,
+            cursorCodeSignalEnabled: settings.cursorCodeSignalEnabled,
             agentWorkRankVisibility: settings.agentWorkRankVisibility,
             showExperimentalAgentSources: settings.showExperimentalAgentSources,
             language: settings.language,

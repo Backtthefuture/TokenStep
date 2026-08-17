@@ -8,41 +8,43 @@ struct DashboardScreenshotView: View {
         ZStack {
             TokenStepBackdrop()
 
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 16) {
                 captureHeader
                 detailView
             }
-            .padding(.horizontal, 42)
-            .padding(.vertical, 36)
+            .padding(20)
         }
-        .frame(width: 1120)
+        .frame(width: 1000)
         .fixedSize(horizontal: false, vertical: true)
         .id(appState.appearanceID)
     }
 
     private var captureHeader: some View {
-        HStack(alignment: .center, spacing: 16) {
-            TokenStepMark(size: 44)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text("TokenStep")
-                    .font(.system(size: 25, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.tokenInk)
-                Text(L("每天一个亿"))
-                    .font(.callout.weight(.bold))
-                    .foregroundStyle(Color.tokenGreenDark)
-            }
-
+        HStack(spacing: 12) {
+            TokenStepMark(size: 22)
+            Text("TokenStep")
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.tokenInk)
             Spacer()
-
-            VStack(alignment: .trailing, spacing: 7) {
-                Text(section.title)
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.tokenInk)
-                Text("\(L("更新")) \(TokenStepFormat.generatedTime(appState.snapshot.generatedAt))")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 3) {
+                ForEach(AppSection.allCases) { item in
+                    Text(item.title)
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(item == section ? Color.tokenInk : Color.tokenInk.opacity(0.45))
+                        .padding(.horizontal, 14)
+                        .frame(height: 28)
+                        .background(
+                            item == section ? Color.tokenSurface : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        )
+                }
             }
+            .padding(3)
+            .background(Color.tokenTrack.opacity(0.55), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            Spacer()
+            Text("\(L("更新")) \(TokenStepFormat.generatedTime(appState.snapshot.generatedAt))")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
         }
     }
 

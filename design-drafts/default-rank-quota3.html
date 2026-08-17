@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TokenStep 默认态 · 消耗榜 + 3 个额度</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #f3eee4; --ink: #1b241c; --muted: #5c675d; --line: rgba(27,36,28,.12);
+      --forest: #1f6a48; --deep: #173528; --lime: #c6e04a; --card: #f6f1e7; --chip: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: "IBM Plex Sans", "PingFang SC", sans-serif; }
+    body { padding: 40px 48px 80px; }
+    h1 { font-family: "Fraunces", serif; font-size: 38px; letter-spacing: -.03em; margin: 0 0 8px; }
+    .lede { max-width: 740px; color: var(--muted); line-height: 1.6; margin-bottom: 22px; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+    .tabs button { border: 1px solid var(--line); background: 0; border-radius: 999px; padding: 8px 14px; font: 600 13px/1 "IBM Plex Sans", sans-serif; cursor: pointer; }
+    .tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+    .panel { display: none; } .panel.active { display: block; }
+    .note { display: grid; grid-template-columns: 1.3fr .7fr; gap: 22px; margin-bottom: 20px; }
+    .note h2 { font-family: "Syne", sans-serif; font-size: 20px; margin: 0 0 8px; }
+    .note p { margin: 0 0 8px; color: var(--muted); line-height: 1.6; font-size: 14px; }
+    .meta div { border-top: 1px solid var(--line); padding-top: 8px; margin-bottom: 8px; }
+    .meta b { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    .stage { background: #cfd6c8; border-radius: 24px; padding: 48px 32px 40px; display: flex; justify-content: center; position: relative; }
+    .stage::before { content: attr(data-label); position: absolute; top: 14px; left: 20px; font: 600 11px/1 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: #3e4a3f; }
+    .rule { margin-top: 18px; background: var(--chip); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; font-size: 13px; color: var(--muted); line-height: 1.65; }
+    .rule b { color: var(--ink); }
+
+    .pop { background: var(--card); border: 1px solid #d9d0c0; border-radius: 22px; overflow: hidden; box-shadow: 0 18px 40px rgba(28,40,30,.15); }
+    .pop.w800 { width: 800px; } .pop.w860 { width: 860px; }
+    .head { height: 42px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid #e4dcc9; }
+    .mark { width: 24px; height: 24px; border-radius: 8px; background: var(--forest); color: #e8f6c8; display: grid; place-items: center; font: 800 13px/1 Syne, sans-serif; }
+    .sync { margin-left: auto; font: 700 11px/1 "IBM Plex Sans", sans-serif; background: var(--chip); border: 1px solid #e4dacb; border-radius: 999px; padding: 6px 10px; }
+    .body3 { display: grid; grid-template-columns: 156px 1fr 236px; }
+    .body4 { display: grid; grid-template-columns: 148px 1fr 200px 196px; }
+    .left { background: var(--deep); color: #e7f3c8; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; min-height: 188px; }
+    .left small { font: 600 10px/1 "IBM Plex Mono", monospace; letter-spacing: .08em; opacity: .7; }
+    .ring { width: 96px; height: 96px; border-radius: 50%; background: conic-gradient(var(--lime) 223deg, #2b5340 0); display: grid; place-items: center; margin: 8px auto; }
+    .ring span { width: 74px; height: 74px; background: var(--deep); border-radius: 50%; display: grid; place-items: center; text-align: center; font-weight: 800; font-size: 14px; }
+    .ring em { display: block; font-style: normal; font-size: 11px; opacity: .75; }
+    .mid { padding: 12px 14px; }
+    .hd { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 8px; }
+    .hd span { color: var(--muted); font-size: 11px; font-weight: 600; }
+    .row { display: grid; grid-template-columns: 58px 1fr 52px 48px; gap: 6px; align-items: center; height: 22px; font-size: 11px; }
+    .row b { text-align: right; font-variant-numeric: tabular-nums; }
+    .bar { height: 5px; background: #ddd6c8; border-radius: 99px; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--forest); width: var(--w); }
+    .right { padding: 12px 10px; display: flex; flex-direction: column; gap: 7px; }
+    .chip { background: var(--chip); border: 1px solid #e4dacb; border-radius: 12px; padding: 8px 10px; }
+    .chip small { display: block; color: var(--muted); font-weight: 700; font-size: 10px; }
+    .chip strong { display: block; font-size: 16px; margin: 2px 0 4px; font-variant-numeric: tabular-nums; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .rank-slot { background: #173528; color: #e7f3c8; border-radius: 12px; padding: 8px 10px; }
+    .rank-slot small { opacity: .7; font-size: 10px; font-weight: 700; }
+    .rank-slot strong { display: block; font-size: 22px; margin: 2px 0; }
+    .rank-slot em { font-style: normal; font-size: 10px; opacity: .8; }
+    .foot { height: 36px; border-top: 1px solid #e4dcc9; display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+    .foot button { flex: 1; height: 24px; border-radius: 999px; border: 1px solid #e4dacb; background: var(--chip); font: 700 11px/1 "IBM Plex Sans", sans-serif; }
+    .rankbar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: #eef3e6; border-top: 1px solid #d9e0ce; font-size: 12px; }
+    .rankbar .hash { font: 800 20px/1 "IBM Plex Sans", sans-serif; color: var(--forest); }
+    .rankbar .sep { width: 1px; height: 22px; background: #c9d2c0; }
+    .rankcol { padding: 12px 12px 12px 8px; display: flex; flex-direction: column; justify-content: space-between; }
+    .rankcol .big { font-size: 36px; font-weight: 800; color: var(--forest); letter-spacing: -.03em; }
+    .rankcol .sub { font-size: 11px; color: var(--muted); line-height: 1.45; }
+    .rankcol .pills { display: flex; flex-direction: column; gap: 6px; }
+    .pill { background: var(--chip); border: 1px solid #e4dacb; border-radius: 10px; padding: 6px 8px; font-size: 11px; }
+    .pill b { display: block; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>默认态加消耗榜 · 额度只有 3 个</h1>
+  <p class="lede">最终稿原来是 2×2 四个额度格。真实用户常常只有 Codex / Claude / GLM 三家。空出第四格会像没做完。下面三版都加上现有的 Agent 消耗榜（今日排名、超过百分比、我的 Token），并用 3 个额度排干净。</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="d1">D1 · 底栏榜 + 三额度竖排</button>
+    <button role="tab" aria-selected="false" data-tab="d2">D2 · 第四格让给榜</button>
+    <button role="tab" aria-selected="false" data-tab="d3">D3 · 独立榜栏</button>
+    <button role="tab" aria-selected="false" data-tab="rules">额度 1–4 的显示规则</button>
+  </div>
+
+  <section class="panel active" id="d1">
+    <div class="note">
+      <div>
+        <h2>D1 · 底栏榜 + 三额度竖排（更稳）</h2>
+        <p>右栏不再做 2×2。3 个额度各占一整行，没有空格。消耗榜用通栏底条：#128、超过 86%、我的今日 Token、全榜总量。点击底条进现有榜单页。</p>
+        <p>额度变成 4 家时，右栏改回 2×2，底条榜不动。这是「少了不留洞、多了不挤榜」。</p>
+      </div>
+      <div class="meta">
+        <div><b>宽度</b>800 · 比最终稿只高一条 40pt 底栏</div>
+        <div><b>适合</b>大多数人（2–3 家订阅）</div>
+        <div><b>数据</b>榜单字段全部来自现有 PopoverTokenRankCard</div>
+      </div>
+    </div>
+    <div class="stage" data-label="D1 · recommended for 3 quotas">
+      <article class="pop w800">
+        <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync">已同步</div></div>
+        <div class="body3">
+          <div class="left"><small>今日 · 第 2 圈</small><div class="ring"><span>1.24亿<em>62%</em></span></div><div style="font:700 11px/1.3 IBM Plex Sans,sans-serif;opacity:.8;text-align:center">目标 1 亿 / 圈 · $4.80</div></div>
+          <div class="mid">
+            <div class="hd"><b>Agent 用量</b><span>记录 11/24 · 缓存 41%</span></div>
+            <div class="row"><span>Codex</span><div class="bar"><i style="--w:62%"></i></div><b>7720万</b><span>148</span></div>
+            <div class="row"><span>Claude</span><div class="bar"><i style="--w:21%;background:#3d7ca8"></i></div><b>2610万</b><span>36</span></div>
+            <div class="row"><span>ZCode</span><div class="bar"><i style="--w:9%;background:#c48c3c"></i></div><b>1120万</b><span>22</span></div>
+            <div class="row"><span>其他</span><div class="bar"><i style="--w:8%;background:#999"></i></div><b>990万</b><span>27</span></div>
+          </div>
+          <div class="right">
+            <div class="hd"><b>订阅额度</b><span>3 家</span></div>
+            <div class="chip"><small>Codex · 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div></div>
+            <div class="chip"><small>Claude · 7d</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div></div>
+            <div class="chip"><small>GLM · Token</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div></div>
+          </div>
+        </div>
+        <div class="rankbar">
+          <span>消耗榜</span>
+          <span class="hash">#128</span>
+          <span>超过 86% · 主力 Codex</span>
+          <span class="sep"></span>
+          <span>我的今日 1.24亿</span>
+          <span class="sep"></span>
+          <span>全榜 86.2亿 · 2401 人</span>
+          <span style="margin-left:auto;color:var(--muted)">打开榜单 ↗</span>
+        </div>
+        <div class="foot"><button>打开仪表盘</button><button>刷新</button><button>设置</button></div>
+      </article>
+    </div>
+    <div class="rule"><b>为什么先推这版：</b>榜是社交信息，额度是限流信息，分两层比挤在同一宫格更清楚。3 个额度竖排也比硬塞 2×2 留一个空洞好看。</div>
+  </section>
+
+  <section class="panel" id="d2">
+    <div class="note">
+      <div>
+        <h2>D2 · 第四格让给榜</h2>
+        <p>右栏仍是 2×2。3 个额度占三格，空出来的第四格变成深色排名卡：#128。额度变成 4 家时，第四格还给额度，榜掉到底栏（回到 D1）。</p>
+        <p>窗口高度和最终稿几乎一样，适合不想加高浮窗的人。</p>
+      </div>
+      <div class="meta">
+        <div><b>宽度</b>800 · 高度接近最终稿</div>
+        <div><b>适合</b>想少改布局、用空位填榜</div>
+        <div><b>风险</b>4 家额度时榜会「搬家」，位置不稳</div>
+      </div>
+    </div>
+    <div class="stage" data-label="D2 · empty cell becomes rank">
+      <article class="pop w800">
+        <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync">已同步</div></div>
+        <div class="body3">
+          <div class="left"><small>今日 · 第 2 圈</small><div class="ring"><span>1.24亿<em>62%</em></span></div><div style="font:700 11px/1.3 IBM Plex Sans,sans-serif;opacity:.8;text-align:center">目标 1 亿 / 圈 · $4.80</div></div>
+          <div class="mid">
+            <div class="hd"><b>Agent 用量</b><span>记录 11/24 · 缓存 41%</span></div>
+            <div class="row"><span>Codex</span><div class="bar"><i style="--w:62%"></i></div><b>7720万</b><span>148</span></div>
+            <div class="row"><span>Claude</span><div class="bar"><i style="--w:21%;background:#3d7ca8"></i></div><b>2610万</b><span>36</span></div>
+            <div class="row"><span>ZCode</span><div class="bar"><i style="--w:9%;background:#c48c3c"></i></div><b>1120万</b><span>22</span></div>
+            <div class="row"><span>其他</span><div class="bar"><i style="--w:8%;background:#999"></i></div><b>990万</b><span>27</span></div>
+          </div>
+          <div class="right">
+            <div class="hd"><b>额度 · 榜</b><span>3+1</span></div>
+            <div class="grid2">
+              <div class="chip"><small>Codex · 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div></div>
+              <div class="chip"><small>Claude · 7d</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div></div>
+              <div class="chip"><small>GLM · Token</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div></div>
+              <div class="rank-slot"><small>消耗榜</small><strong>#128</strong><em>超过 86% · ↗</em></div>
+            </div>
+          </div>
+        </div>
+        <div class="foot"><button>打开仪表盘</button><button>刷新</button><button>设置</button></div>
+      </article>
+    </div>
+    <div class="rule"><b>空位规则：</b>1 个额度 → 大卡 + 榜占下半；2 个额度 → 两张全宽 + 榜条；3 个 → 本图；4 个 → 满格，榜改底栏。不要画空白第四格。</div>
+  </section>
+
+  <section class="panel" id="d3">
+    <div class="note">
+      <div>
+        <h2>D3 · 独立榜栏</h2>
+        <p>四栏：环 | Agent | 三额度竖排 | 消耗榜。榜用大号 #128，下面是超过百分比、我的 Token、全榜人数。和现在竖版浮窗里的榜卡信息量接近，只是立起来。</p>
+        <p>最适合已经装了 Token Rank、在意排名的人。浮窗会到约 860 宽。</p>
+      </div>
+      <div class="meta">
+        <div><b>宽度</b>860</div>
+        <div><b>适合</b>榜是日常动作，不只是附属信息</div>
+        <div><b>取舍</b>小屏外接显示器更满；无榜身份时右栏应整列隐藏</div>
+      </div>
+    </div>
+    <div class="stage" data-label="D3 · dedicated rank column">
+      <article class="pop w860">
+        <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync">已同步 · 2401 人在榜</div></div>
+        <div class="body4">
+          <div class="left"><small>第 2 圈</small><div class="ring"><span>1.24亿<em>62%</em></span></div><div style="font:700 11px/1.3 IBM Plex Sans,sans-serif;opacity:.8;text-align:center">$4.80</div></div>
+          <div class="mid">
+            <div class="hd"><b>Agent 用量</b><span>缓存 41%</span></div>
+            <div class="row"><span>Codex</span><div class="bar"><i style="--w:62%"></i></div><b>7720万</b><span>148</span></div>
+            <div class="row"><span>Claude</span><div class="bar"><i style="--w:21%;background:#3d7ca8"></i></div><b>2610万</b><span>36</span></div>
+            <div class="row"><span>ZCode</span><div class="bar"><i style="--w:9%;background:#c48c3c"></i></div><b>1120万</b><span>22</span></div>
+            <div class="row"><span>其他</span><div class="bar"><i style="--w:8%;background:#999"></i></div><b>990万</b><span>27</span></div>
+          </div>
+          <div class="right">
+            <div class="hd"><b>订阅额度</b><span>3</span></div>
+            <div class="chip"><small>Codex · 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div></div>
+            <div class="chip"><small>Claude · 7d</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div></div>
+            <div class="chip"><small>GLM · Token</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div></div>
+          </div>
+          <div class="rankcol">
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--muted)">今日排名</div>
+              <div class="big">#128</div>
+              <div class="sub">超过 86% 参榜用户<br>主力 Codex</div>
+            </div>
+            <div class="pills">
+              <div class="pill">我的今日<b>1.24亿</b></div>
+              <div class="pill">全榜今日<b>86.2亿 · 2401 人</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="foot"><button>打开仪表盘</button><button>刷新</button><button>设置</button></div>
+      </article>
+    </div>
+    <div class="rule"><b>无榜身份时：</b>整列不出现，浮窗回到 D1 的三栏宽度。不要留「尚未关联」的大空白列。</div>
+  </section>
+
+  <section class="panel" id="rules">
+    <div class="note">
+      <div>
+        <h2>额度数量怎么排，不要留空格</h2>
+        <p>订阅额度按「本机检测成功且用户打开了开关」的数量显示。没有的提供商不占位。下面是统一规则，三版布局都遵守。</p>
+      </div>
+      <div class="meta">
+        <div><b>0 家</b>整栏消失，宽度收到约 560</div>
+        <div><b>1–2 家</b>全宽大卡竖排，不进宫格</div>
+        <div><b>3 家</b>竖排三张，或 3+榜（D2）</div>
+        <div><b>4 家及以上</b>2×2，多的用 +N</div>
+      </div>
+    </div>
+    <div class="stage" data-label="quota count rules" style="flex-wrap:wrap;gap:20px;">
+      <div style="width:220px">
+        <div style="font:700 12px/1 IBM Plex Sans,sans-serif;margin-bottom:8px">1 个额度</div>
+        <div class="chip" style="min-height:88px"><small>Codex · 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><small style="margin-top:6px;display:block">2:14 后重置 · 7 天窗进详情</small></div>
+      </div>
+      <div style="width:220px">
+        <div style="font:700 12px/1 IBM Plex Sans,sans-serif;margin-bottom:8px">2 个额度</div>
+        <div class="chip"><small>Codex · 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div></div>
+        <div class="chip" style="margin-top:7px"><small>Claude · 7d</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div></div>
+      </div>
+      <div style="width:220px">
+        <div style="font:700 12px/1 IBM Plex Sans,sans-serif;margin-bottom:8px">3 个额度</div>
+        <div class="chip"><small>Codex</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div></div>
+        <div class="chip" style="margin-top:6px"><small>Claude</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div></div>
+        <div class="chip" style="margin-top:6px"><small>GLM</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div></div>
+      </div>
+      <div style="width:220px">
+        <div style="font:700 12px/1 IBM Plex Sans,sans-serif;margin-bottom:8px">4 个 · 才用宫格</div>
+        <div class="grid2">
+          <div class="chip"><small>Codex</small><strong>38%</strong></div>
+          <div class="chip"><small>Claude</small><strong>71%</strong></div>
+          <div class="chip"><small>GLM</small><strong>54%</strong></div>
+          <div class="chip"><small>Kimi</small><strong>67%</strong></div>
+        </div>
+      </div>
+    </div>
+    <div class="rule"><b>建议默认用 D1。</b>3 个额度是当前最常见的真实情况；底栏榜位置固定，不会因为多开一家订阅就跳来跳去。D2 适合坚持 800×280 不长高。D3 适合把榜当成主功能的人。</div>
+  </section>
+
+  <script>
+    document.querySelectorAll("[data-tab]").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll("[data-tab]").forEach((t) => t.setAttribute("aria-selected", t === tab ? "true" : "false"));
+        document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === tab.dataset.tab));
+      });
+    });
+  </script>
+</body>
+</html>

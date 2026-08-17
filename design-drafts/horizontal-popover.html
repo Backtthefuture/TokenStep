@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TokenStep 浮窗设计稿 · 三版横版</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #f3eee4;
+      --ink: #1b241c;
+      --muted: #5c675d;
+      --line: rgba(27, 36, 28, 0.12);
+      --forest: #1f6a48;
+      --lime: #c6e04a;
+      --terracotta: #c45c26;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "IBM Plex Sans", "PingFang SC", sans-serif;
+    }
+    body { padding: 40px 48px 80px; }
+    h1 {
+      font-family: "Fraunces", serif;
+      font-size: 42px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0 0 8px;
+    }
+    .lede {
+      max-width: 720px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.55;
+      margin-bottom: 28px;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+    .tabs button {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: 600 13px/1 "IBM Plex Sans", sans-serif;
+      cursor: pointer;
+    }
+    .tabs button[aria-selected="true"] {
+      background: var(--ink);
+      color: var(--paper);
+      border-color: var(--ink);
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .note {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+    .note h2 {
+      font-family: "Syne", sans-serif;
+      font-size: 22px;
+      margin: 0 0 8px;
+    }
+    .note p { margin: 0 0 10px; color: var(--muted); line-height: 1.55; }
+    .meta {
+      display: grid;
+      gap: 10px;
+    }
+    .meta div {
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+    }
+    .meta b { display: block; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    .stage {
+      background: #cfd6c8;
+      border-radius: 28px;
+      padding: 48px 32px 56px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 420px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stage::before {
+      content: "菜单栏点击后的浮窗";
+      position: absolute;
+      top: 18px;
+      left: 24px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #3e4a3f;
+    }
+    .mac-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 28px;
+      background: #1c1c1c;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      padding: 0 18px;
+      gap: 10px;
+      color: #eee;
+      font-size: 11px;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .island {
+      width: 92px;
+      height: 18px;
+      background: #000;
+      border-radius: 999px;
+      margin-right: auto;
+      margin-left: 42%;
+    }
+
+    /* Current vertical */
+    .v-card {
+      width: 412px;
+      background: #f7f4ee;
+      border-radius: 22px;
+      padding: 16px 20px 20px;
+      box-shadow: 0 18px 40px rgba(20, 30, 22, 0.18);
+      font-family: "IBM Plex Sans", sans-serif;
+    }
+    .v-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .mark {
+      width: 36px; height: 36px; border-radius: 12px;
+      background: #1f6a48; color: #e8f6c8;
+      display: grid; place-items: center;
+      font-family: "Syne", sans-serif; font-weight: 800;
+    }
+    .ring {
+      width: var(--s, 118px); height: var(--s, 118px);
+      border-radius: 50%;
+      background: conic-gradient(#2f9e6a calc(var(--p, .62) * 360deg), #d7e3d4 0);
+      display: grid; place-items: center;
+    }
+    .ring span {
+      width: calc(100% - 22px); height: calc(100% - 22px);
+      background: #f7f4ee; border-radius: 50%;
+      display: grid; place-items: center; text-align: center;
+      font-weight: 800; font-size: 15px;
+    }
+    .pill { background: #ece6da; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 700; }
+    .bar { height: 6px; background: #ddd6c8; border-radius: 99px; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: #2f9e6a; width: var(--w); }
+
+    /* Version A */
+    .a-wrap {
+      width: 800px;
+      height: 248px;
+      background: #f6f1e7;
+      border: 1px solid #d9d0c0;
+      border-radius: 26px;
+      display: grid;
+      grid-template-columns: 168px 1fr 236px;
+      overflow: hidden;
+      box-shadow: 0 22px 50px rgba(28, 40, 30, 0.16);
+    }
+    .a-left {
+      background: #173528;
+      color: #e7f3c8;
+      padding: 18px 16px;
+      display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .a-left .ring { --s: 108px; background: conic-gradient(#c6e04a 223deg, #2b5340 0); }
+    .a-left .ring span { background: #173528; color: #e7f3c8; font-size: 18px; }
+    .a-mid { padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+    .a-row { display: grid; grid-template-columns: 72px 1fr 64px 52px; gap: 8px; align-items: center; font-size: 12px; }
+    .a-row b { font-size: 13px; }
+    .a-right { padding: 14px 14px 12px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .q {
+      background: #fffdf8;
+      border: 1px solid #e4dacb;
+      border-radius: 14px;
+      padding: 10px;
+    }
+    .q small { color: var(--muted); font-weight: 700; }
+    .q strong { display: block; font-size: 18px; margin: 4px 0; font-variant-numeric: tabular-nums; }
+
+    /* Version B */
+    .b-wrap {
+      width: 880px;
+      height: 292px;
+      background: #13110d;
+      color: #efe7d6;
+      border-radius: 18px;
+      display: grid;
+      grid-template-columns: 200px 1fr 228px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,.35);
+      font-family: "IBM Plex Sans", sans-serif;
+    }
+    .b-left { padding: 18px; border-right: 1px solid #2a261e; }
+    .b-left .ring { --s: 124px; background: conic-gradient(#c6e04a 223deg, #2a261e 0); margin: 8px auto 12px; }
+    .b-left .ring span { background: #13110d; color: #c6e04a; font-family: "IBM Plex Mono", monospace; }
+    .b-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .b-table th { text-align: left; color: #9a917e; font-weight: 600; padding: 8px 10px; border-bottom: 1px solid #2a261e; }
+    .b-table td { padding: 9px 10px; border-bottom: 1px solid #221e18; font-variant-numeric: tabular-nums; }
+    .b-right { padding: 14px; background: #19160f; display: flex; flex-direction: column; gap: 8px; }
+    .bq { background: #211d15; border-radius: 10px; padding: 9px 10px; }
+    .warn { color: #e08a3c; }
+
+    /* Version C */
+    .c-wrap {
+      width: 940px;
+      height: 176px;
+      background: #faf7f2;
+      border: 1.5px solid #1b241c;
+      border-radius: 14px;
+      display: grid;
+      grid-template-columns: 168px 1fr 150px;
+      overflow: hidden;
+      box-shadow: 8px 10px 0 #1b241c;
+      font-family: "Barlow", sans-serif;
+    }
+    .c-token {
+      padding: 16px 14px;
+      background: #1b241c;
+      color: #faf7f2;
+    }
+    .c-token em {
+      font-family: "Fraunces", serif;
+      font-style: normal;
+      font-size: 34px;
+      display: block;
+      letter-spacing: -0.04em;
+    }
+    .c-quota {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 1px;
+      background: #1b241c;
+    }
+    .c-quota article {
+      background: #faf7f2;
+      padding: 12px 10px;
+    }
+    .c-quota b { font-size: 22px; font-variant-numeric: tabular-nums; }
+    .spark {
+      height: 42px;
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      margin-top: 18px;
+      padding: 12px;
+    }
+    .spark i {
+      flex: 1;
+      background: var(--terracotta);
+      display: block;
+      min-height: 3px;
+    }
+
+    .legend { margin-top: 22px; color: var(--muted); font-size: 13px; line-height: 1.55; max-width: 860px; }
+    .dash {
+      margin-top: 18px;
+      background: #fffdf8;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+    }
+    .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 14px; }
+    .kpis div { background: #f3eee4; border-radius: 12px; padding: 10px; }
+    .kpis b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+    .kpis span { font-size: 11px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h1>TokenStep 浮窗三版设计稿</h1>
+  <p class="lede">
+    当前菜单栏浮窗是 412px 竖向叠卡，一加 Agent 和订阅额度就会越拉越长。下面三版都改成横扫：保留健身环记忆点，把「今日走了多少步 / 各 Agent 贡献 / 订阅还剩多少」放进同一视窗。数字是示意，用来看信息层级，不是真实账单。
+  </p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="now">现状 · 竖版</button>
+    <button role="tab" aria-selected="false" data-tab="a">A · 横版健身台</button>
+    <button role="tab" aria-selected="false" data-tab="b">B · 工作台</button>
+    <button role="tab" aria-selected="false" data-tab="c">C · 额度横条</button>
+    <button role="tab" aria-selected="false" data-tab="stats">今日页 Agent 统计加厚</button>
+  </div>
+
+  <section class="panel active" id="now">
+    <div class="note">
+      <div>
+        <h2>现状：竖版卡片栈</h2>
+        <p>PopoverPanelView 固定宽 412px，从上到下：标题、今日圆环、Agent 一行摘要、Codex/Claude 额度、榜单、页脚。Token Island 展开虽是 356×238，工具行仍写死 Codex 与 Claude Code。</p>
+        <p>问题不是不好看，是装不下。GLM / Kimi / Grok 额度一旦打开，用户要点击后向下滚才能看完「会不会被限流」。</p>
+      </div>
+      <div class="meta">
+        <div><b>尺寸</b>412 × 自适应高度</div>
+        <div><b>适合</b>只有 1–2 个 Agent 的早期版本</div>
+        <div><b>不适合</b>多订阅、多 Agent 同时在跑</div>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="mac-bar"><span class="island"></span>TokenStep 1.24亿</div>
+      <article class="v-card">
+        <div class="v-head"><div class="mark">T</div><div><b>TokenStep</b><div style="font-size:12px;color:#6b746c">已同步</div></div></div>
+        <div style="display:flex;gap:16px;align-items:center">
+          <div class="ring" style="--p:.62"><span>1.24亿<br><small style="font-weight:600;color:#6b746c">/1亿 每圈</small></span></div>
+          <div>
+            <div style="font-size:13px;font-weight:700">第 2 圈</div>
+            <div style="font-size:36px;font-weight:800;color:#1f6a48">62%</div>
+            <div class="pill" style="margin-top:8px">消耗 $4.80</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;font-size:12px;font-weight:700;color:#6b746c">Agent 活跃 · 1.24亿 · 记录 11/24 · 缓存 41%</div>
+        <div style="margin-top:10px">
+          <div style="font-size:12px;margin-bottom:4px">Codex 5小时 剩余 38%</div>
+          <div class="bar"><i style="--w:38%"></i></div>
+          <div style="font-size:12px;margin:8px 0 4px">Claude 7天 剩余 71%</div>
+          <div class="bar"><i style="--w:71%"></i></div>
+        </div>
+      </article>
+    </div>
+    <p class="legend">竖版把「环」当英雄模块是对的，但额度与 Agent 被压成附录。横版要做的是：环仍然一眼能认，右侧让订阅和 Agent 进入主视线。</p>
+  </section>
+
+  <section class="panel" id="a">
+    <div class="note">
+      <div>
+        <h2>方案 A · 横版健身台（推荐默认）</h2>
+        <p>左栏深色圆环承接现有品牌；中栏按 Agent 列出 Token、请求、占比，不再写死两家；右栏四张额度胶囊覆盖 Codex / Claude / GLM / Kimi，Grok 用第五张的位置规则：有数据才出现。</p>
+        <p>这是对现浮窗的「旋转」而不是重做。用户仍先看到圈数，再扫一眼谁在干活、哪张订阅快见底。</p>
+      </div>
+      <div class="meta">
+        <div><b>尺寸</b>800 × 248</div>
+        <div><b>适合</b>大多数用户，作为 0.2 默认浮窗</div>
+        <div><b>取舍</b>Agent 超过 4 家收入「其他」；额度最多 4 张可见胶囊</div>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="mac-bar"><span class="island"></span>62% · 1.24亿</div>
+      <article class="a-wrap">
+        <div class="a-left">
+          <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">今日 · 第 2 圈</div>
+          <div class="ring" style="--p:.62"><span>1.24亿<br>62%</span></div>
+          <div style="font-size:12px;opacity:.8">目标 1 亿 / 圈 · $4.80</div>
+        </div>
+        <div class="a-mid">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <b>Agent 用量</b>
+            <span style="font-size:12px;color:#6b746c">11 个有记录小时 · 缓存 41%</span>
+          </div>
+          <div class="a-row"><span>Codex</span><div class="bar"><i style="--w:62%"></i></div><b>7720万</b><span>148 请求</span></div>
+          <div class="a-row"><span>Claude</span><div class="bar"><i style="--w:21%"></i></div><b>2610万</b><span>36 请求</span></div>
+          <div class="a-row"><span>ZCode</span><div class="bar"><i style="--w:9%"></i></div><b>1120万</b><span>22 请求</span></div>
+          <div class="a-row"><span>Kimi</span><div class="bar"><i style="--w:5%"></i></div><b>620万</b><span>18 请求</span></div>
+          <div class="a-row"><span>Grok</span><div class="bar"><i style="--w:3%"></i></div><b>370万</b><span>9 请求</span></div>
+        </div>
+        <div class="a-right">
+          <div class="q"><small>GLM Coding</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><small>Token 窗 · 11h 后重置</small></div>
+          <div class="q"><small>Kimi 周窗</small><strong>67%</strong><div class="bar"><i style="--w:67%"></i></div><small>3 天后重置</small></div>
+          <div class="q"><small>Grok Credits</small><strong>29%</strong><div class="bar"><i style="--w:29%"></i></div><small>低 · 注意限流</small></div>
+          <div class="q"><small>Codex 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><small>2:14 后重置</small></div>
+        </div>
+      </article>
+    </div>
+    <p class="legend">推荐作为默认。实现上主要改 PopoverPanelView 为 HStack 三栏，TokenIslandExpandedView 同步改成同一套信息架构，避免菜单栏和灵动岛两套叙事。</p>
+  </section>
+
+  <section class="panel" id="b">
+    <div class="note">
+      <div>
+        <h2>方案 B · 工作台</h2>
+        <p>给同时开多套订阅的人看数。中表直接露出 Token、请求、工具调用、缓存命中——这些字段 DailyAgentWork 里已经有，只是界面没用。右栏按「剩余百分比」排序，见底的订阅置顶并标暖色。</p>
+        <p>比 A 更像报表，截图分享会变「日报」而不是「步数卡」。建议做成显示密度开关，而不是替换默认。</p>
+      </div>
+      <div class="meta">
+        <div><b>尺寸</b>880 × 292</div>
+        <div><b>适合</b>GLM + Kimi + Grok + Codex 并行</div>
+        <div><b>取舍</b>更重、更暗，品牌温情下降</div>
+      </div>
+    </div>
+    <div class="stage" style="background:#2a261e">
+      <div class="mac-bar"><span class="island"></span>Grok 29% · 低</div>
+      <article class="b-wrap">
+        <div class="b-left">
+          <div style="font-size:11px;color:#9a917e">TODAY LAP 2</div>
+          <div class="ring"><span>124.1M<br>62%</span></div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#c6e04a">REQ 233 · TOOL 891 · $4.80</div>
+        </div>
+        <div style="padding:8px 0">
+          <table class="b-table">
+            <thead><tr><th>Agent</th><th>Tokens</th><th>请求</th><th>工具</th><th>缓存</th></tr></thead>
+            <tbody>
+              <tr><td>Codex</td><td>77.2M</td><td>148</td><td>612</td><td>46%</td></tr>
+              <tr><td>Claude Code</td><td>26.1M</td><td>36</td><td>140</td><td>38%</td></tr>
+              <tr><td>ZCode / GLM</td><td>11.2M</td><td>22</td><td>71</td><td>22%</td></tr>
+              <tr><td>Kimi Code</td><td>6.2M</td><td>18</td><td>44</td><td>19%</td></tr>
+              <tr><td>Grok Build</td><td>3.7M</td><td>9</td><td>24</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="b-right">
+          <div style="font-size:11px;color:#9a917e">SUBSCRIPTION REMAINING</div>
+          <div class="bq"><b class="warn">Grok Credits 29%</b><div class="bar"><i style="--w:29%;background:#e08a3c"></i></div></div>
+          <div class="bq"><b>Codex 5h 38%</b><div class="bar"><i style="--w:38%;background:#c6e04a"></i></div></div>
+          <div class="bq"><b>GLM Token 54%</b><div class="bar"><i style="--w:54%;background:#c6e04a"></i></div></div>
+          <div class="bq"><b>Kimi Weekly 67%</b><div class="bar"><i style="--w:67%;background:#c6e04a"></i></div></div>
+          <div class="bq"><b>Claude 7d 71%</b><div class="bar"><i style="--w:71%;background:#c6e04a"></i></div></div>
+        </div>
+      </article>
+    </div>
+    <p class="legend">Grok 本地 logs 往往没有稳定的缓存拆分，表里用破折号而不是 0%，避免把「没采集到」显示成「从未命中缓存」。</p>
+  </section>
+
+  <section class="panel" id="c">
+    <div class="note">
+      <div>
+        <h2>方案 C · 额度横条</h2>
+        <p>先回答会不会被限流。今日 Token 做锚点，五张订阅剩余横铺，右侧 24 小时 sparkline 提示节奏。适合点开看一眼就关掉的人。</p>
+        <p>圆环被降级成数字，TokenStep 的「步数」隐喻变弱。深度 Agent 统计必须回到今日页。可作为「极简模式」，不建议做唯一默认。</p>
+      </div>
+      <div class="meta">
+        <div><b>尺寸</b>940 × 176</div>
+        <div><b>适合</b>订阅焦虑、多窗口编码</div>
+        <div><b>取舍</b>品牌识别下降；Agent 明细几乎消失</div>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="mac-bar"><span class="island"></span>Grok 低</div>
+      <article class="c-wrap">
+        <div class="c-token">
+          <small>TODAY</small>
+          <em>1.24亿</em>
+          <small>第 2 圈 · 62%</small>
+        </div>
+        <div class="c-quota">
+          <article><small>GLM</small><b>54%</b><div class="bar"><i style="--w:54%;background:#1b241c"></i></div></article>
+          <article><small>Kimi</small><b>67%</b><div class="bar"><i style="--w:67%;background:#1b241c"></i></div></article>
+          <article><small>Grok</small><b style="color:#c45c26">29%</b><div class="bar"><i style="--w:29%;background:#c45c26"></i></div></article>
+          <article><small>Codex 5h</small><b>38%</b><div class="bar"><i style="--w:38%;background:#1b241c"></i></div></article>
+          <article><small>Claude 7d</small><b>71%</b><div class="bar"><i style="--w:71%;background:#1b241c"></i></div></article>
+        </div>
+        <div class="spark" title="24h token">
+          <i style="height:20%"></i><i style="height:18%"></i><i style="height:12%"></i><i style="height:40%"></i>
+          <i style="height:55%"></i><i style="height:48%"></i><i style="height:70%"></i><i style="height:88%"></i>
+          <i style="height:60%"></i><i style="height:44%"></i><i style="height:30%"></i><i style="height:22%"></i>
+        </div>
+      </article>
+    </div>
+    <p class="legend">若选 C 做默认，菜单栏图标建议在任一订阅低于 20% 时改成暖色小点，否则用户点开前不知道要紧张。</p>
+  </section>
+
+  <section class="panel" id="stats">
+    <div class="note">
+      <div>
+        <h2>今日页：把已经采到的数亮出来</h2>
+        <p>Agent 工作强度卡现在只有 Token、有记录小时、7 日均、缓存命中。模型请求数和工具调用数在 DailyAgentWork 里已经算好。筛选器仍是 Codex / Hermes / 其他，对 GLM / Kimi / Grok 不友好。</p>
+        <p>建议今日页加厚这一块，浮窗保持扫一眼。两者分工：浮窗看「还剩多少」，今日页看「今天怎么干的」。</p>
+      </div>
+      <div class="meta">
+        <div><b>改动面</b>TodayAgentWorkCard + 筛选枚举</div>
+        <div><b>不改采集</b>先用现有字段，Kimi/Grok 会话后补</div>
+        <div><b>原则</b>缺字段显示 —，不用 0 假装完整</div>
+      </div>
+    </div>
+    <div class="dash">
+      <div class="kpis">
+        <div><span>Agent Token</span><b>1.24亿</b></div>
+        <div><span>模型请求</span><b>233</b></div>
+        <div><span>工具调用</span><b>891</b></div>
+        <div><span>有记录小时</span><b>11/24</b></div>
+        <div><span>缓存命中</span><b>41%</b></div>
+        <div><span>近 7 日均</span><b>0.91亿</b></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr .8fr;gap:16px">
+        <div>
+          <b>24 小时 Token · 按 Agent 堆叠</b>
+          <div class="spark" style="height:88px;margin:8px 0 0;padding:0">
+            <i style="height:12%;background:#1f6a48"></i><i style="height:10%;background:#1f6a48"></i>
+            <i style="height:8%;background:#3d7ca8"></i><i style="height:28%;background:#1f6a48"></i>
+            <i style="height:46%;background:#1f6a48"></i><i style="height:40%;background:#c45c26"></i>
+            <i style="height:62%;background:#1f6a48"></i><i style="height:90%;background:#1f6a48"></i>
+            <i style="height:58%;background:#3d7ca8"></i><i style="height:36%;background:#1f6a48"></i>
+            <i style="height:22%;background:#888"></i><i style="height:16%;background:#888"></i>
+          </div>
+        </div>
+        <div>
+          <b>Input / Output / Cache</b>
+          <div style="margin-top:10px" class="bar"><i style="--w:48%;background:#1f6a48"></i></div>
+          <div style="font-size:12px;color:#6b746c;margin:6px 0 10px">Input 48% · Output 31% · Cache 21%</div>
+          <div style="font-size:12px;line-height:1.6;color:#5c675d">筛选改为全部 / Codex / Claude / ZCode / Kimi / Grok / 其他。没有数据的 Tab 不出现。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const tabs = document.querySelectorAll("[data-tab]");
+    const panels = document.querySelectorAll(".panel");
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => t.setAttribute("aria-selected", t === tab ? "true" : "false"));
+        panels.forEach((p) => p.classList.toggle("active", p.id === tab.dataset.tab));
+      });
+    });
+  </script>
+</body>
+</html>

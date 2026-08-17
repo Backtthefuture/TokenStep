@@ -8,7 +8,8 @@ enum StatusBarIconRenderer {
         size: CGFloat = 22,
         radius: CGFloat = 8.7,
         lineWidth: CGFloat = 3,
-        showsCenterDot: Bool = true
+        showsCenterDot: Bool = true,
+        warning: Bool = false
     ) -> NSImage {
         let size = NSSize(width: size, height: size)
         let image = NSImage(size: size)
@@ -47,6 +48,12 @@ enum StatusBarIconRenderer {
             dotColor.setFill()
             let dotSize = max(2.4, size.width * 0.15)
             NSBezierPath(ovalIn: NSRect(x: center.x - dotSize / 2, y: center.y - dotSize / 2, width: dotSize, height: dotSize)).fill()
+        }
+
+        if warning {
+            let badge = NSRect(x: size.width - 7.2, y: size.height - 7.2, width: 5.6, height: 5.6)
+            NSColor(calibratedRed: 0.92, green: 0.45, blue: 0.16, alpha: 1).setFill()
+            NSBezierPath(ovalIn: badge).fill()
         }
 
         image.unlockFocus()

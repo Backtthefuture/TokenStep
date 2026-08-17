@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TokenStep 设计稿索引</title>
+<style>
+:root{--paper:#efe9dc;--ink:#1b241c;--muted:#6a7468;--line:rgba(27,36,28,.1);--chip:#fffdf8;--forest:#1f6a48}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,"PingFang SC",sans-serif}
+body{padding:44px 40px 80px;max-width:920px}
+h1{font-size:30px;letter-spacing:-.03em;margin:0 0 10px}
+p.lede{color:var(--muted);line-height:1.7;font-size:14.5px;margin:0 0 26px}
+h2{font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
+a.card{display:block;text-decoration:none;color:inherit;background:var(--chip);border:1px solid var(--line);border-radius:14px;padding:15px 17px;margin-bottom:9px}
+a.card:hover{border-color:var(--forest)}
+a.card b{font-size:15.5px;display:block;margin-bottom:4px}
+a.card span{font-size:13px;color:var(--muted);line-height:1.6;display:block}
+.tag{display:inline-block;font:800 9.5px/1 -apple-system,sans-serif;letter-spacing:.05em;border-radius:5px;padding:3px 6px;background:#e6f2e4;color:#1c5c3a;border:1px solid #c3dcc6;margin-left:7px;vertical-align:middle}
+.tag.old{background:#f2ebdc;color:#7b8378;border-color:#e0d6c4}
+</style>
+</head>
+<body>
+<h1>TokenStep 设计稿</h1>
+<p class="lede">0.2.0 这一版的设计稿与 PRD。PRD 在仓库 <code>docs/PRD-0.2.0.md</code>。图片生成对中文常有糊字，<b>一律以这里的 HTML 红线为准</b>。</p>
+
+<h2>本版定稿</h2>
+<a class="card" href="prd-v2-popover.html"><b>设计稿 A · 浮窗全状态<span class="tag">当前</span></b><span>默认态、额度 0/2/6 家、无榜身份、告急与失败、通知带、灵动岛与菜单栏图标。含 Cursor 产出行（L3）。</span></a>
+<a class="card" href="prd-v2-windows.html"><b>设计稿 B · 仪表盘与设置<span class="tag">当前</span></b><span>今日（补全请求数/工具/输出 + Cursor 产出卡）、历史、隐私（写清 Cursor 读了什么）、设置三页（数据源分层、6 家额度、通用）。</span></a>
+<a class="card" href="d3-actions-board.html"><b>D3 浅色收束<span class="tag">当前</span></b><span>浮窗视觉基准：浅色四栏、环留浅底、主按钮定宽靠左、深色只留给全榜今日消耗。</span></a>
+
+<h2>过程稿（仅存档）</h2>
+<a class="card" href="d3-wide.html"><b>D3 加宽 W1/W2/W3<span class="tag old">已否</span></b><span>1040 宽三版。W3 的邻近名次（#127/你/#129）已明确不做；左栏深色墙已废弃。</span></a>
+<a class="card" href="default-rank-quota3.html"><b>D1/D2/D3 榜位探索<span class="tag old">存档</span></b><span>消耗榜放底栏 / 占第四格 / 独立成栏三种比较，最终选 D3。</span></a>
+<a class="card" href="horizontal-popover-v2.html"><b>V2 横版红线<span class="tag old">存档</span></b><span>800×280 三栏，含设置页与灵动岛告警态早期设想。</span></a>
+<a class="card" href="horizontal-popover.html"><b>V1 三方向<span class="tag old">存档</span></b><span>横版健身台 / 工作台 / 额度横条最初三个方向。</span></a>
+</body>
+</html>

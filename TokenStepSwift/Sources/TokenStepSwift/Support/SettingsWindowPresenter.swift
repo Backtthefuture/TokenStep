@@ -29,7 +29,7 @@ final class SettingsWindowPresenter {
         let window = NSWindow(contentViewController: controller)
         window.title = L("设置")
         window.identifier = NSUserInterfaceItemIdentifier("settings")
-        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
@@ -38,7 +38,7 @@ final class SettingsWindowPresenter {
         window.minSize = NSSize(width: 920, height: 760)
         window.setContentSize(NSSize(width: 920, height: 760))
         window.center()
-        window.setFrameAutosaveName("TokenStepSettingsWindow")
+        window.setFrameAutosaveName("TokenStepSettingsWindow.v2")
         return window
     }
 

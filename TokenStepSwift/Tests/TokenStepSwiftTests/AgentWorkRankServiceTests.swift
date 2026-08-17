@@ -77,9 +77,7 @@ final class AgentWorkRankServiceTests: XCTestCase {
         XCTAssertNotNil(identity.lastSyncedAt)
     }
 
-    func testUnrecognizedLegacyRankFieldsStayOptInHidden() throws {
-        // E0-T03: legacy fields the app no longer recognizes (old shengcai token rank)
-        // must never silently enable identity reads or leaderboard requests.
+    func testLegacyShengcaiSettingsMigrateToAutomaticAgentWorkRank() throws {
         let data = Data("""
         {
           "show_token_rank": true,
@@ -87,7 +85,7 @@ final class AgentWorkRankServiceTests: XCTestCase {
         }
         """.utf8)
         let settings = try JSONDecoder().decode(TokenStepSettings.self, from: data)
-        XCTAssertEqual(settings.agentWorkRankVisibility, .hidden)
+        XCTAssertEqual(settings.agentWorkRankVisibility, .automatic)
     }
 
     func testLegacyAgentWorkRankBooleanMigratesToThreeStateVisibility() throws {
@@ -95,62 +93,13 @@ final class AgentWorkRankServiceTests: XCTestCase {
             TokenStepSettings.self,
             from: Data("{\"show_agent_work_rank\":true}".utf8)
         )
-        let hidden = try JSONDecoder().decode(
+        let automatic = try JSONDecoder().decode(
             TokenStepSettings.self,
             from: Data("{\"show_agent_work_rank\":false}".utf8)
         )
 
         XCTAssertEqual(visible.agentWorkRankVisibility, .visible)
-        XCTAssertEqual(hidden.agentWorkRankVisibility, .hidden)
-    }
-
-    func testDefaultSettingsKeepAgentWorkRankOptIn() {
-        XCTAssertEqual(TokenStepSettings.defaults.agentWorkRankVisibility, .hidden)
-        XCTAssertFalse(TokenStepSettings.defaults.agentWorkRankVisibility.readsLocalIdentity)
-        XCTAssertFalse(
-            TokenStepSettings.defaults.agentWorkRankVisibility.shouldShow(hasLocalIdentity: true)
-        )
-    }
-
-    func testIdentityLoaderOverrideIsOnlyReachedThroughServiceEntryPoint() throws {
-        var identityReads = 0
-        AgentWorkRankService.localIdentityLoaderOverride = { _ in
-            identityReads += 1
-            return AgentWorkRankIdentity(id: 1, name: "x", avatarURL: nil, lastSyncedAt: nil)
-        }
-        defer { AgentWorkRankService.localIdentityLoaderOverride = nil }
-
-        // The visibility gate (AppState) consults `readsLocalIdentity` before calling
-        // loadLocalIdentity; with the new opt-in default (.hidden) a default-settings
-        // launch therefore performs zero identity reads and zero leaderboard requests.
-        XCTAssertFalse(AgentWorkRankVisibility.hidden.readsLocalIdentity)
-        XCTAssertFalse(AgentWorkRankVisibility.hidden.shouldShow(hasLocalIdentity: true))
-
-        let identity = try XCTUnwrap(AgentWorkRankService.loadLocalIdentity())
-        XCTAssertEqual(identityReads, 1)
-        XCTAssertEqual(identity.id, 1)
-    }
-
-    func testLeaderboardClientOverrideShortCircuitsNetwork() async throws {
-        var requests = 0
-        AgentWorkRankService.leaderboardClientOverride = { _, _, _ in
-            requests += 1
-            return TokenRankLeaderboard(
-                fetchedAt: Date(),
-                range: "today",
-                client: "all",
-                usageMode: "all",
-                totalTokens: 0,
-                totalRankedUsers: 0,
-                topLimit: 0,
-                entries: []
-            )
-        }
-        defer { AgentWorkRankService.leaderboardClientOverride = nil }
-
-        let leaderboard = try await AgentWorkRankService.fetchLeaderboard()
-        XCTAssertEqual(requests, 1)
-        XCTAssertEqual(leaderboard.client, "all")
+        XCTAssertEqual(automatic.agentWorkRankVisibility, .automatic)
     }
 
     func testExplicitHiddenVisibilityWinsOverLegacyBoolean() throws {

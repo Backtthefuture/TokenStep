@@ -31,6 +31,152 @@ struct DisplayPlacementButton: View {
     }
 }
 
+enum SettingsBadgeStyle {
+    case ok, warn, off, l1, l2, l3
+
+    var foreground: Color {
+        switch self {
+        case .ok, .l1: return Color(red: 0.11, green: 0.36, blue: 0.23)
+        case .warn: return Color(red: 0.56, green: 0.29, blue: 0.09)
+        case .off: return Color.secondary
+        case .l2: return Color(red: 0.24, green: 0.30, blue: 0.56)
+        case .l3: return Color(red: 0.36, green: 0.25, blue: 0.59)
+        }
+    }
+
+    var background: Color {
+        switch self {
+        case .ok, .l1: return Color(red: 0.90, green: 0.95, blue: 0.89)
+        case .warn: return Color(red: 0.97, green: 0.93, blue: 0.87)
+        case .off: return Color.tokenTrack.opacity(0.45)
+        case .l2: return Color(red: 0.91, green: 0.93, blue: 0.97)
+        case .l3: return Color(red: 0.94, green: 0.92, blue: 0.98)
+        }
+    }
+
+    var border: Color {
+        switch self {
+        case .ok, .l1: return Color(red: 0.76, green: 0.86, blue: 0.78)
+        case .warn: return Color(red: 0.90, green: 0.80, blue: 0.71)
+        case .off: return Color.black.opacity(0.08)
+        case .l2: return Color(red: 0.78, green: 0.80, blue: 0.90)
+        case .l3: return Color(red: 0.84, green: 0.80, blue: 0.91)
+        }
+    }
+}
+
+struct SettingsBadge: View {
+    var text: String
+    var style: SettingsBadgeStyle
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .heavy))
+            .foregroundStyle(style.foreground)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(style.background, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(style.border)
+            )
+    }
+}
+
+struct SettingsSectionCard<Content: View>: View {
+    var title: String
+    var subtitle: String? = nil
+    var badge: String? = nil
+    var badgeStyle: SettingsBadgeStyle = .off
+    var tint: SettingsBadgeStyle? = nil
+    var content: Content
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        badge: String? = nil,
+        badgeStyle: SettingsBadgeStyle = .off,
+        tint: SettingsBadgeStyle? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.badge = badge
+        self.badgeStyle = badgeStyle
+        self.tint = tint
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(title)
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.tokenInk)
+                if let badge {
+                    SettingsBadge(text: badge, style: badgeStyle)
+                }
+                Spacer(minLength: 0)
+            }
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            content
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(sectionBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(sectionBorder)
+        )
+    }
+
+    private var sectionBackground: Color {
+        switch tint ?? badgeStyle {
+        case .l2: return Color(red: 0.97, green: 0.98, blue: 0.99)
+        case .l3: return Color(red: 0.98, green: 0.97, blue: 0.99)
+        default: return Color.tokenSurface
+        }
+    }
+
+    private var sectionBorder: Color {
+        switch tint ?? badgeStyle {
+        case .l2: return Color(red: 0.81, green: 0.84, blue: 0.92)
+        case .l3: return Color(red: 0.87, green: 0.84, blue: 0.91)
+        default: return Color.black.opacity(0.06)
+        }
+    }
+}
+
+struct SettingsPickerChip: View {
+    var title: String
+    var selected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(selected ? Color(red: 0.93, green: 0.97, blue: 0.85) : Color.tokenInk.opacity(0.68))
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .background(
+                    selected ? Color.tokenGreenDark : Color.tokenTrack.opacity(0.45),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(selected ? Color.tokenGreenDark : Color.black.opacity(0.06))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct SettingsCard<Content: View>: View {
     var title: String
     var symbol: String
@@ -69,7 +215,7 @@ struct SettingsCard<Content: View>: View {
         .padding(.horizontal, 22)
         .padding(.top, 24)
         .padding(.bottom, 22)
-        .frame(height: height > 0 ? height : nil)
+        .frame(height: height)
         .frame(maxWidth: .infinity)
         .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.black.opacity(0.06)))

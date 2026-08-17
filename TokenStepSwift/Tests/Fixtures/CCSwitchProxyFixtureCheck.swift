@@ -491,7 +491,7 @@ struct CCSwitchProxyFixtureCheck {
             {"show_token_rank":true,"token_rank_user_id":"168066"}
             """.utf8)
         )
-        try assertEqual(legacySettings.agentWorkRankVisibility, .hidden, "unrecognized legacy rank fields stay opt-in hidden")
+        try assertEqual(legacySettings.agentWorkRankVisibility, .automatic, "legacy rank uses automatic detection")
 
         let hiddenSettings = try JSONDecoder().decode(
             TokenStepSettings.self,
@@ -788,17 +788,6 @@ struct CCSwitchProxyFixtureCheck {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let database = directory.appendingPathComponent("zcode.sqlite")
         try runSQLite(database: database, sql: """
-        create table session (
-            id text primary key,
-            project_id text not null,
-            workspace_id text,
-            parent_id text,
-            slug text not null,
-            directory text not null,
-            path text,
-            title text not null,
-            version text not null
-        );
         create table model_usage (
             id text primary key,
             logical_request_id text not null,

@@ -6,35 +6,16 @@ struct PopoverPanelView: View {
     @Environment(\.isScreenshotRendering) private var isScreenshotRendering
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
             header
-            if let error = appState.lastError {
-                ErrorBanner(message: error) {
-                    appState.clearError()
-                }
-            }
-            if appState.showsUsageRecalibrationNotice {
-                UsageRecalibrationNotice {
-                    appState.dismissUsageRecalibrationNotice()
-                }
-            }
-            PopoverTodayRingCard()
-            PopoverAgentWorkStrip()
-            if appState.settings.showCodexQuota {
-                PopoverQuotaCard()
-            }
-            if appState.shouldShowAgentWorkRank {
-                PopoverTokenRankCard()
-            }
-            if let update = appState.availableUpdate {
-                UpdateNoticeCard(update: update)
-            }
+            columns
+            notices
             PopoverFooterView()
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 14)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 20)
-        .frame(width: 412)
+        .frame(width: 900)
         .background(TokenStepBackdrop())
         .id(appState.appearanceID)
         .onAppear {
@@ -45,34 +26,24 @@ struct PopoverPanelView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            TokenStepMark(size: 40)
-            VStack(alignment: .leading, spacing: 0) {
-                Text("TokenStep")
-                    .font(.system(size: 24, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.tokenInk)
-            }
+        HStack(spacing: 10) {
+            TokenStepMark(size: 28)
+            Text("TokenStep")
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.tokenInk)
             Spacer()
-            if appState.isRefreshing {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(Color.secondary.opacity(0.68))
-                        .frame(width: 7, height: 7)
-                    Text(L("同步中"))
-                        .font(.caption.weight(.heavy))
-                        .foregroundStyle(Color.tokenInk.opacity(0.72))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Color.tokenSurface, in: Capsule())
-                .overlay(Capsule().stroke(Color.black.opacity(0.055)))
-            } else {
-                // G-V1：头部状态反映统一新鲜度；需要注意时附带最后成功时间。
-                FreshnessBadge(
-                    freshness: appState.collectionFreshness,
-                    showsLastSucceeded: appState.collectionFreshness.needsAttention
-                )
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(appState.isRefreshing ? Color.secondary.opacity(0.68) : Color.tokenGreen)
+                    .frame(width: 7, height: 7)
+                Text(appState.isRefreshing ? L("同步中") : L("已同步"))
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk.opacity(0.72))
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.tokenSurface, in: Capsule())
+            .overlay(Capsule().stroke(Color.black.opacity(0.055)))
 
             if !isScreenshotRendering {
                 PopoverCaptureMenuButton(
@@ -86,6 +57,69 @@ struct PopoverPanelView: View {
                 )
             }
         }
+        .padding(.horizontal, 16)
+        .frame(height: 48)
+    }
+
+    private var columns: some View {
+        HStack(alignment: .top, spacing: 0) {
+            PopoverTodayRingCard()
+                .frame(width: 188)
+            columnDivider
+            PopoverAgentWorkTable()
+                .frame(minWidth: 240, maxWidth: .infinity)
+            if appState.showsQuotaColumn {
+                columnDivider
+                PopoverQuotaCard()
+                    .frame(width: quotaColumnWidth)
+            }
+            if appState.shouldShowAgentWorkRank, appState.agentWorkRankIdentity != nil {
+                columnDivider
+                PopoverTokenRankCard()
+                    .frame(width: 196)
+            }
+        }
+        .frame(minHeight: columnsMinHeight)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.black.opacity(0.06))
+                .frame(height: 1)
+        }
+    }
+
+    private var quotaColumnWidth: CGFloat {
+        appState.visibleQuotas.count >= 4 ? 248 : 208
+    }
+
+    private var columnsMinHeight: CGFloat {
+        appState.visibleQuotas.count >= 5 ? 300 : 248
+    }
+
+    private var columnDivider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.06))
+            .frame(width: 1)
+    }
+
+    @ViewBuilder
+    private var notices: some View {
+        VStack(spacing: 8) {
+            if let error = appState.lastError {
+                ErrorBanner(message: error) {
+                    appState.clearError()
+                }
+            }
+            if appState.showsUsageRecalibrationNotice {
+                UsageRecalibrationNotice {
+                    appState.dismissUsageRecalibrationNotice()
+                }
+            }
+            if let update = appState.availableUpdate {
+                UpdateNoticeCard(update: update)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, appState.lastError == nil && !appState.showsUsageRecalibrationNotice && appState.availableUpdate == nil ? 0 : 10)
     }
 
     private func copyShareCard(_ mode: ShareCardMode) {
@@ -224,7 +258,6 @@ struct PopoverPanelView: View {
         }
         return (day, rhythm, previousDay(before: day))
     }
-
 }
 
 private struct PopoverCaptureMenuButton: View {
@@ -285,12 +318,11 @@ private struct PopoverCaptureMenuButton: View {
             }
         } label: {
             Image(systemName: "camera.fill")
-                .font(.system(size: 14, weight: .heavy))
+                .font(.system(size: 13, weight: .heavy))
                 .foregroundStyle(Color.tokenInk.opacity(0.76))
-                .frame(width: 34, height: 34)
+                .frame(width: 30, height: 30)
                 .background(Color.tokenSurface, in: Circle())
                 .overlay(Circle().stroke(Color.black.opacity(0.07)))
-                .shadow(color: Color.black.opacity(0.055), radius: 9, x: 0, y: 5)
                 .contentShape(Circle())
         }
         .menuStyle(.button)
@@ -351,6 +383,5 @@ private struct UpdateNoticeCard: View {
         .padding(13)
         .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.tokenGreen.opacity(0.14)))
-        .shadow(color: Color.black.opacity(0.045), radius: 12, x: 0, y: 7)
     }
 }

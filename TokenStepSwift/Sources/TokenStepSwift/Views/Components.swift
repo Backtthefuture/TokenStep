@@ -7,10 +7,11 @@ struct StatusBarLabelView: View {
     var refreshing: Bool
     var theme: TokenStepTheme
     var language: TokenStepLanguage
+    var warning: Bool = false
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(nsImage: StatusBarIconRenderer.progressRing(progress: lap.currentLapProgress, lap: lap.currentLap, refreshing: refreshing))
+            Image(nsImage: StatusBarIconRenderer.progressRing(progress: lap.currentLapProgress, lap: lap.currentLap, refreshing: refreshing, warning: warning))
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 22, height: 22)
@@ -231,6 +232,22 @@ struct MetricPill: View {
         .padding(.vertical, 9)
         .background(Color.tokenSurface, in: Capsule())
         .overlay(Capsule().stroke(Color.black.opacity(0.055)))
+    }
+}
+
+struct TokenCard<Content: View>: View {
+    var content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(24)
+            .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.black.opacity(0.06)))
+            .shadow(color: Color.black.opacity(0.055), radius: 24, x: 0, y: 14)
     }
 }
 
@@ -577,12 +594,20 @@ struct ContributionWallView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 5) {
                 ForEach(0..<weeks, id: \.self) { week in
+                    let firstDay = calendar.date(byAdding: .day, value: week * 7, to: start) ?? today
+                    let showMonth = week == 0 || calendar.component(.month, from: firstDay) != calendar.component(.month, from: calendar.date(byAdding: .day, value: -7, to: firstDay) ?? firstDay)
                     VStack(spacing: 5) {
+                        Text(showMonth ? monthLabel(firstDay) : " ")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 15, alignment: .leading)
+                            .lineLimit(1)
                         ForEach(0..<7, id: \.self) { dayIndex in
                             let day = calendar.date(byAdding: .day, value: week * 7 + dayIndex, to: start) ?? today
                             let key = DateFormatter.tokenStepDay.string(from: day)
+                            let usage = rowByDate[key]
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(day > today ? Color.clear : contributionColor(tokens: rowByDate[key]?.totalTokens ?? 0, goal: goal))
+                                .fill(day > today ? Color.clear : contributionColor(tokens: usage?.totalTokens ?? 0, goal: goal))
                                 .frame(width: 15, height: 15)
                                 .overlay {
                                     if calendar.isDate(day, inSameDayAs: today) {
@@ -590,6 +615,7 @@ struct ContributionWallView: View {
                                             .stroke(Color.tokenGreenDark, lineWidth: 1.5)
                                     }
                                 }
+                                .help(day > today ? "" : cellHelp(date: key, usage: usage))
                         }
                     }
                 }
@@ -618,6 +644,30 @@ struct ContributionWallView: View {
     private func localizedDays(_ count: Int) -> String {
         TokenStepLocalization.language == .en ? "\(count)d" : "\(count) 天"
     }
+
+    private func monthLabel(_ date: Date) -> String {
+        let month = Calendar(identifier: .gregorian).component(.month, from: date)
+        if TokenStepLocalization.language == .en {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US")
+            formatter.dateFormat = "MMM"
+            return formatter.string(from: date)
+        }
+        return "\(month)月"
+    }
+
+    private func cellHelp(date: String, usage: DailyUsage?) -> String {
+        let tokens = usage?.totalTokens ?? 0
+        var lines = ["\(date) · \(TokenStepFormat.tokens(tokens, compact: true))"]
+        if let tools = usage?.tools, !tools.isEmpty, tokens > 0 {
+            let parts = orderedToolEntries(tools).prefix(4).map { entry in
+                let percent = Int((Double(entry.tokens) / Double(tokens) * 100).rounded())
+                return "\(entry.name) \(percent)%"
+            }
+            lines.append(parts.joined(separator: " · "))
+        }
+        return lines.joined(separator: "\n")
+    }
 }
 
 func contributionColor(tokens: Int, goal: Int) -> Color {
@@ -635,26 +685,11 @@ func contributionColor(tokens: Int, goal: Int) -> Color {
 }
 
 func tokenToolColor(_ tool: String) -> Color {
-    switch tool {
-    case "Codex":
-        return .tokenGreen
-    case "Claude Code":
-        return Color(red: 0.88, green: 0.42, blue: 0.24)
-    case "Hermes", "Hermes Agent":
-        return Color(red: 0.50, green: 0.28, blue: 0.92)
-    case "ZCode":
-        return Color(red: 0.20, green: 0.52, blue: 0.92)
-    case "WorkBuddy":
-        return Color(red: 0.94, green: 0.63, blue: 0.16)
-    case "Codex via CC Switch", "Claude Code via CC Switch", "Gemini via CC Switch":
-        return Color(red: 0.10, green: 0.64, blue: 0.72)
-    default:
-        return Color.tokenInk.opacity(0.44)
-    }
+    AgentSourceRegistry.color(for: tool)
 }
 
 func orderedToolEntries(_ tools: [String: Int]) -> [(name: String, tokens: Int)] {
-    let preferred = ["Codex", "Claude Code", "ZCode", "Hermes", "Hermes Agent", "WorkBuddy", "Codex via CC Switch", "Claude Code via CC Switch"]
+    let preferred = AgentSourceRegistry.preferredToolOrder
     var entries: [(name: String, tokens: Int)] = preferred.compactMap { name in
         guard let value = tools[name], value > 0 else { return nil }
         return (name, value)
@@ -666,7 +701,7 @@ func orderedToolEntries(_ tools: [String: Int]) -> [(name: String, tokens: Int)]
     return entries
 }
 
-func uniqueToolNames(in rows: [DailyUsage], fallback: [String] = ["Codex", "Claude Code"], limit: Int = 4) -> [String] {
+func uniqueToolNames(in rows: [DailyUsage], fallback: [String] = AgentSourceRegistry.defaultLegendNames, limit: Int = 4) -> [String] {
     var seen = Set<String>()
     var names: [String] = []
     for day in rows {
@@ -679,19 +714,4 @@ func uniqueToolNames(in rows: [DailyUsage], fallback: [String] = ["Codex", "Clau
         }
     }
     return names.isEmpty ? fallback : names
-}
-
-/// G-B1：项目显示名工具（未命名项目本地化）。
-enum TokenStepProject {
-    static func displayName(_ name: String) -> String {
-        name.isEmpty ? L("未命名项目") : name
-    }
-
-    static func agentSummary(_ tools: [String: Int]) -> String {
-        tools
-            .sorted { $0.value > $1.value }
-            .prefix(3)
-            .map { $0.key == "Claude Code" ? "Claude" : $0.key }
-            .joined(separator: " · ")
-    }
 }

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TokenStep D3 · 浅色收束</title>
+  <style>
+    :root {
+      --paper: #efe9dc;
+      --ink: #1b241c;
+      --muted: #6a7468;
+      --line: rgba(27, 36, 28, .1);
+      --forest: #1f6a48;
+      --lime: #8fbf3a;
+      --card: #f7f2e8;
+      --chip: #fffdf8;
+      --green: #2f9e55;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: -apple-system, "SF Pro Text", "PingFang SC", sans-serif; }
+    body { padding: 32px 36px 72px; }
+    h1 { font-size: 28px; letter-spacing: -.03em; margin: 0 0 8px; }
+    .lede { max-width: 720px; color: var(--muted); line-height: 1.65; margin-bottom: 18px; font-size: 14px; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .tabs button { border: 1px solid var(--line); background: 0; border-radius: 999px; padding: 7px 13px; font: 600 13px/1 -apple-system, sans-serif; cursor: pointer; }
+    .tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+    .panel { display: none; } .panel.active { display: block; }
+    .note { margin-bottom: 14px; color: var(--muted); font-size: 13.5px; line-height: 1.6; max-width: 760px; }
+    .note b { color: var(--ink); }
+    .stage { background: #d8d3c6; border-radius: 20px; padding: 40px 16px 28px; display: flex; justify-content: center; position: relative; }
+    .stage::before { content: attr(data-label); position: absolute; top: 12px; left: 16px; font: 600 11px/1 ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; color: #5c6358; }
+    .rule { margin-top: 14px; background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px; font-size: 13px; color: var(--muted); line-height: 1.65; max-width: 900px; }
+    .rule b { color: var(--ink); }
+
+    .pop {
+      width: 900px;
+      background: var(--card);
+      border: 1px solid #ddd4c4;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 12px 28px rgba(28, 40, 30, .12);
+    }
+    .head {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+    }
+    .mark { width: 28px; height: 28px; border-radius: 8px; background: var(--forest); color: #e8f6c8; display: grid; place-items: center; font: 800 14px/1 -apple-system, sans-serif; }
+    .head b { font-size: 17px; letter-spacing: -.02em; }
+    .sync { margin-left: auto; font: 700 12px/1 -apple-system, sans-serif; background: var(--chip); border: 1px solid #e4dacb; border-radius: 999px; padding: 6px 10px; display: flex; align-items: center; gap: 6px; }
+    .sync i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+    .cam { width: 30px; height: 30px; border-radius: 50%; background: var(--chip); border: 1px solid #e4dacb; display: grid; place-items: center; color: #4a534b; font-size: 13px; }
+
+    .g4 {
+      display: grid;
+      grid-template-columns: 188px minmax(240px, 1.15fr) 208px 196px;
+      border-top: 1px solid #ebe3d4;
+      min-height: 248px;
+    }
+    .col { padding: 14px 14px 16px; border-left: 1px solid #ebe3d4; }
+    .col:first-child { border-left: 0; }
+    .hd { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; font-size: 13px; font-weight: 700; }
+    .hd span { color: var(--muted); font-size: 11px; font-weight: 600; }
+
+    .ring-wrap { display: flex; flex-direction: column; align-items: center; padding-top: 4px; }
+    .ring { width: 118px; height: 118px; border-radius: 50%; background: conic-gradient(var(--lime) 223deg, #ddd6c6 0); display: grid; place-items: center; }
+    .ring span { width: 88px; height: 88px; background: var(--card); border-radius: 50%; display: grid; place-items: center; text-align: center; font-weight: 800; font-size: 18px; letter-spacing: -.03em; }
+    .ring em { display: block; font-style: normal; font-size: 11px; color: var(--muted); font-weight: 700; margin-top: 1px; }
+    .lap { margin-top: 10px; text-align: center; font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.45; }
+    .lap b { color: var(--ink); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; color: var(--muted); font-weight: 600; padding: 0 5px 7px; font-size: 10.5px; }
+    th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    td { padding: 7px 5px; border-top: 1px solid #efe7d8; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+
+    .chip { background: var(--chip); border: 1px solid #e8dfd0; border-radius: 12px; padding: 8px 10px; margin-bottom: 7px; }
+    .chip:last-child { margin-bottom: 0; }
+    .chip small { display: block; color: var(--muted); font-weight: 700; font-size: 10.5px; }
+    .chip strong { display: block; font-size: 18px; margin: 2px 0 5px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+    .chip .sub { font-size: 10.5px; color: var(--muted); font-weight: 600; }
+    .bar { height: 4px; background: #e6dece; border-radius: 99px; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--forest); width: var(--w); }
+
+    .hash { font-size: 26px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+    .hint { font-size: 11px; color: var(--muted); margin: 4px 0 10px; }
+    .board { background: #1d3a2c; color: #e7f3c8; border-radius: 12px; padding: 10px 11px; }
+    .board small { display: block; font-size: 10px; letter-spacing: .02em; opacity: .7; font-weight: 700; }
+    .board .num { font-size: 24px; font-weight: 800; margin: 3px 0 1px; letter-spacing: -.03em; }
+    .board .ppl { font-size: 11px; opacity: .78; }
+    .mine { margin-top: 8px; font-size: 12px; color: var(--muted); }
+    .mine b { color: var(--ink); }
+
+    .chrome { padding: 10px 16px 14px; border-top: 1px solid #ebe3d4; }
+    .meta-line { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+    .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .dash {
+      height: 44px;
+      padding: 0 18px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--green);
+      color: #fff;
+      font: 700 14px/1 -apple-system, "PingFang SC", sans-serif;
+      white-space: nowrap;
+    }
+    .utils { display: flex; gap: 8px; }
+    .pill {
+      height: 44px;
+      padding: 0 12px;
+      border: 1px solid #e4dacb;
+      border-radius: 12px;
+      background: var(--chip);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font: 700 12px/1 -apple-system, "PingFang SC", sans-serif;
+      color: #3c463d;
+    }
+    .pill i { font-style: normal; font-size: 13px; opacity: .7; }
+
+    .why { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; max-width: 900px; }
+    .why div { background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+    .why h3 { margin: 0 0 6px; font-size: 13px; }
+    .why p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <h1>这版才像 TokenStep</h1>
+  <p class="lede">上一稿结构对、样子不对：左栏整块涂黑、绿钮拉满 1040，像海报不像菜单栏浮窗。这一版回到现有浅色卡片：四栏同分隔线，环留在浅底上，全榜消耗只做一块小深色强调。底栏改成左边主按钮、右边三个文字钮，不再拉成一条绿公路。</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="final">完整浮窗</button>
+    <button role="tab" aria-selected="false" data-tab="why">改了什么</button>
+  </div>
+
+  <section class="panel active" id="final">
+    <p class="note">宽 <b>900</b>，四栏都能进常见预览窗。榜栏仍是：名次 → 全榜今日消耗 → 我的今日。底栏四个动作都在，只是不再均分拉宽。</p>
+    <div class="stage" data-label="D3 · light cards + toolbar footer">
+      <article class="pop">
+        <div class="head">
+          <div class="mark">T</div><b>TokenStep</b>
+          <div class="sync"><i></i>已同步</div>
+          <div class="cam">📷</div>
+        </div>
+        <div class="g4">
+          <div class="col">
+            <div class="hd"><b>今日消耗</b><span>第 2 圈</span></div>
+            <div class="ring-wrap">
+              <div class="ring"><span>1.24亿<em>/ 1亿 每圈</em></span></div>
+              <div class="lap"><b>62%</b> · 消耗 $4.80</div>
+            </div>
+          </div>
+          <div class="col">
+            <div class="hd"><b>Agent 用量</b><span>记录 11/24 · 缓存 41%</span></div>
+            <table>
+              <thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">工具</th><th class="n">缓存</th></tr></thead>
+              <tbody>
+                <tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td><td class="n">612</td><td class="n">46%</td></tr>
+                <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td><td class="n">140</td><td class="n">38%</td></tr>
+                <tr><td><i class="dot" style="background:#c48c3c"></i>ZCode</td><td class="n">1120万</td><td class="n">22</td><td class="n">71</td><td class="n">22%</td></tr>
+                <tr><td><i class="dot" style="background:#8a8a8a"></i>其他</td><td class="n">990万</td><td class="n">27</td><td class="n">68</td><td class="n">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="col">
+            <div class="hd"><b>订阅额度</b><span>3 家</span></div>
+            <div class="chip"><small>Codex · 5 小时</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14 后重置</div></div>
+            <div class="chip"><small>Claude · 7 天</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天后重置</div></div>
+            <div class="chip"><small>GLM · Token 窗</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><div class="sub">11 小时后重置</div></div>
+          </div>
+          <div class="col">
+            <div class="hd"><b>消耗榜</b><span>今日</span></div>
+            <div class="hash">#128</div>
+            <div class="hint">超过 86% · 主力 Codex</div>
+            <div class="board">
+              <small>全榜今日消耗</small>
+              <div class="num">86.2亿</div>
+              <div class="ppl">2401 人参榜</div>
+            </div>
+            <div class="mine">我的今日 <b>1.24亿</b></div>
+          </div>
+        </div>
+        <div class="chrome">
+          <div class="meta-line">
+            <span>本地统计</span>
+            <span>刷新 5 分钟</span>
+          </div>
+          <div class="actions">
+            <button class="dash">打开仪表盘 ↗</button>
+            <div class="utils">
+              <div class="pill"><i>↻</i>刷新</div>
+              <div class="pill"><i>⚙</i>设置</div>
+              <div class="pill"><i>⏻</i>退出</div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="rule">刷新同一地址即可。若仍只看到三栏，把预览窗拉到 960 以上——上一稿 1040 太宽，榜栏容易被裁掉，看起来更怪。</div>
+  </section>
+
+  <section class="panel" id="why">
+    <p class="note">信息架构没改：四栏只读，底栏只做。改的是视觉尺度，让它像现在的 TokenStep，而不是一张概念海报。</p>
+    <div class="why">
+      <div>
+        <h3>环回到浅底</h3>
+        <p>现有产品里环画在浅色卡上。整列涂成深林绿，和右边三列不是同一个 App。</p>
+      </div>
+      <div>
+        <h3>绿钮不再拉满</h3>
+        <p>竖版 412 宽时，54 高绿钮铺满是对的。横版再 flex:1，会变成一条广告条。主按钮定宽靠左，刷新 / 设置 / 退出靠右。</p>
+      </div>
+      <div>
+        <h3>四栏同一套卡片语言</h3>
+        <p>同一条分隔线、同一套标题。深色只留给「全榜今日消耗」这一块强调，不再出现第二块深色墙。</p>
+      </div>
+      <div>
+        <h3>宽度收到 900</h3>
+        <p>菜单栏浮窗不是网站。1040 既难进预览，也和菜单栏的心理尺寸打架。</p>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    document.querySelectorAll("[data-tab]").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll("[data-tab]").forEach((t) => t.setAttribute("aria-selected", t === tab ? "true" : "false"));
+        document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === tab.dataset.tab));
+      });
+    });
+  </script>
+</body>
+</html>

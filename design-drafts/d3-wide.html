@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TokenStep D3 加宽版</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #f3eee4; --ink: #1b241c; --muted: #5c675d; --line: rgba(27,36,28,.12);
+      --forest: #1f6a48; --deep: #173528; --lime: #c6e04a; --card: #f6f1e7; --chip: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: "IBM Plex Sans", "PingFang SC", sans-serif; }
+    body { padding: 36px 40px 80px; }
+    h1 { font-family: "Fraunces", serif; font-size: 36px; letter-spacing: -.03em; margin: 0 0 8px; }
+    .lede { max-width: 780px; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .tabs button { border: 1px solid var(--line); background: 0; border-radius: 999px; padding: 8px 14px; font: 600 13px/1 "IBM Plex Sans", sans-serif; cursor: pointer; }
+    .tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+    .panel { display: none; } .panel.active { display: block; }
+    .note { display: grid; grid-template-columns: 1.4fr .6fr; gap: 20px; margin-bottom: 16px; }
+    .note h2 { font-family: "Syne", sans-serif; font-size: 20px; margin: 0 0 6px; }
+    .note p { margin: 0 0 8px; color: var(--muted); line-height: 1.6; font-size: 14px; }
+    .meta div { border-top: 1px solid var(--line); padding-top: 7px; margin-bottom: 7px; }
+    .meta b { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    .stage { background: #cfd6c8; border-radius: 22px; padding: 44px 24px 36px; display: flex; justify-content: center; position: relative; overflow-x: auto; }
+    .stage::before { content: attr(data-label); position: absolute; top: 12px; left: 18px; font: 600 11px/1 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: #3e4a3f; }
+    .rule { margin-top: 16px; background: var(--chip); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; font-size: 13px; color: var(--muted); line-height: 1.65; }
+    .rule b { color: var(--ink); }
+
+    .pop { background: var(--card); border: 1px solid #d9d0c0; border-radius: 22px; overflow: hidden; box-shadow: 0 18px 40px rgba(28,40,30,.15); }
+    .w1040 { width: 1040px; } .w1100 { width: 1100px; }
+    .head { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid #e4dcc9; }
+    .mark { width: 26px; height: 26px; border-radius: 8px; background: var(--forest); color: #e8f6c8; display: grid; place-items: center; font: 800 13px/1 Syne, sans-serif; }
+    .sync { margin-left: auto; font: 700 11px/1 "IBM Plex Sans", sans-serif; background: var(--chip); border: 1px solid #e4dacb; border-radius: 999px; padding: 6px 10px; }
+    .g4 { display: grid; grid-template-columns: 168px minmax(280px,1fr) 240px 228px; }
+    .g4b { display: grid; grid-template-columns: 168px minmax(300px,1.2fr) 320px 220px; }
+    .g4c { display: grid; grid-template-columns: 180px minmax(260px,1fr) 1fr 240px; }
+    .left { background: var(--deep); color: #e7f3c8; padding: 16px 14px; display: flex; flex-direction: column; justify-content: space-between; min-height: 220px; }
+    .left small { font: 600 10px/1 "IBM Plex Mono", monospace; letter-spacing: .08em; opacity: .7; }
+    .ring { width: 112px; height: 112px; border-radius: 50%; background: conic-gradient(var(--lime) 223deg, #2b5340 0); display: grid; place-items: center; margin: 8px auto; }
+    .ring span { width: 86px; height: 86px; background: var(--deep); border-radius: 50%; display: grid; place-items: center; text-align: center; font-weight: 800; font-size: 16px; }
+    .ring em { display: block; font-style: normal; font-size: 12px; opacity: .75; }
+    .mid, .quota, .rank { padding: 14px 16px; }
+    .hd { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; font-size: 13px; }
+    .hd span { color: var(--muted); font-size: 11px; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; color: var(--muted); font-weight: 600; padding: 0 6px 8px; font-size: 10.5px; }
+    th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    td { padding: 7px 6px; border-top: 1px solid #ebe3d4; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+    .bar { height: 5px; background: #ddd6c8; border-radius: 99px; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--forest); width: var(--w); }
+    .chip { background: var(--chip); border: 1px solid #e4dacb; border-radius: 13px; padding: 10px 12px; margin-bottom: 8px; }
+    .chip:last-child { margin-bottom: 0; }
+    .chip small { display: block; color: var(--muted); font-weight: 700; font-size: 10.5px; }
+    .chip strong { display: block; font-size: 20px; margin: 3px 0 6px; font-variant-numeric: tabular-nums; }
+    .chip .sub { font-size: 10.5px; color: var(--muted); font-weight: 600; }
+    .qrow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; height: 100%; align-content: start; }
+    .qrow .chip { margin: 0; min-height: 118px; }
+    .rank .big { font-size: 42px; font-weight: 800; color: var(--forest); letter-spacing: -.04em; line-height: 1; }
+    .rank .sub { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 6px 0 12px; }
+    .pill { background: var(--chip); border: 1px solid #e4dacb; border-radius: 10px; padding: 7px 9px; font-size: 11px; margin-bottom: 6px; }
+    .pill b { display: block; font-size: 14px; }
+    .near { margin-top: 8px; }
+    .near div { display: flex; justify-content: space-between; font-size: 11.5px; padding: 5px 0; border-top: 1px solid #ebe3d4; }
+    .near .me { font-weight: 800; color: var(--forest); }
+    .foot { height: 38px; border-top: 1px solid #e4dcc9; display: flex; gap: 8px; align-items: center; padding: 0 16px; }
+    .foot button { flex: 1; height: 26px; border-radius: 999px; border: 1px solid #e4dacb; background: var(--chip); font: 700 11px/1 "IBM Plex Sans", sans-serif; }
+  </style>
+</head>
+<body>
+  <h1>D3 加宽 · 宽度用起来</h1>
+  <p class="lede">菜单栏浮窗由系统贴边，宽度不是瓶颈。D3 原来 860 偏挤。下面三版都拉到 1040–1100：环更大，Agent 表把请求 / 工具 / 缓存摊开，3 个额度写全重置时间，榜栏用大号排名。没有的提供商仍然不占位。</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="w1">W1 · 宽四栏（建议）</button>
+    <button role="tab" aria-selected="false" data-tab="w2">W2 · 额度横铺三张大卡</button>
+    <button role="tab" aria-selected="false" data-tab="w3">W3 · 榜栏带邻近名次</button>
+  </div>
+
+  <section class="panel active" id="w1">
+    <div class="note">
+      <div>
+        <h2>W1 · 宽四栏</h2>
+        <p>1040 宽。环 168。Agent 表五列：名称、Token、请求、工具、缓存。右栏三张额度全宽竖排，重置时间写在卡内。最右是 #128 和两枚数据胶囊。</p>
+        <p>这是 D3 的直接放大，信息架构不变，只是不再挤。</p>
+      </div>
+      <div class="meta">
+        <div><b>宽度</b>1040</div>
+        <div><b>3 个额度</b>竖排全宽，不留空格</div>
+        <div><b>无榜时</b>右列消失，收到约 800</div>
+      </div>
+    </div>
+    <div class="stage" data-label="W1 · 1040 wide D3">
+      <article class="pop w1040">
+        <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync">已同步 · 2401 人在榜</div></div>
+        <div class="g4">
+          <div class="left"><small>今日 · 第 2 圈</small><div class="ring"><span>1.24亿<em>62%</em></span></div><div style="font:700 12px/1.4 IBM Plex Sans,sans-serif;opacity:.85;text-align:center">目标 1 亿 / 圈<br>$4.80</div></div>
+          <div class="mid">
+            <div class="hd"><b>Agent 用量</b><span>记录 11/24 小时 · 缓存 41%</span></div>
+            <table>
+              <thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">工具</th><th class="n">缓存</th></tr></thead>
+              <tbody>
+                <tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td><td class="n">612</td><td class="n">46%</td></tr>
+                <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td><td class="n">140</td><td class="n">38%</td></tr>
+                <tr><td><i class="dot" style="background:#c48c3c"></i>ZCode</td><td class="n">1120万</td><td class="n">22</td><td class="n">71</td><td class="n">22%</td></tr>
+                <tr><td><i class="dot" style="background:#999"></i>其他</td><td class="n">990万</td><td class="n">27</td><td class="n">68</td><td class="n">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="quota">
+            <div class="hd"><b>订阅额度</b><span>3 家</span></div>
+            <div class="chip"><small>Codex · 5 小时</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14 后重置</div></div>
+            <div class="chip"><small>Claude · 7 天</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天后重置</div></div>
+            <div class="chip"><small>GLM · Token 窗</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><div class="sub">11 小时后重置</div></div>
+          </div>
+          <div class="rank">
+            <div class="hd"><b>消耗榜</b><span>今日</span></div>
+            <div class="big">#128</div>
+            <div class="sub">超过 86% 参榜用户<br>主力 Codex</div>
+            <div class="pill">我的今日 Token<b>1.24亿</b></div>
+            <div class="pill">全榜今日<b>86.2亿 · 2401 人</b></div>
+          </div>
+        </div>
+        <div class="foot"><button>打开仪表盘</button><button>刷新</button><button>设置</button></div>
+      </article>
+    </div>
+    <div class="rule"><b>建议作为加宽后的默认 D3。</b>多出来的宽度给了表和额度卡，没有多加一层模块。</div>
+  </section>
+
+  <section class="panel" id="w2">
+    <div class="note">
+      <div>
+        <h2>W2 · 额度横铺三张大卡</h2>
+        <p>1100 宽。中间两栏对调权重：Agent 表仍在，额度改成三张并排大卡。3 个额度时每张都够写百分比、进度条和重置；1–2 家时大卡自动拉宽，仍然不留空格。</p>
+      </div>
+      <div class="meta">
+        <div><b>宽度</b>1100</div>
+        <div><b>3 个额度</b>并排等宽</div>
+        <div><b>适合</b>额度比 Agent 明细更常看</div>
+      </div>
+    </div>
+    <div class="stage" data-label="W2 · 1100 · quotas as 3 large cards">
+      <article class="pop w1100">
+        <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync">已同步 · 2401 人在榜</div></div>
+        <div class="g4b">
+          <div class="left"><small>今日 · 第 2 圈</small><div class="ring"><span>1.24亿<em>62%</em></span></div><div style="font:700 12px/1.4 IBM Plex Sans,sans-serif;opacity:.85;text-align:center">$4.80</div></div>
+          <div class="mid">
+            <div class="hd"><b>Agent 用量</b><span>缓存 41%</span></div>
+            <table>
+              <thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">缓存</th></tr></thead>
+              <tbody>
+                <tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td><td class="n">46%</td></tr>
+                <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td><td class="n">38%</td></tr>
+                <tr><td><i class="dot" style="background:#c48c3c"></i>ZCode</td><td class="n">1120万</td><td class="n">22</td><td class="n">22%</td></tr>
+                <tr><td><i class="dot" style="background:#999"></i>其他</td><td class="n">990万</td><td class="n">27</td><td class="n">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="quota">
+            <div class="hd"><b>订阅额度</b><span>3 家 · 不留空格</span></div>
+            <div class="qrow">
+              <div class="chip"><small>Codex · 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14 后重置</div></div>
+              <div class="chip"><small>Claude · 7d</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天后重置</div></div>
+              <div class="chip"><small>GLM · Token</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><div class="sub">11h 后重置</div></div>
+            </div>
+          </div>
+          <div class="rank">
+            <div class="hd"><b>消耗榜</b><span>今日</span></div>
+            <div class="big">#128</div>
+            <div class="sub">超过 86%<br>主力 Codex</div>
+            <div class="pill">我的今日<b>1.24亿</b></div>
+            <div class="pill">全榜<b>86.2亿</b></div>
+          </div>
+        </div>
+        <div class="foot"><button>打开仪表盘</button><button>刷新</button><button>设置</button></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="panel" id="w3">
+    <div class="note">
+      <div>
+        <h2>W3 · 榜栏带邻近名次</h2>
+        <p>1040 宽，四栏比例接近 W1。多出来的高度和宽度给榜：你的 #128 下面列出 #127 / 你 / #129，一眼看到和前后差多少 Token。点击仍进现有榜单页。</p>
+      </div>
+      <div class="meta">
+        <div><b>宽度</b>1040</div>
+        <div><b>额外数据</b>邻近两名的 Token，榜接口已有 entries</div>
+        <div><b>适合</b>把排名当日常动作</div>
+      </div>
+    </div>
+    <div class="stage" data-label="W3 · nearby ranks">
+      <article class="pop w1040">
+        <div class="head"><div class="mark">T</div><b>TokenStep</b><div class="sync">已同步 · 2401 人在榜</div></div>
+        <div class="g4">
+          <div class="left"><small>今日 · 第 2 圈</small><div class="ring"><span>1.24亿<em>62%</em></span></div><div style="font:700 12px/1.4 IBM Plex Sans,sans-serif;opacity:.85;text-align:center">$4.80</div></div>
+          <div class="mid">
+            <div class="hd"><b>Agent 用量</b><span>记录 11/24 · 缓存 41%</span></div>
+            <table>
+              <thead><tr><th>来源</th><th class="n">Token</th><th class="n">请求</th><th class="n">工具</th><th class="n">缓存</th></tr></thead>
+              <tbody>
+                <tr><td><i class="dot" style="background:#1f6a48"></i>Codex</td><td class="n">7720万</td><td class="n">148</td><td class="n">612</td><td class="n">46%</td></tr>
+                <tr><td><i class="dot" style="background:#3d7ca8"></i>Claude</td><td class="n">2610万</td><td class="n">36</td><td class="n">140</td><td class="n">38%</td></tr>
+                <tr><td><i class="dot" style="background:#c48c3c"></i>ZCode</td><td class="n">1120万</td><td class="n">22</td><td class="n">71</td><td class="n">22%</td></tr>
+                <tr><td><i class="dot" style="background:#999"></i>其他</td><td class="n">990万</td><td class="n">27</td><td class="n">68</td><td class="n">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="quota">
+            <div class="hd"><b>订阅额度</b><span>3 家</span></div>
+            <div class="chip"><small>Codex · 5 小时</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><div class="sub">2:14 后重置</div></div>
+            <div class="chip"><small>Claude · 7 天</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><div class="sub">3 天后重置</div></div>
+            <div class="chip"><small>GLM · Token 窗</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><div class="sub">11 小时后重置</div></div>
+          </div>
+          <div class="rank">
+            <div class="hd"><b>消耗榜</b><span>今日</span></div>
+            <div class="big">#128</div>
+            <div class="sub">超过 86% · 主力 Codex</div>
+            <div class="near">
+              <div><span>#127 林</span><b>1.31亿</b></div>
+              <div class="me"><span>#128 你</span><b>1.24亿</b></div>
+              <div><span>#129 周</span><b>1.18亿</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="foot"><button>打开仪表盘</button><button>刷新</button><button>设置</button></div>
+      </article>
+    </div>
+    <div class="rule"><b>邻近名次是加分项，不是默认必做。</b>先落地 W1；榜接口的 entries 够的话，W3 可以后加，不改另外三栏。</div>
+  </section>
+
+  <script>
+    document.querySelectorAll("[data-tab]").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll("[data-tab]").forEach((t) => t.setAttribute("aria-selected", t === tab ? "true" : "false"));
+        document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === tab.dataset.tab));
+      });
+    });
+  </script>
+</body>
+</html>

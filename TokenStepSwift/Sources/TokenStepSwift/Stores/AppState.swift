@@ -9,8 +9,9 @@ final class AppState: ObservableObject {
     @Published private(set) var autostartEnabled = false
     @Published private(set) var isCheckingForUpdates = false
     @Published private(set) var isRefreshingCodexQuota = false
-    @Published private(set) var codexQuota: CodexQuotaSnapshot = .unavailable
-    @Published private(set) var claudeQuota: CodexQuotaSnapshot = .unavailable
+    @Published private(set) var quotas: [QuotaProviderID: ProviderQuota] = [:]
+    @Published private(set) var cursorCodeSignal: CursorCodeSignal?
+    @Published private(set) var cursorCodeSignalError: String?
     @Published private(set) var isRefreshingTokenRank = false
     @Published private(set) var tokenRank: TokenRankLeaderboard?
     @Published private(set) var agentWorkRankIdentity: AgentWorkRankIdentity?
@@ -24,12 +25,6 @@ final class AppState: ObservableObject {
     @Published private(set) var tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable
     @Published private(set) var showsUsageRecalibrationNotice = false
     @Published var lastError: String?
-    // G-V1 / V1-T01：统一新鲜度状态（六态），采集与两家额度分别呈现。
-    @Published private(set) var collectionFreshness = UsageFreshness(kind: .neverSucceeded)
-    @Published private(set) var codexQuotaFreshness = UsageFreshness(kind: .neverSucceeded)
-    @Published private(set) var claudeQuotaFreshness = UsageFreshness(kind: .neverSucceeded)
-
-    private var freshnessState = FreshnessState()
 
     private var timer: Timer?
     private var foregroundTimer: Timer?
@@ -37,13 +32,14 @@ final class AppState: ObservableObject {
     private var pendingRefreshAfterCurrent = false
     private var pendingForcedRefresh = false
     private var lastQuotaRefreshAttemptAt: Date?
+    private var lastCursorUsageRefreshAttemptAt: Date?
     private var lastRankRefreshAttemptAt: Date?
     private var lastAutomaticUsageRefreshAttemptAt: Date?
     private var lastUsageObservedAt: Date?
+    private var ledgerSnapshot: UsageSnapshot = .empty
+    private var isRefreshingCursorUsage = false
 
     init() {
-        loadFreshnessState()
-        recomputeFreshness()
         load()
         refreshIfSnapshotIsStale()
         applyDefaultAutostartIfNeeded()
@@ -147,10 +143,15 @@ final class AppState: ObservableObject {
         TokenStepThemeRuntime.apply(loadedSettings.theme)
         settings = loadedSettings
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
+        ledgerSnapshot = snapshot
+        applyCursorOfficialUsageOverlay()
         showsUsageRecalibrationNotice = DataService.hasPendingUsageRecalibrationNotice
-        if !loadedSettings.showCodexQuota {
-            codexQuota = .unavailable
-            claudeQuota = .unavailable
+        if loadedSettings.enabledQuotaProviders.isEmpty {
+            quotas = [:]
+        }
+        if !loadedSettings.cursorCodeSignalEnabled {
+            cursorCodeSignal = nil
+            cursorCodeSignalError = nil
         }
         if !loadedSettings.agentWorkRankVisibility.readsLocalIdentity {
             clearTokenRankState()
@@ -162,16 +163,6 @@ final class AppState: ObservableObject {
             }
         }
         autostartEnabled = AutostartService.isEnabled
-        // 升级/首跑迁移：无采集记录但仓库已有快照时，从 generated_at 继承最后成功时间，
-        // 避免"数据明明存在却显示暂无数据"。
-        if freshnessState.collection.lastSucceededAt == nil,
-           let generatedAt = snapshot.generatedAt,
-           let generatedDate = UsageSnapshotRefreshPolicy.generatedDate(generatedAt) {
-            freshnessState.collection.lastSucceededAt = generatedDate
-        }
-        // 快照重载后来源级状态可能变化；把采集尝试信息同步到内存快照并重算新鲜度。
-        snapshot.sourceAttempt = freshnessState.collection
-        recomputeFreshness()
     }
 
     func refresh(forceCollection: Bool = true) {
@@ -198,8 +189,6 @@ final class AppState: ObservableObject {
         }
         isRefreshing = true
         lastError = nil
-        freshnessState.collection = freshnessState.collection.attempting(at: refreshStartedAt)
-        recomputeFreshness(now: refreshStartedAt)
         let historyDays = settings.historyDays
         Task {
             var outcome: CollectionRunOutcome = .unchanged
@@ -213,25 +202,16 @@ final class AppState: ObservableObject {
                 }.value
                 collectionSucceeded = true
             } catch {
-                let kind = FreshnessPolicy.classify(error: error)
-                freshnessState.collection = freshnessState.collection.failing(kind: kind, at: Date())
-                // 用户可见错误使用安全分类文案，不透出原始错误正文。
-                lastError = kind.localizedSummary
+                lastError = error.localizedDescription
             }
             if outcome != .unchanged {
                 load()
             }
-            if collectionSucceeded {
-                if outcome != .updatedWhileSourcesChanged {
-                    lastUsageObservedAt = Date()
-                }
-                // 只要 helper 未抛错即视为成功（快照已持久化）；
-                // updatedWhileSourcesChanged 的口径警示保留在 source diagnostics，
-                // 不影响"最后成功时间"的判定。
-                freshnessState.collection = freshnessState.collection.succeeding(at: Date())
+            if collectionSucceeded, outcome != .updatedWhileSourcesChanged {
+                lastUsageObservedAt = Date()
             }
-            recomputeFreshness()
-            persistFreshnessState()
+            applyCursorOfficialUsageOverlay()
+            refreshCursorOfficialUsage()
             isRefreshing = false
             if pendingRefreshAfterCurrent {
                 let force = pendingForcedRefresh
@@ -255,6 +235,7 @@ final class AppState: ObservableObject {
             refresh(forceCollection: false)
         }
         refreshCodexQuota(now: now)
+        refreshCursorCodeSignal(now: now)
         refreshTokenRank()
     }
 
@@ -269,11 +250,11 @@ final class AppState: ObservableObject {
     }
 
     func refreshCodexQuota(force: Bool = false, now: Date = Date()) {
-        guard settings.showCodexQuota else {
-            codexQuota = .unavailable
-            claudeQuota = .unavailable
+        refreshCursorOfficialUsage(force: force, now: now)
+        let providers = settings.enabledQuotaProviders
+        guard !providers.isEmpty else {
+            quotas = [:]
             isRefreshingCodexQuota = false
-            recomputeFreshness(now: now)
             return
         }
         guard !isRefreshingCodexQuota else { return }
@@ -287,115 +268,89 @@ final class AppState: ObservableObject {
         }
         lastQuotaRefreshAttemptAt = now
         isRefreshingCodexQuota = true
-        // Codex 与 Claude 分别记录尝试，成功/失败互不掩盖（V1-T01）。
-        freshnessState.codexQuota = freshnessState.codexQuota.attempting(at: now)
-        freshnessState.claudeQuota = freshnessState.claudeQuota.attempting(at: now)
-        recomputeFreshness(now: now)
         Task {
-            let quotas = await Task.detached(priority: .utility) {
-                let codex = Result { try CodexQuotaService.read() }
-                let claude = Result { try ClaudeQuotaService.read() }
-                return (codex, claude)
+            let fetched = await Task.detached(priority: .utility) {
+                QuotaRefreshCoordinator.fetch(providers: providers)
             }.value
-
-            let finishedAt = Date()
-            // Codex 已取消 5 小时额度（2026-08-13）：读取恢复（周额度仍在），
-            // UI 仅展示 7 天窗口；5 小时数据即使返回也不展示。
-            switch quotas.0 {
-            case .success(let quota):
-                codexQuota = quota
-                freshnessState.codexQuota = freshnessState.codexQuota.succeeding(at: finishedAt)
-            case .failure(let error):
-                if !codexQuota.isAvailable {
-                    codexQuota = .unavailable
+            for provider in providers {
+                if let quota = fetched[provider] {
+                    quotas[provider] = quota
+                } else if quotas[provider]?.isAvailable != true {
+                    quotas[provider] = .unavailable(provider)
                 }
-                freshnessState.codexQuota = freshnessState.codexQuota.failing(
-                    kind: FreshnessPolicy.classify(error: error),
-                    at: finishedAt
-                )
             }
-
-            switch quotas.1 {
-            case .success(let quota):
-                claudeQuota = quota
-                freshnessState.claudeQuota = freshnessState.claudeQuota.succeeding(at: finishedAt)
-            case .failure(let error):
-                if !claudeQuota.isAvailable {
-                    claudeQuota = .unavailable
-                }
-                freshnessState.claudeQuota = freshnessState.claudeQuota.failing(
-                    kind: FreshnessPolicy.classify(error: error),
-                    at: finishedAt
-                )
-            }
-
-            recomputeFreshness(now: finishedAt)
-            persistFreshnessState()
+            quotas = quotas.filter { providers.contains($0.key) }
             isRefreshingCodexQuota = false
         }
     }
 
-    var hasAnyQuota: Bool {
-        codexQuota.isAvailable || claudeQuota.isAvailable
-    }
-
-    // MARK: - Freshness（G-V1 / V1-T01）
-
-    /// 用集中策略重算三通道新鲜度；来源级 partial 依赖当前快照的 source diagnostics。
-    private func recomputeFreshness(now: Date = Date()) {
-        let collectionTTL = FreshnessPolicy.collectionNormalTTL(
-            refreshIntervalSeconds: settings.refreshIntervalSeconds
-        )
-        let sourceStatuses = snapshot.sources.reduce(into: [String: String]()) { result, entry in
-            result[entry.key] = entry.value.status
+    func refreshCursorCodeSignal(force: Bool = false, now: Date = Date()) {
+        guard settings.cursorCodeSignalEnabled else {
+            cursorCodeSignal = nil
+            cursorCodeSignalError = nil
+            return
         }
-        collectionFreshness = FreshnessPolicy.classify(
-            enabled: true,
-            record: freshnessState.collection,
-            normalTTL: collectionTTL,
-            now: now,
-            sourceStatuses: sourceStatuses
-        )
-        codexQuotaFreshness = FreshnessPolicy.classify(
-            enabled: settings.showCodexQuota,
-            record: freshnessState.codexQuota,
-            normalTTL: FreshnessPolicy.quotaNormalTTL,
-            now: now
-        )
-        claudeQuotaFreshness = FreshnessPolicy.classify(
-            enabled: settings.showCodexQuota,
-            record: freshnessState.claudeQuota,
-            normalTTL: FreshnessPolicy.quotaNormalTTL,
-            now: now
-        )
+        Task {
+            let result = await Task.detached(priority: .utility) {
+                Result { try CursorCodeSignalService.read() }
+            }.value
+            switch result {
+            case let .success(signal):
+                cursorCodeSignal = signal
+                cursorCodeSignalError = nil
+            case .failure:
+                if cursorCodeSignal == nil {
+                    cursorCodeSignalError = L("Cursor 代码产出暂不可用")
+                }
+            }
+        }
     }
 
-    private func loadFreshnessState() {
-        guard let data = try? Data(contentsOf: AppPaths.freshnessStateJSON),
-              let state = try? JSONDecoder().decode(FreshnessState.self, from: data)
-        else { return }
-        freshnessState = state
+    var hasAnyQuota: Bool {
+        visibleQuotas.contains(where: \.isAvailable)
     }
 
-    private func persistFreshnessState() {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(freshnessState) else { return }
-        let url = AppPaths.freshnessStateJSON
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try? data.write(to: url, options: .atomic)
+    var showsQuotaColumn: Bool {
+        !visibleQuotas.isEmpty
+    }
+
+    var visibleQuotas: [ProviderQuota] {
+        let items = QuotaProviderID.allCases.compactMap { id -> ProviderQuota? in
+            guard settings.enabledQuotaProviders.contains(id) else { return nil }
+            guard let quota = quotas[id], quota.isAvailable else { return nil }
+            return quota
+        }
+        return items.sorted { lhs, rhs in
+            let left = quotaSortRank(lhs)
+            let right = quotaSortRank(rhs)
+            if left != right { return left < right }
+            return false
+        }
+    }
+
+    private func quotaSortRank(_ quota: ProviderQuota) -> Int {
+        if quota.isAvailable && quota.isLow { return 0 }
+        if !quota.isAvailable { return 1 }
+        return 2
+    }
+
+    var hasLowQuotaWarning: Bool {
+        visibleQuotas.contains { $0.isAvailable && $0.isLow }
+    }
+
+    var codexQuota: CodexQuotaSnapshot {
+        quotas[.codex]?.asCodexSnapshot ?? .unavailable
+    }
+
+    var claudeQuota: CodexQuotaSnapshot {
+        quotas[.claude]?.asCodexSnapshot ?? .unavailable
     }
 
     func quota(for tool: String) -> CodexQuotaSnapshot {
-        switch tool {
-        case "Claude Code":
+        if AgentSourceRegistry.matches(tool, family: "claude") {
             return claudeQuota
-        default:
-            return codexQuota
         }
+        return codexQuota
     }
 
     func agentWork(for date: String) -> DailyAgentWork {
@@ -474,15 +429,172 @@ final class AppState: ObservableObject {
     }
 
     func setCodexQuotaVisible(_ visible: Bool) {
-        settings.showCodexQuota = visible
-        saveSettingsAndReload()
         if visible {
+            settings.enabledQuotaProviders.formUnion([.codex, .claude])
+        } else {
+            settings.enabledQuotaProviders.subtract([.codex, .claude])
+        }
+        saveSettingsAndReload()
+        if settings.showCodexQuota {
             refreshCodexQuota(force: true)
         } else {
-            codexQuota = .unavailable
-            claudeQuota = .unavailable
+            quotas = [:]
             isRefreshingCodexQuota = false
         }
+    }
+
+    func setQuotaProvider(_ id: QuotaProviderID, enabled: Bool, confirmNetworkAccess: Bool = true) {
+        if enabled, id == .cursor, confirmNetworkAccess, !settings.cursorQuotaEnabled {
+            let confirmed = confirmCursorNetworkAccess()
+            if !confirmed { return }
+        }
+        settings.setQuotaProvider(id, enabled: enabled)
+        saveSettingsAndReload()
+        if settings.enabledQuotaProviders.isEmpty {
+            quotas = [:]
+            isRefreshingCodexQuota = false
+            applyCursorOfficialUsageOverlay()
+        } else {
+            refreshCodexQuota(force: true)
+        }
+    }
+
+    func hasQuotaSecret(_ id: QuotaProviderID) -> Bool {
+        guard let account = id.secretAccount else { return false }
+        return TokenStepSecrets.has(account)
+    }
+
+    func saveQuotaSecret(_ id: QuotaProviderID, value: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let account = id.secretAccount else { return }
+        if id == .kimi, trimmed.lowercased().hasPrefix("sk-") {
+            lastError = L("Kimi 需要 OAuth，不要用开放平台 key")
+            return
+        }
+        if id == .grok, trimmed.lowercased().hasPrefix("xai-") {
+            lastError = L("Grok 需要 grok login，普通 xAI key 无效")
+            return
+        }
+        TokenStepSecrets.set(account, value: trimmed)
+        objectWillChange.send()
+        if !settings.enabledQuotaProviders.contains(id) {
+            setQuotaProvider(id, enabled: true, confirmNetworkAccess: false)
+        } else {
+            refreshCodexQuota(force: true)
+        }
+    }
+
+    func clearQuotaSecret(_ id: QuotaProviderID) {
+        guard let account = id.secretAccount else { return }
+        TokenStepSecrets.delete(account)
+        objectWillChange.send()
+        refreshCodexQuota(force: true)
+    }
+
+    func revealQuotaCredentialFolder(_ id: QuotaProviderID) {
+        let relative: String
+        switch id {
+        case .kimi: relative = ".kimi"
+        case .grok: relative = ".grok"
+        default: return
+        }
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(relative, isDirectory: true)
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.open(url)
+        } else {
+            NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser)
+        }
+    }
+
+    func openGrokLoginInTerminal() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = [
+            "-e", "tell application \"Terminal\" to activate",
+            "-e", "tell application \"Terminal\" to do script \"grok login\""
+        ]
+        try? process.run()
+    }
+
+    func setCursorCodeSignalEnabled(_ enabled: Bool) {
+        if enabled, !settings.cursorCodeSignalEnabled {
+            let confirmed = confirmCursorLocalAccess()
+            if !confirmed { return }
+        }
+        settings.cursorCodeSignalEnabled = enabled
+        saveSettingsAndReload()
+        refreshCursorCodeSignal(force: true)
+    }
+
+    func setHistoryDays(_ days: Int) {
+        settings.historyDays = days
+        saveSettingsAndReload()
+        refresh()
+    }
+
+    func revealLocalDataInFinder() {
+        let urls = [AppPaths.usageJSON, AppPaths.settingsJSON].filter {
+            FileManager.default.fileExists(atPath: $0.path)
+        }
+        if urls.isEmpty {
+            NSWorkspace.shared.activateFileViewerSelecting([AppPaths.appSupportRoot])
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting(urls)
+        }
+    }
+
+    func clearLocalUsageData() {
+        let alert = NSAlert()
+        alert.messageText = L("确认清除本地用量数据？")
+        alert.informativeText = L("将删除 usage.json 与本地缓存，设置会保留。下次同步会重新采集。")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L("清除"))
+        alert.addButton(withTitle: L("取消"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        let removable = [
+            AppPaths.usageJSON,
+            AppPaths.collectorCacheJSON,
+            AppPaths.collectionCheckpointJSON,
+            AppPaths.codexIncrementalCacheSQLite,
+            AppPaths.claudeQuotaCacheJSON,
+            AppPaths.cursorQuotaCacheJSON,
+            AppPaths.cursorUsageCacheJSON,
+            AppPaths.glmQuotaCacheJSON,
+            AppPaths.kimiQuotaCacheJSON,
+            AppPaths.grokQuotaCacheJSON
+        ]
+        for url in removable {
+            try? FileManager.default.removeItem(at: url)
+        }
+        snapshot = .empty
+        ledgerSnapshot = .empty
+        quotas = [:]
+        cursorCodeSignal = nil
+        lastError = L("已清除本地用量数据")
+        refresh(forceCollection: true)
+    }
+
+    @discardableResult
+    private func confirmCursorNetworkAccess() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = L("开启 Cursor 额度？")
+        alert.informativeText = L("会只读本机 Cursor 登录态，向 cursor.com 查询两档额度和官方用量事件。用量事件会计入圆环。登录态不落盘、不上传第三方。该接口非官方，可能随时失效。")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L("开启"))
+        alert.addButton(withTitle: L("取消"))
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    @discardableResult
+    private func confirmCursorLocalAccess() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = L("开启 Cursor 代码产出？")
+        alert.informativeText = L("只读取本机 ai_code_hashes 的计数与模型名，不读取代码、摘要或文件路径。该表每天会被 Cursor 清空，TokenStep 不做历史留存。")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L("开启"))
+        alert.addButton(withTitle: L("取消"))
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func setAgentWorkRankVisibility(_ visibility: AgentWorkRankVisibility) {
@@ -497,23 +609,6 @@ final class AppState: ObservableObject {
 
     func setExperimentalAgentSourcesVisible(_ visible: Bool) {
         settings.showExperimentalAgentSources = visible
-        saveSettingsAndReload()
-        refresh()
-    }
-
-    /// G-A1：T1 新源逐源开关（仅主开关开启时生效）。
-    /// 列表为 nil（自动纳入态）时先物化当前有效集合，避免误关其他自动源。
-    func setExperimentalAgentSource(_ sourceID: String, enabled: Bool) {
-        var list = AgentSourceRegistry.enabledIDs(
-            masterEnabled: settings.showExperimentalAgentSources,
-            perSource: settings.experimentalAgentSources
-        )
-        if enabled, !list.contains(sourceID) {
-            list.append(sourceID)
-        } else if !enabled {
-            list.removeAll { $0 == sourceID }
-        }
-        settings.experimentalAgentSources = list
         saveSettingsAndReload()
         refresh()
     }
@@ -679,6 +774,41 @@ final class AppState: ObservableObject {
         saveSettingsAndReload()
     }
 
+    func refreshCursorOfficialUsage(force: Bool = false, now: Date = Date()) {
+        applyCursorOfficialUsageOverlay()
+        guard settings.cursorQuotaEnabled else { return }
+        guard !isRefreshingCursorUsage else { return }
+        if !force,
+           EnergyRefreshPolicy.isFresh(
+               lastAttemptAt: lastCursorUsageRefreshAttemptAt,
+               ttl: EnergyRefreshPolicy.quotaTTL,
+               now: now
+           ) {
+            return
+        }
+        lastCursorUsageRefreshAttemptAt = now
+        isRefreshingCursorUsage = true
+        let historyDays = settings.historyDays
+        Task {
+            _ = await Task.detached(priority: .utility) {
+                Result { try CursorUsageService.refresh(historyDays: historyDays) }
+            }.value
+            applyCursorOfficialUsageOverlay()
+            isRefreshingCursorUsage = false
+        }
+    }
+
+    private func applyCursorOfficialUsageOverlay() {
+        guard settings.cursorQuotaEnabled,
+              let cache = CursorUsageService.readCache(),
+              cache.days.contains(where: { $0.totalTokens > 0 })
+        else {
+            snapshot = ledgerSnapshot
+            return
+        }
+        snapshot = CursorUsageService.merge(ledgerSnapshot, days: cache.days)
+    }
+
     private func saveSettingsAndReload() {
         do {
             try DataService.saveSettings(settings)
@@ -713,6 +843,7 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 self.refresh(forceCollection: false)
                 self.refreshCodexQuota()
+                self.refreshCursorCodeSignal()
                 self.refreshTokenRank()
                 self.configureTimer()
             }

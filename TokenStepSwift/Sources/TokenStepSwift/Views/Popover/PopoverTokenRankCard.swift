@@ -5,13 +5,13 @@ struct PopoverTokenRankCard: View {
     @State private var userRankFrame: CGRect = .zero
 
     var body: some View {
-        TokenCard {
-            VStack(alignment: .leading, spacing: 13) {
-                header
-                userRankContent
-                metaContent
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            header
+            userRankContent
+            metaContent
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .coordinateSpace(name: "tokenRankCard")
         .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .onPreferenceChange(TokenRankUserRowFrameKey.self) { frame in
@@ -126,22 +126,35 @@ struct PopoverTokenRankCard: View {
             .padding(.vertical, 9)
             .background(Color.tokenTrack.opacity(0.30), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         } else {
-            HStack(spacing: 8) {
-                if let entry = currentUserEntry {
-                    TokenRankMetaPill(label: L("我的今日 Token"), value: TokenStepFormat.tokens(entry.totalTokens, compact: true))
-                } else if let topEntry = appState.tokenRank?.topEntry {
-                    TokenRankMetaPill(label: L("今日榜首"), value: TokenStepFormat.tokens(topEntry.totalTokens, compact: true))
-                } else {
-                    TokenRankMetaPill(label: L("今日榜单"), value: L("等待同步"))
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L("全榜今日消耗"))
+                        .font(.system(size: 10.5, weight: .heavy))
+                        .foregroundStyle(Color.white.opacity(0.62))
+                    Text(totalRankTokensText)
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.white)
+                        .monospacedDigit()
+                    if let count = appState.tokenRank?.totalRankedUsers, count > 0 {
+                        Text(LFormat("%d 人参榜", count))
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.white.opacity(0.62))
+                    }
                 }
-                TokenRankMetaPill(label: L("全榜今日 Token"), value: totalRankTokensText)
-            }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(red: 0.12, green: 0.18, blue: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            if let error = appState.tokenRankError {
-                Text(error)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if let entry = currentUserEntry {
+                    TokenRankMetaPill(label: L("我的今日"), value: TokenStepFormat.tokens(entry.totalTokens, compact: true))
+                }
+
+                if let error = appState.tokenRankError {
+                    Text(error)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
     }
@@ -213,14 +226,7 @@ struct PopoverTokenRankCard: View {
         guard let client = entry.clients.max(by: { $0.value < $1.value })?.key else {
             return L("全部工具")
         }
-        switch client {
-        case "codex": return "Codex"
-        case "claude": return "Claude Code"
-        case "workbuddy": return "WorkBuddy"
-        case "zcode": return "ZCode"
-        case "hermes": return "Hermes"
-        default: return client
-        }
+        return AgentSourceRegistry.displayName(for: client)
     }
 
     private func relativeTime(_ date: Date) -> String {

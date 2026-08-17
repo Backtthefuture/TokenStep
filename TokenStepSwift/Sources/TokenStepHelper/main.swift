@@ -46,10 +46,6 @@ private struct UpdateInstaller {
     var destinationPath = "/Applications/TokenStep.app"
     var skipRelaunch = false
     var skipStop = false
-#if TOKENSTEP_HELPER_TESTING
-    var testMode = false
-    var testFailurePoint = ""
-#endif
 
     init(arguments: [String]) throws {
         var index = arguments.startIndex
@@ -79,12 +75,6 @@ private struct UpdateInstaller {
                 skipRelaunch = value == "1" || value.lowercased() == "true"
             case "--skip-stop":
                 skipStop = value == "1" || value.lowercased() == "true"
-#if TOKENSTEP_HELPER_TESTING
-            case "--test-mode":
-                testMode = value == "1" || value.lowercased() == "true"
-            case "--test-failure-point":
-                testFailurePoint = value
-#endif
             default:
                 throw HelperError.message("Unknown install argument: \(key)")
             }
@@ -94,11 +84,6 @@ private struct UpdateInstaller {
         guard !dmgPath.isEmpty, !expectedVersion.isEmpty, !logPath.isEmpty else {
             throw HelperError.message("Missing required install arguments.")
         }
-#if TOKENSTEP_HELPER_TESTING
-        if !testFailurePoint.isEmpty, !testMode {
-            throw HelperError.message("Test failure injection requires --test-mode true.")
-        }
-#endif
     }
 
     func run() throws {
@@ -125,15 +110,7 @@ private struct UpdateInstaller {
             logger.write("DMG: \(dmgPath)")
             logger.write("Current PID: \(currentPID)")
 
-#if TOKENSTEP_HELPER_TESTING
-            if testMode {
-                logger.write("TEST MODE: skipping stale mount cleanup")
-            } else {
-                detachStaleTokenStepMounts(logger: &logger)
-            }
-#else
             detachStaleTokenStepMounts(logger: &logger)
-#endif
             let mounted = try attachDMG(logger: &logger)
             mountPoint = mounted.mountPoint
             mountRoot = mounted.mountRoot
@@ -160,97 +137,57 @@ private struct UpdateInstaller {
             }
 
             let destination = URL(fileURLWithPath: destinationPath, isDirectory: true)
+            backupURL = destination.deletingLastPathComponent()
+                .appendingPathComponent("\(destination.lastPathComponent).previous.\(Int(Date().timeIntervalSince1970))", isDirectory: true)
             if FileManager.default.fileExists(atPath: destination.path) {
-                let backup = destination.deletingLastPathComponent()
-                    .appendingPathComponent("\(destination.lastPathComponent).previous.\(UUID().uuidString)", isDirectory: true)
-                logger.write("Backing up existing app to \(backup.path)")
-                try FileManager.default.moveItem(at: destination, to: backup)
-                backupURL = backup
+                logger.write("Backing up existing app to \(backupURL!.path)")
+                try? FileManager.default.removeItem(at: backupURL!)
+                try FileManager.default.moveItem(at: destination, to: backupURL!)
             }
 
-            logger.write("Copying new app to \(destination.path)")
-            try ProcessRunner.run("/usr/bin/ditto", [sourceApp.path, destination.path])
+            logger.write("Copying new app into Applications")
+            do {
+                try ProcessRunner.run("/usr/bin/ditto", [sourceApp.path, destination.path])
+            } catch {
+                try? FileManager.default.removeItem(at: destination)
+                if let backupURL, FileManager.default.fileExists(atPath: backupURL.path) {
+                    try? FileManager.default.moveItem(at: backupURL, to: destination)
+                }
+                throw error
+            }
+
+            if let backupURL {
+                try? FileManager.default.removeItem(at: backupURL)
+            }
 
             let installedVersion = bundleVersion(destination)
             logger.write("Installed version: \(installedVersion)")
             guard installedVersion == expectedVersion else {
                 throw HelperError.message("Installed version mismatch: expected \(expectedVersion), got \(installedVersion)")
             }
-#if TOKENSTEP_HELPER_TESTING
-            try injectFailureIfRequested("after-version-check")
-#endif
 
             _ = try? ProcessRunner.run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", destination.path])
             if skipRelaunch {
                 logger.write("Skipping relaunch by request")
             } else {
                 logger.write("Opening updated app")
-                try relaunch(destination, logger: &logger)
-            }
-#if TOKENSTEP_HELPER_TESTING
-            try injectFailureIfRequested("before-commit")
-#endif
-
-            if let backupURL, FileManager.default.fileExists(atPath: backupURL.path) {
-                logger.write("Update committed; removing backup at \(backupURL.path)")
-                try? FileManager.default.removeItem(at: backupURL)
+                try ProcessRunner.run("/usr/bin/open", ["-n", destination.path])
+                try waitForTokenStepLaunch(logger: &logger)
             }
             logger.write("TokenStep helper installer finished at \(Date())")
             cleanup()
         } catch {
             logger.write("TokenStep helper installer failed: \(error.localizedDescription)")
-            if let backupURL, FileManager.default.fileExists(atPath: backupURL.path) {
-                let destination = URL(fileURLWithPath: destinationPath, isDirectory: true)
-                do {
-                    if FileManager.default.fileExists(atPath: destination.path) {
-                        logger.write("Removing incomplete destination before rollback: \(destination.path)")
-                        try FileManager.default.removeItem(at: destination)
-                    }
-                    logger.write("Restoring previous app from \(backupURL.path)")
-                    try FileManager.default.moveItem(at: backupURL, to: destination)
-                    if skipRelaunch {
-                        logger.write("Skipping previous app relaunch by request")
-                    } else {
-                        logger.write("Attempting to relaunch previous app")
-                        do {
-                            try relaunch(destination, logger: &logger)
-                        } catch {
-                            logger.write("Previous app relaunch failed: \(error.localizedDescription)")
-                        }
-                    }
-                } catch {
-                    logger.write("Rollback failed: \(error.localizedDescription)")
-                }
+            if let backupURL,
+               FileManager.default.fileExists(atPath: backupURL.path),
+               !FileManager.default.fileExists(atPath: destinationPath) {
+                try? FileManager.default.moveItem(at: backupURL, to: URL(fileURLWithPath: destinationPath, isDirectory: true))
             }
-#if TOKENSTEP_HELPER_TESTING
-            if !testMode {
-                notifyFailure()
-            }
-#else
             notifyFailure()
-#endif
             cleanup()
             throw error
         }
     }
-
-    private func relaunch(_ appURL: URL, logger: inout HelperLogger) throws {
-#if TOKENSTEP_HELPER_TESTING
-        if testMode {
-            logger.write("TEST MODE: simulated relaunch of \(appURL.path)")
-            return
-        }
-#endif
-        try ProcessRunner.run("/usr/bin/open", ["-n", appURL.path])
-        try waitForTokenStepLaunch(logger: &logger)
-    }
-
-#if TOKENSTEP_HELPER_TESTING
-    private func injectFailureIfRequested(_ point: String) throws {
-        guard testMode, testFailurePoint == point else { return }
-        throw HelperError.message("Injected test failure at \(point)")
-    }
-#endif
 
     private func attachDMG(logger: inout HelperLogger) throws -> (mountPoint: URL, mountRoot: URL) {
         let mountRoot = FileManager.default.temporaryDirectory

@@ -5,7 +5,7 @@ struct PopoverFooterView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Label(L("本地统计"), systemImage: "checkmark.shield.fill")
                     .font(.caption.weight(.bold))
@@ -21,15 +21,15 @@ struct PopoverFooterView: View {
                     MainWindowPresenter.shared.show(appState: appState)
                 } label: {
                     Label(L("打开仪表盘"), systemImage: "arrow.up.right")
-                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .font(.system(size: 14, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(Color.tokenGreen, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                        .shadow(color: Color.tokenGreenDark.opacity(0.14), radius: 10, x: 0, y: 6)
+                        .frame(width: 148, height: 40)
+                        .background(Color.tokenGreen, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .help(L("打开仪表盘"))
+
+                Spacer(minLength: 0)
 
                 PopoverActionButton(title: L("刷新"), symbol: "arrow.clockwise") {
                     appState.refresh()
@@ -55,20 +55,16 @@ private struct PopoverActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: symbol)
-                    .font(.system(size: 17, weight: .heavy))
-                    .frame(height: 20)
-                Text(title)
-                    .font(.caption2.weight(.heavy))
-            }
-            .foregroundStyle(Color.tokenInk.opacity(0.78))
-            .frame(width: 54, height: 54)
-            .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(Color.black.opacity(0.055)))
-            .shadow(color: Color.black.opacity(0.045), radius: 10, x: 0, y: 6)
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(Color.tokenInk.opacity(0.78))
+                .frame(width: 40, height: 40)
+                .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.black.opacity(0.055)))
+                .help(title)
         }
         .buttonStyle(.plain)
         .help(title)
+        .accessibilityLabel(title)
     }
 }

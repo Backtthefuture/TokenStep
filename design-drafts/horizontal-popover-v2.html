@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TokenStep 浮窗 V2 · 红线规格稿</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #f3eee4;
+      --ink: #1b241c;
+      --muted: #5c675d;
+      --line: rgba(27, 36, 28, 0.12);
+      --forest: #1f6a48;
+      --deep: #173528;
+      --lime: #c6e04a;
+      --red: #c45c26;
+      --card: #f6f1e7;
+      --chipbg: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: "IBM Plex Sans", "PingFang SC", sans-serif; }
+    body { padding: 40px 48px 90px; }
+    h1 { font-family: "Fraunces", serif; font-size: 40px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 6px; }
+    .version-tag { display: inline-block; font: 600 11px/1 "IBM Plex Mono", monospace; color: var(--paper); background: var(--red); padding: 5px 9px; border-radius: 4px; vertical-align: middle; margin-left: 12px; letter-spacing: 0.08em; }
+    .lede { max-width: 760px; color: var(--muted); font-size: 15px; line-height: 1.6; margin-bottom: 26px; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 26px; }
+    .tabs button { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 8px 14px; font: 600 13px/1 "IBM Plex Sans", sans-serif; cursor: pointer; }
+    .tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .note { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 24px; margin-bottom: 24px; }
+    .note h2 { font-family: "Syne", sans-serif; font-size: 21px; margin: 0 0 8px; }
+    .note p { margin: 0 0 10px; color: var(--muted); line-height: 1.6; font-size: 14px; }
+    .meta { display: grid; gap: 10px; align-content: start; }
+    .meta div { border-top: 1px solid var(--line); padding-top: 8px; }
+    .meta b { display: block; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+
+    .stage { background: #cfd6c8; border-radius: 26px; padding: 64px 40px 56px; display: flex; justify-content: center; align-items: flex-start; position: relative; overflow: hidden; }
+    .stage::before { content: attr(data-label); position: absolute; top: 16px; left: 22px; font: 600 11px/1 "IBM Plex Mono", monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #3e4a3f; }
+
+    /* redline system */
+    .rl-wrap { position: relative; }
+    .rl { position: absolute; font: 600 10px/1 "IBM Plex Mono", monospace; color: var(--red); pointer-events: none; }
+    .rl.h { border-top: 1.5px dashed var(--red); }
+    .rl.h::before, .rl.h::after { content: ""; position: absolute; top: -5px; width: 1.5px; height: 10px; background: var(--red); }
+    .rl.h::before { left: 0; } .rl.h::after { right: 0; }
+    .rl.h span { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); background: rgba(207,214,200,0.9); padding: 2px 5px; white-space: nowrap; }
+    .rl.v { border-left: 1.5px dashed var(--red); }
+    .rl.v::before, .rl.v::after { content: ""; position: absolute; left: -5px; height: 1.5px; width: 10px; background: var(--red); }
+    .rl.v::before { top: 0; } .rl.v::after { bottom: 0; }
+    .rl.v span { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); background: rgba(207,214,200,0.9); padding: 2px 5px; white-space: nowrap; }
+    .tag { position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--red); color: var(--paper); display: grid; place-items: center; font: 700 12px/1 "IBM Plex Mono", monospace; z-index: 5; }
+
+    .legend-list { margin: 22px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px; }
+    .legend-list li { display: flex; gap: 10px; font-size: 13px; line-height: 1.55; color: var(--muted); }
+    .legend-list i { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--red); color: var(--paper); display: grid; place-items: center; font: 700 11px/1 "IBM Plex Mono", monospace; font-style: normal; margin-top: 1px; }
+    .legend-list code { font-family: "IBM Plex Mono", monospace; font-size: 12px; background: rgba(27,36,28,0.06); padding: 1px 5px; border-radius: 4px; }
+
+    /* ===== popover mock ===== */
+    .pop { width: 800px; background: var(--card); border: 1px solid #d9d0c0; border-radius: 24px; overflow: hidden; box-shadow: 0 22px 50px rgba(28, 40, 30, 0.16); font-family: "IBM Plex Sans", sans-serif; }
+    .pop-head { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid #e4dcc9; }
+    .mark { width: 26px; height: 26px; border-radius: 9px; background: var(--forest); color: #e8f6c8; display: grid; place-items: center; font-family: "Syne", sans-serif; font-weight: 800; font-size: 14px; }
+    .pop-head b { font-size: 14px; }
+    .sync { margin-left: auto; display: flex; align-items: center; gap: 6px; font: 700 11px/1 "IBM Plex Sans", sans-serif; color: #4c574d; background: var(--chipbg); border: 1px solid #e4dacb; border-radius: 999px; padding: 6px 10px; }
+    .sync i { width: 6px; height: 6px; border-radius: 50%; background: var(--forest); font-style: normal; }
+    .cam { width: 28px; height: 28px; border-radius: 50%; background: var(--chipbg); border: 1px solid #e4dacb; display: grid; place-items: center; font-size: 12px; color: #4c574d; }
+    .pop-body { display: grid; grid-template-columns: 168px 1fr 232px; }
+    .pb-left { background: var(--deep); color: #e7f3c8; padding: 14px 14px 12px; display: flex; flex-direction: column; justify-content: space-between; min-height: 196px; }
+    .pb-left small { font: 600 10px/1.4 "IBM Plex Mono", monospace; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.72; }
+    .ring { width: 106px; height: 106px; border-radius: 50%; background: conic-gradient(var(--lime) 223deg, #2b5340 0); display: grid; place-items: center; margin: 6px auto; }
+    .ring span { width: 84px; height: 84px; background: var(--deep); border-radius: 50%; display: grid; place-items: center; text-align: center; font-weight: 800; font-size: 15px; line-height: 1.25; }
+    .ring span em { font-style: normal; display: block; font-size: 11px; opacity: 0.75; font-weight: 700; }
+    .pb-left .foot { font: 700 11px/1.4 "IBM Plex Sans", sans-serif; opacity: 0.82; text-align: center; }
+    .pb-mid { padding: 12px 16px; display: flex; flex-direction: column; gap: 7px; }
+    .pb-mid .hd { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+    .pb-mid .hd b { font-size: 13px; }
+    .pb-mid .hd span { font: 600 11px/1 "IBM Plex Sans", sans-serif; color: var(--muted); }
+    .arow { display: grid; grid-template-columns: 64px 1fr 58px 54px; gap: 8px; align-items: center; font-size: 11.5px; height: 24px; }
+    .arow .nm { font-weight: 700; display: flex; align-items: center; gap: 5px; }
+    .arow .nm i { width: 7px; height: 7px; border-radius: 50%; font-style: normal; }
+    .bar { height: 5px; background: #ddd6c8; border-radius: 99px; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--forest); width: var(--w); font-style: normal; }
+    .arow b { font-variant-numeric: tabular-nums; text-align: right; }
+    .arow .rq { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+    .pb-right { padding: 12px 12px 12px 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
+    .pb-right .hd { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; }
+    .pb-right .hd b { font-size: 13px; }
+    .pb-right .hd span { font: 600 10px/1 "IBM Plex Mono", monospace; color: var(--muted); }
+    .chip { background: var(--chipbg); border: 1px solid #e4dacb; border-radius: 13px; padding: 9px 10px; min-height: 64px; }
+    .chip small { display: block; color: var(--muted); font-weight: 700; font-size: 10.5px; }
+    .chip strong { display: block; font-size: 17px; margin: 3px 0 5px; font-variant-numeric: tabular-nums; }
+    .chip .sub { font-size: 10px; color: var(--muted); margin-top: 5px; display: block; font-weight: 600; }
+    .chip.warn { border: 1.5px solid var(--red); }
+    .chip.warn strong { color: var(--red); }
+    .chip.warn .bar i { background: var(--red); }
+    .chip.dim { opacity: 0.92; }
+    .chip.dim strong { color: #8a9288; }
+    .chip.dim .bar i { background: #b3bcae; }
+    .chip .relink { display: inline-block; margin-top: 5px; font: 700 10px/1 "IBM Plex Sans", sans-serif; color: var(--forest); border: 1px solid var(--forest); border-radius: 999px; padding: 3px 8px; }
+    .skel { height: 10px; border-radius: 6px; background: linear-gradient(90deg, #e9e2d2, #f3eee4, #e9e2d2); background-size: 200% 100%; animation: sh 1.4s infinite linear; }
+    @keyframes sh { to { background-position: -200% 0; } }
+    .pop-foot { height: 40px; border-top: 1px solid #e4dcc9; display: flex; align-items: center; gap: 8px; padding: 0 16px; }
+    .pop-foot button { flex: 1; height: 26px; border-radius: 999px; border: 1px solid #e4dacb; background: var(--chipbg); font: 700 11px/1 "IBM Plex Sans", sans-serif; color: #3c463d; }
+
+    /* narrow variant */
+    .pop.narrow { width: 560px; }
+    .pop.narrow .pop-body { grid-template-columns: 168px 1fr; }
+
+    /* focus crop of quota column */
+    .crop { width: 252px; background: var(--card); border: 1px solid #d9d0c0; border-radius: 18px; padding: 12px 10px; box-shadow: 0 14px 30px rgba(28,40,30,0.12); }
+    .crop .hd { display: flex; justify-content: space-between; align-items: baseline; padding: 0 2px 8px; }
+    .crop .hd b { font-size: 13px; }
+    .crop .hd span { font: 600 10px/1 "IBM Plex Mono", monospace; color: var(--muted); }
+    .crop .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .states { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+    .state-cell h3 { font-family: "Syne", sans-serif; font-size: 15px; margin: 0 0 4px; }
+    .state-cell p { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin: 0 0 12px; max-width: 420px; }
+    .state-stage { background: #cfd6c8; border-radius: 18px; padding: 26px 22px; display: flex; justify-content: center; }
+
+    /* settings mock */
+    .set-card { width: 560px; background: var(--card); border: 1px solid #d9d0c0; border-radius: 20px; padding: 18px; box-shadow: 0 18px 40px rgba(28,40,30,0.14); }
+    .set-card h4 { margin: 0 0 3px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .set-card .desc { font-size: 12px; color: var(--muted); margin: 0 0 14px; line-height: 1.55; }
+    .prov { display: grid; grid-template-columns: 26px 1fr auto auto; gap: 10px; align-items: center; padding: 10px 8px; border-top: 1px solid var(--line); }
+    .prov:last-of-type { border-bottom: 1px solid var(--line); }
+    .prov .ico { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font: 800 11px/1 "Syne", sans-serif; color: #fff; }
+    .prov .nm b { display: block; font-size: 13px; }
+    .prov .nm span { display: block; font: 500 10.5px/1.4 "IBM Plex Mono", monospace; color: var(--muted); }
+    .prov .st { font: 700 10.5px/1 "IBM Plex Sans", sans-serif; padding: 4px 8px; border-radius: 999px; }
+    .st.ok { color: var(--forest); background: rgba(31,106,72,0.1); }
+    .st.miss { color: #8a6b3c; background: rgba(196,140,60,0.14); }
+    .st.bad { color: var(--red); background: rgba(196,92,38,0.12); }
+    .toggle { width: 34px; height: 20px; border-radius: 999px; background: var(--forest); position: relative; }
+    .toggle::after { content: ""; position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+    .toggle.off { background: #c8c2b2; }
+    .toggle.off::after { right: auto; left: 2px; }
+    .set-note { margin-top: 12px; font-size: 11px; color: var(--muted); line-height: 1.6; }
+
+    /* menu bar & island */
+    .mb-strip { width: 620px; height: 30px; background: #1c1c1c; border-radius: 8px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 14px; color: #eee; font: 600 12px/1 "IBM Plex Mono", monospace; }
+    .mb-item { display: flex; align-items: center; gap: 6px; position: relative; }
+    .mb-ring { width: 15px; height: 15px; border-radius: 50%; background: conic-gradient(var(--lime) 223deg, #4a4a4a 0); position: relative; }
+    .mb-ring::after { content: ""; position: absolute; inset: 3.2px; background: #1c1c1c; border-radius: 50%; }
+    .mb-dot { position: absolute; top: -3px; right: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--red); border: 1.5px solid #1c1c1c; z-index: 2; }
+    .island-pill { height: 24px; width: 96px; background: #000; border-radius: 999px; display: flex; align-items: center; gap: 5px; padding: 0 9px; color: #fff; font: 800 11px/1 "IBM Plex Sans", sans-serif; }
+    .island-pill .mb-ring { width: 13px; height: 13px; }
+    .island-pill .mb-ring::after { inset: 2.8px; background: #000; }
+    .island-pill .wdot { width: 4.5px; height: 4.5px; border-radius: 50%; background: var(--red); }
+    .isl-exp { width: 560px; background: var(--card); border: 1px solid #d9d0c0; border-radius: 22px; overflow: hidden; box-shadow: 0 18px 44px rgba(28,40,30,0.2); }
+    .isl-exp .pop-body { grid-template-columns: 132px 1fr 172px; }
+    .isl-exp .pb-left { min-height: 150px; padding: 10px; }
+    .isl-exp .ring { width: 78px; height: 78px; }
+    .isl-exp .ring span { width: 60px; height: 60px; font-size: 12px; }
+    .isl-exp .arow { grid-template-columns: 52px 1fr 48px; height: 21px; font-size: 10.5px; }
+    .isl-exp .chip { min-height: 50px; padding: 7px 8px; }
+    .isl-exp .chip strong { font-size: 14px; }
+    .isl-exp .pop-foot { height: 32px; }
+    .isl-exp .pop-foot button { flex: none; width: 30px; }
+
+    /* burn rate hover */
+    .hover-card { width: 316px; background: #13110d; color: #efe7d6; border-radius: 14px; padding: 14px; font-family: "IBM Plex Sans", sans-serif; box-shadow: 0 20px 46px rgba(0,0,0,0.35); }
+    .hover-card .t { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+    .hover-card .t b { font-size: 13px; }
+    .hover-card .t span { font: 600 10px/1 "IBM Plex Mono", monospace; color: #9a917e; }
+    .hover-card .big { font-size: 26px; font-weight: 800; color: var(--lime); font-variant-numeric: tabular-nums; }
+    .hover-card .abs { font: 600 11px/1.4 "IBM Plex Mono", monospace; color: #9a917e; margin: 2px 0 10px; }
+    .hover-card .bar { background: #2a261e; height: 6px; }
+    .hover-card .bar i { background: var(--lime); }
+    .hrow { display: flex; justify-content: space-between; font-size: 11.5px; padding: 7px 0; border-bottom: 1px solid #221e18; }
+    .hrow span { color: #9a917e; }
+    .hrow b { font-variant-numeric: tabular-nums; }
+    .hrow.warn b { color: #e08a3c; }
+    .hover-card .disc { margin-top: 9px; font-size: 10px; color: #6f695c; line-height: 1.5; }
+
+    .impl { margin-top: 20px; background: var(--chipbg); border: 1px solid var(--line); border-radius: 16px; padding: 14px 18px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+    .impl b { color: var(--ink); }
+    .impl code { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; background: rgba(27,36,28,0.06); padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>TokenStep 浮窗 V2<span class="version-tag">REDLINE SPEC</span></h1>
+  <p class="lede">
+    在三版方向稿里选定「横版健身台」后，这一版做成可交付开发的红线规格：默认态标注尺寸与组件映射、四种状态矩阵、订阅额度设置页、菜单栏与灵动岛预警、燃尽率详情。数字沿用方向稿示意值。
+  </p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="final">① 最终稿 · 默认态</button>
+    <button role="tab" aria-selected="false" data-tab="states">② 状态矩阵</button>
+    <button role="tab" aria-selected="false" data-tab="settings">③ 设置 · 订阅额度</button>
+    <button role="tab" aria-selected="false" data-tab="menubar">④ 菜单栏与灵动岛</button>
+    <button role="tab" aria-selected="false" data-tab="burn">⑤ 燃尽率详情（P1）</button>
+  </div>
+
+  <!-- ① final -->
+  <section class="panel active" id="final">
+    <div class="note">
+      <div>
+        <h2>默认态 · 800 × 280</h2>
+        <p>三栏横扫：环（品牌与今日目标）→ Agent 用量（谁在干活）→ 订阅额度（会不会被限流）。头部与页脚完整保留现有功能（同步状态、截图菜单、三个动作按钮），迁移成本最低。</p>
+        <p>浮窗由 <b>MenuBarExtra(.window)</b> 承载，尺寸随内容自适应且系统自动贴屏幕边，所以横版没有越界风险；真正要写的只是布局规则。</p>
+      </div>
+      <div class="meta">
+        <div><b>改动文件</b>PopoverPanelView.swift（竖栈 → 三栏）</div>
+        <div><b>额度排序</b>Codex → Claude → GLM → Kimi → Grok，警告置顶</div>
+        <div><b>上限规则</b>Agent 5 行封顶（Top 4 + 其他）；额度 4 胶囊 + 「+N」</div>
+      </div>
+    </div>
+    <div class="stage" data-label="Menu bar popover · default">
+      <div class="rl-wrap">
+        <!-- redlines -->
+        <div class="rl h" style="left:0; width:800px; top:-34px;"><span>800</span></div>
+        <div class="rl v" style="left:-30px; top:0; height:280px;"><span>280</span></div>
+        <div class="rl h" style="left:0; width:168px; bottom:-30px;"><span>168</span></div>
+        <div class="rl h" style="left:168px; width:400px; bottom:-30px;"><span>弹性 ≥360</span></div>
+        <div class="rl h" style="left:568px; width:232px; bottom:-30px;"><span>232</span></div>
+        <div class="rl v" style="right:-30px; top:0; height:44px;"><span>44</span></div>
+        <div class="rl v" style="right:-30px; bottom:0; height:40px;"><span>40</span></div>
+        <span class="tag" style="left:-11px; top:110px;">1</span>
+        <span class="tag" style="left:300px; top:60px;">2</span>
+        <span class="tag" style="left:640px; top:60px;">3</span>
+        <span class="tag" style="left:390px; top:-11px;">4</span>
+        <span class="tag" style="left:390px; top:269px;">5</span>
+        <span class="tag" style="left:701px; top:150px;">6</span>
+
+        <article class="pop">
+          <div class="pop-head">
+            <div class="mark">T</div><b>TokenStep</b>
+            <div class="sync"><i></i>已同步</div>
+            <div class="cam">📷</div>
+          </div>
+          <div class="pop-body">
+            <div class="pb-left">
+              <small>今日 · 第 2 圈</small>
+              <div class="ring"><span>1.24亿<em>62%</em></span></div>
+              <div class="foot">目标 1 亿 / 圈 · $4.80</div>
+            </div>
+            <div class="pb-mid">
+              <div class="hd"><b>Agent 用量</b><span>记录 11/24 小时 · 缓存 41%</span></div>
+              <div class="arow"><span class="nm"><i style="background:#1f6a48"></i>Codex</span><div class="bar"><i style="--w:62%"></i></div><b>7720万</b><span class="rq">148 请求</span></div>
+              <div class="arow"><span class="nm"><i style="background:#3d7ca8"></i>Claude</span><div class="bar"><i style="--w:21%;background:#3d7ca8"></i></div><b>2610万</b><span class="rq">36 请求</span></div>
+              <div class="arow"><span class="nm"><i style="background:#c48c3c"></i>ZCode</span><div class="bar"><i style="--w:9%;background:#c48c3c"></i></div><b>1120万</b><span class="rq">22 请求</span></div>
+              <div class="arow"><span class="nm"><i style="background:#7a5ab8"></i>Kimi</span><div class="bar"><i style="--w:5%;background:#7a5ab8"></i></div><b>620万</b><span class="rq">18 请求</span></div>
+              <div class="arow"><span class="nm"><i style="background:#888"></i>其他</span><div class="bar"><i style="--w:3%;background:#999"></i></div><b>370万</b><span class="rq">9 请求</span></div>
+            </div>
+            <div class="pb-right">
+              <div class="hd"><b>订阅额度</b><span>14:02 更新</span></div>
+              <div class="chip"><small>Codex · 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><span class="sub">2:14 后重置</span></div>
+              <div class="chip"><small>Claude · 7d</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><span class="sub">3 天后重置</span></div>
+              <div class="chip"><small>GLM · Token 窗</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><span class="sub">11h 后重置</span></div>
+              <div class="chip"><small>Kimi · 周窗</small><strong>67%</strong><div class="bar"><i style="--w:67%"></i></div><span class="sub">3 天后重置 · +1</span></div>
+            </div>
+          </div>
+          <div class="pop-foot">
+            <button>打开仪表盘 ↗</button><button>刷新 ⟳</button><button>设置 ⚙</button>
+          </div>
+        </article>
+      </div>
+    </div>
+    <ul class="legend-list">
+      <li><i>1</i><span>环栏 168pt，深色底承接品牌。数据全部来自现有 <code>todayLap</code>，不新增计算。</span></li>
+      <li><i>2</i><span>Agent 栏每行 24pt：名称 64 / 进度条弹性 / Token 58 / 请求数 54。行数据来自 <code>today.tools</code> + <code>DailyAgentWork.sources</code>（请求数已存在，仅是首次展示）。有数据才出现，不再写死 Codex / Claude 两行。</span></li>
+      <li><i>3</i><span>额度栏 232pt，2×2 胶囊。每张 = 一个 <code>ProviderQuota</code> 的主窗口；副窗口进「+N」或 hover。主数字统一为剩余百分比。</span></li>
+      <li><i>4</i><span>头部 44pt 原样保留：TokenStep 标识、同步状态、截图分享菜单（现有 <code>PopoverCaptureMenuButton</code> 全部功能不动）。</span></li>
+      <li><i>5</i><span>页脚 40pt 原样保留三个动作。榜单卡与更新提醒继续按需插在页脚上方，宽度撑满 800。</span></li>
+      <li><i>6</i><span>「+1」表示 Kimi 还有 Session 窗未展示；点击胶囊区任意位置进主窗口额度详情。</span></li>
+    </ul>
+    <div class="impl">
+      <b>自适应规则（同一套代码走天下）：</b>额度关闭或没有任何一家登录 → 右栏整体消失，宽度收到 560；Agent ≤ 2 → 中栏改为 2 行 + Input/Output/Cache 拆分条，宽度 720；Agent &gt; 5 → Top 4 + 「其他」；额度 &gt; 4 → 4 胶囊 + 「+N」。灵动岛展开层用同一信息架构的 560×190 档位（见第 ④ 页）。
+    </div>
+  </section>
+
+  <!-- ② states -->
+  <section class="panel" id="states">
+    <div class="note">
+      <div>
+        <h2>状态矩阵：右栏的四种命运</h2>
+        <p>额度这条链路的失败方式比成功方式多：没登录、登录过期、断网、还没拉到。设计原则只有一条——<b>绝不把「不知道」显示成 0%</b>，那会让用户以为额度用完了。</p>
+        <p>除「收窄态」影响整体布局外，其余状态都只发生在右栏，左、中两栏永远稳定。</p>
+      </div>
+      <div class="meta">
+        <div><b>状态模型</b>ok · loading · warning · needsLogin/expired · networkFailed</div>
+        <div><b>数据保留</b>失败时保留上次快照，只改状态与角标</div>
+        <div><b>改动文件</b>PopoverQuotaCard → QuotaChip 组件</div>
+      </div>
+    </div>
+    <div class="states">
+      <div class="state-cell">
+        <h3>警告态 · 剩余 &lt; 20%</h3>
+        <p>Grok 跳到第一位并描边暖色，其余保持稳定顺序。同时菜单栏图标出现暖色小点（见第 ④ 页），用户点开前就知道要紧张。</p>
+        <div class="state-stage">
+          <div class="crop">
+            <div class="hd"><b>订阅额度</b><span>14:02 更新</span></div>
+            <div class="grid2">
+              <div class="chip warn"><small>Grok · Credits</small><strong>19%</strong><div class="bar"><i style="--w:19%"></i></div><span class="sub">1,160 / 6,000 · 预计 2.4h 耗尽</span></div>
+              <div class="chip"><small>Codex · 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><span class="sub">2:14 后重置</span></div>
+              <div class="chip"><small>Claude · 7d</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><span class="sub">3 天后重置</span></div>
+              <div class="chip"><small>GLM · Token 窗</small><strong>54%</strong><div class="bar"><i style="--w:54%"></i></div><span class="sub">11h 后重置 · +1</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="state-cell">
+        <h3>失效态 · 登录过期 / 凭证缺失</h3>
+        <p>灰态显示<b>上次的值</b>加时间戳，附「重新检测」。GLM 用按量 key 误配 Coding Plan 时也走这个状态，文案区分「未登录」和「当前 key 无 Coding Plan」。</p>
+        <div class="state-stage">
+          <div class="crop">
+            <div class="hd"><b>订阅额度</b><span>部分失效</span></div>
+            <div class="grid2">
+              <div class="chip"><small>Codex · 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div><span class="sub">2:14 后重置</span></div>
+              <div class="chip dim"><small>Kimi · 周窗</small><strong>67%</strong><div class="bar"><i style="--w:67%"></i></div><span class="sub">登录已过期 · 2 小时前</span><span class="relink">重新检测</span></div>
+              <div class="chip dim"><small>GLM</small><strong>—</strong><div class="bar"><i style="--w:0%"></i></div><span class="sub">当前 key 无 Coding Plan</span><span class="relink">如何配置</span></div>
+              <div class="chip"><small>Claude · 7d</small><strong>71%</strong><div class="bar"><i style="--w:71%"></i></div><span class="sub">3 天后重置</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="state-cell">
+        <h3>加载态 · 首次打开</h3>
+        <p>开关刚打开或缓存过期时显示骨架条与「等待同步」。缓存命中（10 分钟内）则直接渲染缓存值，网络请求在后台跑，打开浮窗永远不卡。</p>
+        <div class="state-stage">
+          <div class="crop">
+            <div class="hd"><b>订阅额度</b><span>同步中…</span></div>
+            <div class="grid2">
+              <div class="chip"><small>Codex</small><div class="skel" style="width:52%;margin:8px 0 7px"></div><div class="skel" style="width:100%"></div></div>
+              <div class="chip"><small>Claude</small><div class="skel" style="width:44%;margin:8px 0 7px"></div><div class="skel" style="width:100%"></div></div>
+              <div class="chip"><small>GLM</small><div class="skel" style="width:58%;margin:8px 0 7px"></div><div class="skel" style="width:100%"></div></div>
+              <div class="chip"><small>Kimi</small><div class="skel" style="width:47%;margin:8px 0 7px"></div><div class="skel" style="width:100%"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="state-cell">
+        <h3>收窄态 · 额度关闭（560 宽）</h3>
+        <p>额度默认关闭，所以这是新用户的第一眼。右栏整体消失而不是留白，两栏依然横扫，比现在的 412 竖版矮一半以上。</p>
+        <div class="state-stage">
+          <article class="pop narrow" style="box-shadow:0 14px 30px rgba(28,40,30,0.12)">
+            <div class="pop-head"><div class="mark">T</div><b>TokenStep</b><div class="sync"><i></i>已同步</div><div class="cam">📷</div></div>
+            <div class="pop-body">
+              <div class="pb-left"><small>今日 · 第 2 圈</small><div class="ring"><span>1.24亿<em>62%</em></span></div><div class="foot">目标 1 亿 / 圈 · $4.80</div></div>
+              <div class="pb-mid">
+                <div class="hd"><b>Agent 用量</b><span>记录 11/24 · 缓存 41%</span></div>
+                <div class="arow"><span class="nm"><i style="background:#1f6a48"></i>Codex</span><div class="bar"><i style="--w:75%"></i></div><b>7720万</b><span class="rq">148 请求</span></div>
+                <div class="arow"><span class="nm"><i style="background:#3d7ca8"></i>Claude</span><div class="bar"><i style="--w:25%;background:#3d7ca8"></i></div><b>2610万</b><span class="rq">36 请求</span></div>
+                <div style="margin-top:6px">
+                  <div style="font:700 10px/1 'IBM Plex Sans';color:var(--muted);margin-bottom:5px">INPUT 48% · OUTPUT 31% · CACHE 21%</div>
+                  <div class="bar" style="height:7px;display:flex"><i style="--w:48%;border-radius:0"></i><i style="--w:31%;background:#3d7ca8;border-radius:0"></i><i style="--w:21%;background:#c48c3c;border-radius:0"></i></div>
+                </div>
+              </div>
+            </div>
+            <div class="pop-foot"><button>打开仪表盘 ↗</button><button>刷新 ⟳</button><button>设置 ⚙</button></div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ③ settings -->
+  <section class="panel" id="settings">
+    <div class="note">
+      <div>
+        <h2>设置：从一个开关到一张提供商清单</h2>
+        <p>现在的「Agent 额度显示」是一个布尔，背后却同时控制 Codex 和 Claude。V2 改成按提供商勾选：每行显示<b>凭证自动检测结果</b>，让用户在打开开关前就知道能不能读到。</p>
+        <p>旧设置迁移：<b>show_codex_quota = true → 勾选 Codex + Claude</b>，与代码里已有的两处旧字段迁移同一写法。所有凭证只读本机已有登录态，永不写回。</p>
+      </div>
+      <div class="meta">
+        <div><b>改动文件</b>SettingsDisplayRefreshCards.swift · TokenStepSettings</div>
+        <div><b>刷新节奏</b>随现有 quotaTTL 15 分钟；电池 / 低电量跟随 30 分钟地板</div>
+        <div><b>隐私</b>不新增网络面：只请求所选提供商官方额度接口</div>
+      </div>
+    </div>
+    <div class="stage" data-label="Settings · 订阅额度卡片">
+      <div class="set-card">
+        <h4>订阅额度</h4>
+        <p class="desc">按提供商开启。只读取本机已登录的凭证，向官方接口查询剩余额度；不读取对话内容，不写回任何配置。</p>
+        <div class="prov">
+          <div class="ico" style="background:#1f6a48">Cx</div>
+          <div class="nm"><b>Codex</b><span>codex app-server（本机已登录）</span></div>
+          <span class="st ok">已检测到</span><div class="toggle"></div>
+        </div>
+        <div class="prov">
+          <div class="ico" style="background:#3d7ca8">Cl</div>
+          <div class="nm"><b>Claude Code</b><span>钥匙串 Claude Code-credentials</span></div>
+          <span class="st ok">已检测到</span><div class="toggle"></div>
+        </div>
+        <div class="prov">
+          <div class="ico" style="background:#c48c3c">G</div>
+          <div class="nm"><b>GLM · Z.ai Coding Plan</b><span>ZAI_API_KEY / GLM_API_KEY · region: cn</span></div>
+          <span class="st ok">已检测到</span><div class="toggle"></div>
+        </div>
+        <div class="prov">
+          <div class="ico" style="background:#7a5ab8">K</div>
+          <div class="nm"><b>Kimi Code</b><span>~/.kimi/credentials/kimi-code.json</span></div>
+          <span class="st bad">登录已过期</span><div class="toggle"></div>
+        </div>
+        <div class="prov">
+          <div class="ico" style="background:#444">Gr</div>
+          <div class="nm"><b>Grok Build</b><span>~/.grok/auth.json（需 grok login）</span></div>
+          <span class="st miss">未检测到</span><div class="toggle off"></div>
+        </div>
+        <p class="set-note">检测失败的提供商可以先开着：状态会显示在浮窗里并附「重新检测」。GLM 按量 key 与 Coding Plan key 不同，检测时会明确区分。</p>
+      </div>
+    </div>
+    <div class="impl">
+      <b>为什么把检测放进设置而不是浮窗：</b>凭证问题是一次性配置问题，属于设置页；浮窗只承担「日常瞄一眼」。设置行的三种状态（已检测到 / 未检测到 / 登录已过期）与浮窗右栏状态机共用同一份 <code>ProviderQuota.status</code>，不做两套判断。
+    </div>
+  </section>
+
+  <!-- ④ menubar -->
+  <section class="panel" id="menubar">
+    <div class="note">
+      <div>
+        <h2>菜单栏与灵动岛：预警要在点开之前</h2>
+        <p>横版浮窗解决「点开之后看得全」，这一页解决「点开之前就知道要不要点」。规则唯一：<b>任一已开启提供商剩余 &lt; 20% 时，环右上角出现暖色小点</b>。文字与布局不变，菜单栏不会抖动。</p>
+        <p>灵动岛展开层与浮窗共用同一信息架构，只是缩到 560×190：环缩小、Agent 三行、额度两张，页脚只留图标。</p>
+      </div>
+      <div class="meta">
+        <div><b>改动文件</b>StatusBarIconRenderer.swift（+警告点参数）</div>
+        <div><b>灵动岛</b>TokenIslandMetrics 356×238 → 560×190；定位 clamp 逻辑复用</div>
+        <div><b>阈值</b>20%，后续可随燃尽率预测升级为「预计 1 小时内耗尽」</div>
+      </div>
+    </div>
+    <div class="stage" data-label="Menu bar · 常态 vs 预警态" style="flex-direction:column; gap:18px; align-items:center;">
+      <div class="mb-strip">
+        <span style="margin-right:auto;opacity:.45">常态</span>
+        <div class="mb-item"><div class="mb-ring"></div><span>1.24亿</span></div>
+        <span style="opacity:.6">Mon 14:02</span>
+      </div>
+      <div class="mb-strip">
+        <span style="margin-right:auto;opacity:.45">预警态 · Grok 剩余 19%</span>
+        <div class="mb-item"><div class="mb-ring"><span class="mb-dot"></span></div><span>1.24亿</span></div>
+        <span style="opacity:.6">Mon 14:02</span>
+      </div>
+      <div style="display:flex; gap:22px; align-items:center; margin-top:6px;">
+        <div class="island-pill"><div class="mb-ring"></div><span>1.24亿</span></div>
+        <div class="island-pill"><div class="mb-ring"></div><span class="wdot"></span><span>1.24亿</span></div>
+        <span style="font:600 11px/1 'IBM Plex Mono',monospace;color:#3e4a3f">← 灵动岛收起胶囊 88×24 · 常态 / 预警</span>
+      </div>
+    </div>
+    <div class="stage" data-label="Token Island 展开层 · 560×190" style="margin-top:22px;">
+      <article class="isl-exp">
+        <div class="pop-body">
+          <div class="pb-left">
+            <small>第 2 圈</small>
+            <div class="ring"><span>1.24亿<em>62%</em></span></div>
+          </div>
+          <div class="pb-mid" style="padding:10px 12px;">
+            <div class="hd"><b style="font-size:12px">Agent 用量</b><span style="font-size:10px">缓存 41%</span></div>
+            <div class="arow"><span class="nm"><i style="background:#1f6a48"></i>Codex</span><div class="bar"><i style="--w:62%"></i></div><b>7720万</b></div>
+            <div class="arow"><span class="nm"><i style="background:#3d7ca8"></i>Claude</span><div class="bar"><i style="--w:21%;background:#3d7ca8"></i></div><b>2610万</b></div>
+            <div class="arow"><span class="nm"><i style="background:#888"></i>其他</span><div class="bar"><i style="--w:17%;background:#999"></i></div><b>2110万</b></div>
+          </div>
+          <div class="pb-right" style="padding:10px 10px 10px 2px;">
+            <div class="hd" style="grid-column:1/-1"><b style="font-size:12px">额度</b><span style="font-size:9px">+2</span></div>
+            <div class="chip warn"><small>Grok</small><strong>19%</strong><div class="bar"><i style="--w:19%"></i></div></div>
+            <div class="chip"><small>Codex 5h</small><strong>38%</strong><div class="bar"><i style="--w:38%"></i></div></div>
+          </div>
+        </div>
+        <div class="pop-foot">
+          <button>↗</button><button>⟳</button><button>⚙</button>
+          <span style="margin-left:auto;font:600 10px/1 'IBM Plex Mono',monospace;color:var(--muted)">hover 维持 · 移出 0.34s 后收起（现有逻辑）</span>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ⑤ burn -->
+  <section class="panel" id="burn">
+    <div class="note">
+      <div>
+        <h2>燃尽率详情（P1）：hover 一张胶囊时出现</h2>
+        <p>每家的额度磁盘缓存从单快照扩成<b>最近 24 条环形数组</b>，就能算出近 3 小时的消耗速度，给出「预计几小时后耗尽」。这是 onWatch 已验证的用户刚需，但依赖数据积累，放 P1 不阻塞横版上线。</p>
+        <p>两条保护规则：样本不足 3 条不显示预测；窗口跨越重置点时只显示倒计时，避免用重置前的速度吓唬人。</p>
+      </div>
+      <div class="meta">
+        <div><b>存储</b>各 provider 缓存 JSON 内加 history 数组，无新文件</div>
+        <div><b>计算</b>线性外推，明确标注「估算」</div>
+        <div><b>入口</b>浮窗胶囊 hover / 主窗口额度详情</div>
+      </div>
+    </div>
+    <div class="stage" data-label="Quota chip hover card · 316 宽">
+      <div class="hover-card">
+        <div class="t"><b>Grok Build · Credits</b><span>14:02 更新</span></div>
+        <div class="big">剩余 19%</div>
+        <div class="abs">1,160 / 6,000 credits</div>
+        <div class="bar"><i style="--w:19%;background:#e08a3c"></i></div>
+        <div class="hrow"><span>重置</span><b>8 月 21 日 00:00（4 天后）</b></div>
+        <div class="hrow"><span>近 3 小时速度</span><b>≈ 480 credits / 小时</b></div>
+        <div class="hrow warn"><span>按此速度耗尽</span><b>≈ 2.4 小时后</b></div>
+        <div class="hrow"><span>今日本机 Grok Token</span><b>370 万 · 9 请求</b></div>
+        <div class="disc">速度与耗尽时间为本机估算，依据最近 24 次额度快照线性外推，不代表账单。跨重置点时不显示预测。</div>
+      </div>
+    </div>
+    <div class="impl">
+      <b>与 Agent 统计的联动：</b>hover 卡最后一行把该提供商<b>今日本机 Token / 请求数</b>（来自 DailyAgentWork）和<b>账户级额度</b>放在一起——这是竞品都没做的一步：别人只告诉你还剩多少，TokenStep 能告诉你「是本机的哪些工作花掉的」。
+    </div>
+  </section>
+
+  <script>
+    const tabs = document.querySelectorAll("[data-tab]");
+    const panels = document.querySelectorAll(".panel");
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => t.setAttribute("aria-selected", t === tab ? "true" : "false"));
+        panels.forEach((p) => p.classList.toggle("active", p.id === tab.dataset.tab));
+      });
+    });
+  </script>
+</body>
+</html>
