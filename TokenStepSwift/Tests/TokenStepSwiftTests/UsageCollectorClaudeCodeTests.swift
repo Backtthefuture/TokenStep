@@ -55,6 +55,7 @@ final class UsageCollectorClaudeCodeTests: XCTestCase {
         XCTAssertEqual(snapshot.totals.tokens, 4_000_000)
         XCTAssertEqual(snapshot.totals.cost, 36.75)
         XCTAssertEqual(snapshot.daily.first?.cost, 36.75)
+        XCTAssertEqual(snapshot.daily.first?.modelCosts["claude-opus-4-8"], 36.75)
     }
 
     private var fixtureLines: [String] {

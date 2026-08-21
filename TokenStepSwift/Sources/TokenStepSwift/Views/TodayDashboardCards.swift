@@ -251,6 +251,192 @@ enum TodaySourceRows {
     }
 }
 
+struct TodayModelUsageRow: Identifiable, Equatable {
+    var id: String { model }
+    var model: String
+    var tokens: Int
+    var percent: Double
+    var estimatedCost: Double?
+}
+
+enum TodayModelUsageRows {
+    static let maximumVisibleRows = 5
+    static let colorSlotCount = 4
+
+    static func make(from usage: DailyUsage) -> [TodayModelUsageRow] {
+        guard usage.totalTokens > 0 else { return [] }
+        let sorted = usage.models
+            .filter { $0.value > 0 }
+            .sorted {
+                if $0.value != $1.value { return $0.value > $1.value }
+                return $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending
+            }
+            .map { model, tokens in
+                TodayModelUsageRow(
+                    model: model,
+                    tokens: tokens,
+                    percent: min(100, max(0, Double(tokens) * 100 / Double(usage.totalTokens))),
+                    estimatedCost: usage.modelCosts[model]
+                )
+            }
+
+        guard sorted.count > 2 else { return sorted }
+        return sorted.enumerated()
+            .filter { index, row in index < 2 || row.percent >= 0.1 }
+            .map(\.element)
+    }
+
+    static func colorSlot(for model: String) -> Int {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in model.lowercased().utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return Int(hash % UInt64(colorSlotCount))
+    }
+
+    static func hasTokenTotalMismatch(_ usage: DailyUsage) -> Bool {
+        guard usage.totalTokens > 0, !usage.models.isEmpty else { return false }
+        return usage.models.values.filter { $0 > 0 }.reduce(0, +) != usage.totalTokens
+    }
+}
+
+struct TodayModelUsageCard: View {
+    @EnvironmentObject private var appState: AppState
+
+    private var usage: DailyUsage { appState.today }
+    private var rows: [TodayModelUsageRow] { TodayModelUsageRows.make(from: usage) }
+    private var visibleRows: ArraySlice<TodayModelUsageRow> { rows.prefix(TodayModelUsageRows.maximumVisibleRows) }
+    private var hiddenCount: Int { max(0, rows.count - TodayModelUsageRows.maximumVisibleRows) }
+
+    var body: some View {
+        TokenCard {
+            VStack(alignment: .leading, spacing: 11) {
+                header
+
+                if usage.totalTokens <= 0 {
+                    emptyState(L("今日暂无使用记录"))
+                } else if rows.isEmpty {
+                    emptyState(L("已有总量，等待模型明细同步"))
+                } else {
+                    columnHeader
+                    VStack(spacing: 0) {
+                        ForEach(Array(visibleRows.enumerated()), id: \.element.id) { index, row in
+                            modelRow(row)
+                            if index < visibleRows.count - 1 {
+                                Divider().opacity(0.55)
+                            }
+                        }
+                    }
+                    if hiddenCount > 0 {
+                        Text(LFormat("还有 %d 个模型", hiddenCount))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    if TodayModelUsageRows.hasTokenTotalMismatch(usage) {
+                        Label(
+                            L("模型明细合计与今日总量不一致；占比按今日总量计算。"),
+                            systemImage: "info.circle"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L("今日模型消耗"))
+                    .font(.title3.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk)
+                Text(L("按模型查看今日 Token、占比与金额估算"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(LFormat("今日 · %d 个模型", rows.count))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.tokenGreenDark)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.tokenMint.opacity(0.24), in: Capsule())
+        }
+    }
+
+    private var columnHeader: some View {
+        HStack(spacing: 12) {
+            Text(L("模型")).frame(width: 190, alignment: .leading)
+            Spacer(minLength: 60)
+            Text("Token").frame(width: 104, alignment: .trailing)
+            Text(L("占比")).frame(width: 72, alignment: .trailing)
+            Text(L("金额估算")).frame(width: 96, alignment: .trailing)
+        }
+        .font(.system(size: 10, weight: .bold))
+        .foregroundStyle(.secondary)
+    }
+
+    private func modelRow(_ row: TodayModelUsageRow) -> some View {
+        let color = rowColor(model: row.model)
+        return HStack(spacing: 12) {
+            HStack(spacing: 9) {
+                Circle().fill(color).frame(width: 9, height: 9)
+                Text(displayName(row.model))
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Color.tokenInk)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(row.model)
+            }
+            .frame(width: 190, alignment: .leading)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.tokenTrack)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(4, proxy.size.width * row.percent / 100))
+                }
+            }
+            .frame(height: 6)
+
+            Text(TokenStepFormat.tokens(row.tokens, compact: true))
+                .frame(width: 104, alignment: .trailing)
+            Text(TokenStepFormat.percent(row.percent))
+                .frame(width: 72, alignment: .trailing)
+            Text(row.estimatedCost.map { TokenStepFormat.money($0) } ?? "—")
+                .frame(width: 96, alignment: .trailing)
+                .help(L("按 API 列表价估算，不代表订阅或实际账单。"))
+        }
+        .font(.callout.weight(.semibold))
+        .foregroundStyle(Color.tokenInk.opacity(0.78))
+        .monospacedDigit()
+        .frame(height: 34)
+    }
+
+    private func emptyState(_ message: String) -> some View {
+        Text(message)
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+    }
+
+    private func displayName(_ model: String) -> String {
+        model.lowercased() == "unknown" ? L("未知模型") : model
+    }
+
+    private func rowColor(model: String) -> Color {
+        switch TodayModelUsageRows.colorSlot(for: model) {
+        case 0: return .tokenGreenDark
+        case 1: return TokenStepThemeRuntime.palette.activity3.color
+        case 2: return TokenStepThemeRuntime.palette.activity2.color
+        default: return .tokenGreen
+        }
+    }
+}
+
 private struct TodayMetricChip: View {
     var label: String
     var value: String

@@ -15,6 +15,8 @@ struct TodayView: View {
                 TodaySourcesCard()
             }
 
+            TodayModelUsageCard()
+
             if appState.settings.cursorCodeSignalEnabled {
                 CursorCodeSignalCard()
             }

@@ -2501,6 +2501,7 @@ enum UsageCollector {
                     date: item.date,
                     tools: item.tools,
                     models: item.models,
+                    modelCosts: item.modelCosts.mapValues { rounded($0, digits: 4) },
                     totalTokens: item.totalTokens,
                     cost: rounded(item.cost, digits: 4)
                 )
@@ -4408,12 +4409,14 @@ private struct DailyAccumulator {
     var date: String
     var tools: [String: Int] = [:]
     var models: [String: Int] = [:]
+    var modelCosts: [String: Double] = [:]
     var totalTokens = 0
     var cost = 0.0
 
     mutating func add(record: UsageRecord, cost: Double) {
         tools[record.tool, default: 0] += record.usage.totalTokens
         models[record.model, default: 0] += record.usage.totalTokens
+        modelCosts[record.model, default: 0] += cost
         totalTokens += record.usage.totalTokens
         self.cost += cost
     }

@@ -96,6 +96,8 @@ struct DailyUsage: Codable, Identifiable {
     var date: String
     var tools: [String: Int]
     var models: [String: Int]
+    /// 模型 → 当日估算成本。旧快照没有此字段时按空字典读取。
+    var modelCosts: [String: Double]
     var totalTokens: Int
     var cost: Double
 
@@ -103,14 +105,23 @@ struct DailyUsage: Codable, Identifiable {
         case date
         case tools
         case models
+        case modelCosts = "model_costs"
         case totalTokens = "total_tokens"
         case cost
     }
 
-    init(date: String, tools: [String: Int], models: [String: Int] = [:], totalTokens: Int, cost: Double) {
+    init(
+        date: String,
+        tools: [String: Int],
+        models: [String: Int] = [:],
+        modelCosts: [String: Double] = [:],
+        totalTokens: Int,
+        cost: Double
+    ) {
         self.date = date
         self.tools = tools
         self.models = models
+        self.modelCosts = modelCosts
         self.totalTokens = totalTokens
         self.cost = cost
     }
@@ -120,6 +131,7 @@ struct DailyUsage: Codable, Identifiable {
         date = try container.decode(String.self, forKey: .date)
         tools = try container.decodeIfPresent([String: Int].self, forKey: .tools) ?? [:]
         models = try container.decodeIfPresent([String: Int].self, forKey: .models) ?? [:]
+        modelCosts = try container.decodeIfPresent([String: Double].self, forKey: .modelCosts) ?? [:]
         totalTokens = try container.decode(Int.self, forKey: .totalTokens)
         cost = try container.decode(Double.self, forKey: .cost)
     }
