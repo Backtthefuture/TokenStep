@@ -125,6 +125,35 @@ final class UpdateServiceTests: XCTestCase {
         )
     }
 
+    func testManualAvailableUpdateRequestsImmediateWindowPresentation() {
+        let update = makeUpdate(version: "0.2.6")
+
+        XCTAssertTrue(
+            UpdatePresentationPolicy.shouldPresentWindow(
+                trigger: .manual,
+                update: update
+            )
+        )
+        XCTAssertFalse(
+            UpdatePresentationPolicy.shouldPresentWindow(
+                trigger: .manual,
+                update: nil
+            )
+        )
+        XCTAssertFalse(
+            UpdatePresentationPolicy.shouldPresentWindow(
+                trigger: .startup,
+                update: update
+            )
+        )
+        XCTAssertFalse(
+            UpdatePresentationPolicy.shouldPresentWindow(
+                trigger: .timer,
+                update: update
+            )
+        )
+    }
+
     func testAutomaticCheckHonorsToggleSixHourThrottleAndSkippedVersion() {
         let now = Date(timeIntervalSince1970: 100_000)
         XCTAssertFalse(

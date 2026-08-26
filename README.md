@@ -22,7 +22,7 @@ TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claud
 
 下载最新版 DMG，打开后把 `TokenStep.app` 拖进「应用程序」即可使用：
 
-[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.5.dmg)
+[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.6.dmg)
 
 也可以从 Release 页面查看所有版本：
 
@@ -31,6 +31,18 @@ TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claud
 TokenStep 已使用 Developer ID 签名并通过 Apple 公证。首次打开时，macOS 可能会出现标准确认弹窗，这是正常现象。
 
 Windows版本由十七做了移植，欢迎大家前往使用：https://github.com/canyexuanfan/TokenStep-Windows/releases 
+
+## 0.2.6 重大更新：检查更新后立即进入安装闭环
+
+0.2.6 修复了从浮层主动检查更新时“查到了，但没有继续弹出更新窗口”的断点，并把下载、验证、替换与自动重启做成可追踪的完整链路。
+
+- **发现新版立即弹窗**：点击浮层或主窗口的更新按钮后，若检测到新版，会立刻打开独立更新窗口。
+- **更新窗口确保可见**：菜单栏瞬时浮层自动收起，更新窗口切到当前桌面并保持在前台，不再被浮层遮住。
+- **一次点击完成升级**：点击“安装并重启”后自动下载 DMG、校验签名、公证与版本，备份旧 App、替换 `/Applications/TokenStep.app` 并重新打开。
+- **全过程可诊断**：检查、弹窗、安装启动和失败都会写入生命周期日志；新增隔离安装验证脚本，避免把“能下载”等同于“能升级”。
+- **不改变自动检查策略**：后台检查仍采用非打扰提醒；只有用户主动点击检查并发现新版时才强制弹出窗口。
+
+本次不改变 Token、金额、额度、排行榜及本地采集口径。完整说明见 [0.2.6 发布说明](docs/RELEASE_NOTES_0.2.6.md)。
 
 ## 0.2.5 重大更新：动态特洛伊火焰、模型用量与更新提醒
 
@@ -73,7 +85,7 @@ TokenStep 第一次从“更换配色”升级为完整的**主题皮肤包系�
 - 新增奥德赛弓箭阶梯 Logo；用量采用骨金、冷金或余烬橙，绿色只保留给同步成功等状态反馈。
 - 关闭排行榜后浮层会自动收短，多来源额度则使用紧凑布局完整展示。
 
-打开 `设置 → 通用 → 主题皮肤包` 即可切换。完整说明见 [0.2.4 发布说明](docs/RELEASE_NOTES_0.2.4.md)，或直接[下载已签名并通过 Apple 公证的最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.5.dmg)。
+打开 `设置 → 通用 → 主题皮肤包` 即可切换。完整说明见 [0.2.4 发布说明](docs/RELEASE_NOTES_0.2.4.md)，或直接[下载已签名并通过 Apple 公证的最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.6.dmg)。
 
 ## TokenStep 适合谁？
 
@@ -132,7 +144,7 @@ TokenStep 默认只做本地统计。
 
 ## 安装方式
 
-1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.5.dmg)。
+1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.6.dmg)。
 2. 打开 DMG。
 3. 把 `TokenStep.app` 拖到「应用程序」。
 4. 启动 TokenStep。
@@ -192,7 +204,7 @@ TokenStepSwift/dist/TokenStep.app
 Developer ID 签名：
 
 ```bash
-TOKENSTEP_VERSION=0.2.5 \
+TOKENSTEP_VERSION=0.2.6 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 ./script/package_release.sh
 ```
@@ -200,7 +212,7 @@ CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 签名 + Apple 公证：
 
 ```bash
-TOKENSTEP_VERSION=0.2.5 \
+TOKENSTEP_VERSION=0.2.6 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
 ./script/package_release.sh --notarize
@@ -215,7 +227,7 @@ release/TokenStep-<version>.dmg
 
 维护者说明见 [docs/RELEASE.md](docs/RELEASE.md)。
 
-0.2.5 发布说明见 [docs/RELEASE_NOTES_0.2.5.md](docs/RELEASE_NOTES_0.2.5.md)；0.2.4 主题包实现与验收说明见 [docs/ODYSSEY_THEME_PACK_0.2.4.md](docs/ODYSSEY_THEME_PACK_0.2.4.md)。
+0.2.6 发布说明见 [docs/RELEASE_NOTES_0.2.6.md](docs/RELEASE_NOTES_0.2.6.md)；0.2.5 动效、模型用量与更新提醒说明见 [docs/RELEASE_NOTES_0.2.5.md](docs/RELEASE_NOTES_0.2.5.md)；0.2.4 主题包实现与验收说明见 [docs/ODYSSEY_THEME_PACK_0.2.4.md](docs/ODYSSEY_THEME_PACK_0.2.4.md)。
 
 ## 开源协议
 

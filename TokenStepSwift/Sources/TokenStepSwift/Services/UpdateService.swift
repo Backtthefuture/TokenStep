@@ -95,6 +95,15 @@ enum UpdateCheckPolicy {
     }
 }
 
+enum UpdatePresentationPolicy {
+    static func shouldPresentWindow(
+        trigger: UpdateCheckTrigger,
+        update: AvailableUpdate?
+    ) -> Bool {
+        trigger.isManual && update != nil
+    }
+}
+
 struct UpdateCheckGate {
     private(set) var isChecking = false
     private(set) var lastAttemptAt: Date?

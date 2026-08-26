@@ -48,8 +48,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          gh release create "v$VERSION" \
-            "release/TokenStep-$VERSION.dmg" \
-            "release/TokenStep-$VERSION.zip" \
-            --title "TokenStep $VERSION" \
-            --notes "TokenStep $VERSION"
+          NOTES_FILE="docs/RELEASE_NOTES_$VERSION.md"
+          if [[ -f "$NOTES_FILE" ]]; then
+            gh release create "v$VERSION" \
+              "release/TokenStep-$VERSION.dmg" \
+              "release/TokenStep-$VERSION.zip" \
+              --title "TokenStep $VERSION" \
+              --notes-file "$NOTES_FILE"
+          else
+            gh release create "v$VERSION" \
+              "release/TokenStep-$VERSION.dmg" \
+              "release/TokenStep-$VERSION.zip" \
+              --title "TokenStep $VERSION" \
+              --notes "TokenStep $VERSION"
+          fi

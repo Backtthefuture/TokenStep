@@ -815,7 +815,13 @@ final class AppState: ObservableObject {
                     LifecycleLogger.log(
                         "Update check success trigger=\(trigger.rawValue) result=available version=\(visibleUpdate.version)."
                     )
-                    if trigger.isManual {
+                    if UpdatePresentationPolicy.shouldPresentWindow(
+                        trigger: trigger,
+                        update: visibleUpdate
+                    ) {
+                        LifecycleLogger.log(
+                            "Presenting update window trigger=\(trigger.rawValue) version=\(visibleUpdate.version)."
+                        )
                         UpdateWindowPresenter.shared.show(appState: self, update: visibleUpdate)
                     }
                 } else {
@@ -859,6 +865,9 @@ final class AppState: ObservableObject {
 
     func installAvailableUpdate() {
         guard let update = availableUpdate, !isDownloadingUpdate else { return }
+        LifecycleLogger.log(
+            "Update install requested version=\(update.version) asset=\(update.assetName)."
+        )
         isDownloadingUpdate = true
         updateDownloadProgress = 0
         updateInstallStatus = L("正在下载")
@@ -875,10 +884,16 @@ final class AppState: ObservableObject {
                 updateDownloadedURL = url
                 updateDownloadProgress = 1
                 updateInstallStatus = L("正在安装并重启")
+                LifecycleLogger.log(
+                    "Update installer launched version=\(update.version) dmg=\(url.path)."
+                )
             } catch {
                 lastError = error.localizedDescription
                 updateInstallStatus = L("更新失败")
                 isDownloadingUpdate = false
+                LifecycleLogger.log(
+                    "Update install failed version=\(update.version) error=\(error.localizedDescription)."
+                )
             }
         }
     }
