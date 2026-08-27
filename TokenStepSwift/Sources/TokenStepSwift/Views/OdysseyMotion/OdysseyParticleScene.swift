@@ -13,6 +13,10 @@ final class OdysseyTrojanParticleScene: SKScene {
 
     private let artworkNode = SKSpriteNode()
     private var artworkSourceSize: CGSize?
+    private var fireTimeUniform: SKUniform?
+    private var fireTime: Float = 0
+    private var lastFireTimeUpdate: TimeInterval?
+    private var fireUpdateCounter = 0
     private let smokeEmitter = SKEmitterNode()
     private let maneFireEmitter = SKEmitterNode()
     private let backFireEmitter = SKEmitterNode()
@@ -57,6 +61,10 @@ final class OdysseyTrojanParticleScene: SKScene {
         emitterCount(in: self)
     }
 
+    var fireTimeValue: Float {
+        fireTime
+    }
+
     func birthRate(for layer: OdysseyTrojanParticleLayer) -> CGFloat {
         switch layer {
         case .smoke: return smokeEmitter.particleBirthRate
@@ -70,6 +78,33 @@ final class OdysseyTrojanParticleScene: SKScene {
         guard newSize.width > 0, newSize.height > 0, size != newSize else { return }
         size = newSize
         layoutEmitters()
+    }
+
+    /// SpriteKit's built-in u_time uniform stops advancing once a scene has
+    /// been paused and resumed under an always-mounted SpriteView, which froze
+    /// the Trojan Inferno flame shader in 0.2.11. Drive the shader clock from
+    /// the scene update loop instead so the flame keeps burning on every visit.
+    override func update(_ currentTime: TimeInterval) {
+        if let lastFireTimeUpdate {
+            // 0.25s is above the 12fps frame interval, so the flame runs at
+            // real-time speed, while still clamping the huge first delta after
+            // the popover reopens.
+            let delta = min(max(currentTime - lastFireTimeUpdate, 0), 0.25)
+            fireTime += Float(delta)
+        }
+        lastFireTimeUpdate = currentTime
+        fireTimeUniform?.floatValue = fireTime
+        fireUpdateCounter += 1
+        if fireUpdateCounter % 12 == 0 {
+            OdysseyMotionPrototypeDiagnostics.record(
+                "fire_clock",
+                fields: [
+                    "t": String(format: "%.3f", fireTime),
+                    "now": String(format: "%.3f", currentTime),
+                    "uniform": fireTimeUniform.map { String(format: "%.3f", $0.floatValue) } ?? "nil"
+                ]
+            )
+        }
     }
 
     func apply(mode: OdysseyMotionPrototypeMode) {
@@ -166,7 +201,11 @@ final class OdysseyTrojanParticleScene: SKScene {
         artworkSourceSize = artwork.size
         artworkNode.texture = SKTexture(image: artwork)
         artworkNode.texture?.filteringMode = .linear
-        artworkNode.shader = OdysseyTrojanFireShader.make()
+        let shader = OdysseyTrojanFireShader.make()
+        let uniform = SKUniform(name: OdysseyTrojanFireShader.timeUniformName, float: 0)
+        shader.uniforms = [uniform]
+        fireTimeUniform = uniform
+        artworkNode.shader = shader
         artworkNode.zPosition = -100
         artworkNode.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         addChild(artworkNode)
@@ -372,6 +411,8 @@ private enum OdysseyTrojanArtworkLoader {
 }
 
 private enum OdysseyTrojanFireShader {
+    static let timeUniformName = "u_fireTime"
+
     static func make() -> SKShader {
         SKShader(source: """
         void main() {
@@ -386,12 +427,12 @@ private enum OdysseyTrojanFireShader {
                 * smoothstep(0.12, 0.62, luminance);
 
             float upwardFlow = sin(
-                (uv.y + u_time * 0.085) * 108.0
+                (uv.y + u_fireTime * 0.085) * 108.0
                 + sin(uv.x * 34.0) * 2.4
             );
             float sideRipple = sin(
                 uv.x * 76.0
-                - u_time * 5.8
+                - u_fireTime * 5.8
                 + upwardFlow * 1.7
             );
             vec2 displacement = vec2(
@@ -406,7 +447,7 @@ private enum OdysseyTrojanFireShader {
 
             vec4 animated = texture2D(u_texture, animatedUV);
             float flicker = 0.5 + 0.5 * sin(
-                u_time * 7.4
+                u_fireTime * 7.4
                 + uv.y * 61.0
                 + sin(uv.x * 47.0) * 2.0
             );

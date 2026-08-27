@@ -65,6 +65,33 @@ final class OdysseyMotionPrototypeTests: XCTestCase {
     }
 
     @MainActor
+    func testTrojanFireShaderClockAdvancesFromSceneUpdateAndSurvivesPauseCycles() {
+        let scene = OdysseyTrojanParticleScene(size: CGSize(width: 900, height: 590))
+        XCTAssertEqual(scene.fireTimeValue, 0, accuracy: 0.0001)
+
+        // The first update only anchors the clock; animation starts afterwards.
+        scene.update(1.0)
+        XCTAssertEqual(scene.fireTimeValue, 0, accuracy: 0.0001)
+        scene.update(1.1)
+        XCTAssertEqual(scene.fireTimeValue, 0.1, accuracy: 0.001)
+
+        // Long gaps while the popover is hidden are clamped so the flame phase
+        // stays continuous instead of leaping to an arbitrary phase.
+        scene.setRenderingActive(false)
+        scene.update(61.0)
+        XCTAssertEqual(scene.fireTimeValue, 0.35, accuracy: 0.001)
+
+        // Reopening keeps accumulating from the previous phase.
+        scene.setRenderingActive(true)
+        scene.update(61.1)
+        XCTAssertEqual(scene.fireTimeValue, 0.45, accuracy: 0.001)
+
+        // Clock time running backwards never rewinds the flame.
+        scene.update(0.5)
+        XCTAssertEqual(scene.fireTimeValue, 0.45, accuracy: 0.001)
+    }
+
+    @MainActor
     func testWindowVisibilityObserverTracksOrderFrontAndOrderOutWithoutPolling() async throws {
         _ = NSApplication.shared
         var observedValues: [Bool] = []
