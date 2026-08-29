@@ -23,7 +23,7 @@ HELPER_EXECUTABLE="$BUILD_DIR/$HELPER_NAME"
 ICON_FILE="$ROOT_DIR/TokenUsageMenuApp/assets/TokenStepIcon.icns"
 ODYSSEY_ASSET_DIR="$ROOT_DIR/TokenUsageMenuApp/assets/odyssey"
 INTERSTELLAR_ASSET_DIR="$ROOT_DIR/TokenUsageMenuApp/assets/interstellar"
-VERSION="${TOKENSTEP_VERSION:-0.2.11}"
+VERSION="${TOKENSTEP_VERSION:-0.2.12}"
 LAUNCH=true
 VERIFY=false
 

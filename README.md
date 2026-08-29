@@ -22,7 +22,7 @@ TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claud
 
 下载最新版 DMG，打开后把 `TokenStep.app` 拖进「应用程序」即可使用：
 
-[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.11.dmg)
+[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.12.dmg)
 
 也可以从 Release 页面查看所有版本：
 
@@ -31,6 +31,10 @@ TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claud
 TokenStep 已使用 Developer ID 签名并通过 Apple 公证。首次打开时，macOS 可能会出现标准确认弹窗，这是正常现象。
 
 Windows版本由十七做了移植，欢迎大家前往使用：https://github.com/canyexuanfan/TokenStep-Windows/releases 
+
+## 0.2.12 更新：找回特洛伊火海的火焰动效
+
+0.2.12 找回了 0.2.11 中意外丢失的「特洛伊火海」火焰动效：火焰 shader 改由场景更新循环驱动的自定义时钟供能，不再依赖在常驻渲染架构下会冻结的内置时间变量。火焰在每次打开浮层时持续燃烧，多次开关后依然保持动画，0.2.11 修复的开浮层闪烁不会回归。完整说明见 [0.2.12 发布说明](docs/RELEASE_NOTES_0.2.12.md)。
 
 ## 0.2.11 更新：修复特洛伊火海浮层闪烁
 
