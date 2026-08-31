@@ -15,20 +15,13 @@ Check local signing identities:
 security find-identity -p codesigning -v
 ```
 
-## Build and Sign
+## Build Without Publishing
 
 ```bash
-TOKENSTEP_VERSION=0.1.0 \
-CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-./script/package_release.sh
+TOKENSTEP_VERSION=0.2.13 ./script/build_swiftui_and_run.sh --no-launch
 ```
 
-This creates:
-
-```text
-release/TokenStep-0.1.0.zip
-release/TokenStep-0.1.0.dmg
-```
+This produces a local development app only. It does not create anything under `release/` and must not be uploaded as a public build.
 
 ## Configure Notarization
 
@@ -41,10 +34,10 @@ xcrun notarytool store-credentials tokenstep-notary \
   --password "app-specific-password"
 ```
 
-Then release with notarization:
+Every public package is notarized. The release script has no sign-only public mode:
 
 ```bash
-TOKENSTEP_VERSION=0.1.0 \
+TOKENSTEP_VERSION=0.2.13 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
 ./script/package_release.sh --notarize
@@ -53,7 +46,7 @@ TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
 Alternatively, pass credentials through environment variables:
 
 ```bash
-TOKENSTEP_VERSION=0.1.0 \
+TOKENSTEP_VERSION=0.2.13 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 APPLE_ID="you@example.com" \
 APPLE_TEAM_ID="TEAMID" \
@@ -65,21 +58,30 @@ Do not commit Apple credentials to the repository.
 
 ## Validate
 
-After notarization:
+The packaging command already runs all of these gates and fails before producing a publishable checksum file if any gate fails:
 
 ```bash
-spctl -a -vv TokenStepSwift/dist/TokenStep.app
-spctl -a -vv -t install release/TokenStep-0.1.0.dmg
-xcrun stapler validate TokenStepSwift/dist/TokenStep.app
-xcrun stapler validate release/TokenStep-0.1.0.dmg
+./script/verify_release_artifacts.sh \
+  release/TokenStep-0.2.13.dmg \
+  release/TokenStep-0.2.13.zip \
+  0.2.13
+
+./script/verify_update_installer.sh \
+  release/TokenStep-0.2.13.dmg \
+  0.2.13 \
+  TokenStepSwift/dist/TokenStep.app/Contents/Helpers/TokenStepHelper
 ```
+
+`verify_release_artifacts.sh` requires valid code signatures, stapled notarization tickets, `syspolicy_check distribution`, Gatekeeper assessment, exact version, and the expected Team ID. This remains authoritative even if the maintainer Mac has Gatekeeper assessments disabled.
 
 ## Publish to GitHub
 
-1. Create a GitHub Release for the version tag.
-2. Upload the notarized DMG.
-3. Upload the ZIP as a fallback artifact.
-4. Include a short changelog and supported clients.
+1. Merge the release commit to `main` and wait for CI.
+2. Run the repository's `Release` workflow from `main` with the exact version.
+3. The workflow creates a draft and uploads the notarized DMG, ZIP, and checksum file.
+4. The workflow downloads the draft assets, checks their hashes, reruns distribution and isolated-installer verification, and only then publishes the release as Latest.
+
+Do not manually upload artifacts that did not pass this workflow. A failed post-upload check must leave the release as a draft, never as a public release.
 
 ## GitHub Actions Release
 
@@ -93,6 +95,6 @@ The repository includes a manual Release workflow. Configure these repository se
 - `APPLE_TEAM_ID`: Apple Developer Team ID
 - `APPLE_APP_PASSWORD`: app-specific password for notarization
 
-Then run the `Release` workflow manually with a version number such as `0.1.0`.
+Then run the `Release` workflow manually from `main` with a version number such as `0.2.13`.
 
 Apple's official overview is here: [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution).

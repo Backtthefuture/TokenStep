@@ -10,6 +10,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Check release safety contract
+        run: ./script/test_release_contract.sh
       - name: Run Swift tests
         run: swift test --package-path TokenStepSwift
       - name: Run usage collector fixture checks
