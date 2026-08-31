@@ -4,18 +4,60 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example 0.1.0"
+        description: "Release version, for example 0.2.13"
         required: true
         type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: tokenstep-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: macos-15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release version: $VERSION" >&2
+            exit 2
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Releases must run from main, got $GITHUB_REF" >&2
+            exit 2
+          fi
+          git fetch origin main --tags
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo "Workflow checkout is not the current origin/main." >&2
+            exit 1
+          fi
+          if [[ ! -f "docs/RELEASE_NOTES_$VERSION.md" ]]; then
+            echo "Missing docs/RELEASE_NOTES_$VERSION.md" >&2
+            exit 1
+          fi
+          grep -F "# TokenStep $VERSION" "docs/RELEASE_NOTES_$VERSION.md"
+          grep -F "TokenStep-$VERSION.dmg" README.md
+          grep -F "VERSION=\"\${TOKENSTEP_VERSION:-$VERSION}\"" script/build_swiftui_and_run.sh
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists." >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists." >&2
+            exit 1
+          fi
 
       - name: Import Developer ID certificate
         env:
@@ -34,7 +76,7 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-      - name: Build, sign, notarize, and package
+      - name: Build, sign, notarize, and verify locally
         env:
           TOKENSTEP_VERSION: ${{ inputs.version }}
           CODE_SIGN_IDENTITY: ${{ secrets.CODE_SIGN_IDENTITY }}
@@ -43,22 +85,72 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: ./script/package_release.sh --notarize
 
-      - name: Create GitHub Release
+      - name: Create verified draft release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          NOTES_FILE="docs/RELEASE_NOTES_$VERSION.md"
-          if [[ -f "$NOTES_FILE" ]]; then
-            gh release create "v$VERSION" \
-              "release/TokenStep-$VERSION.dmg" \
-              "release/TokenStep-$VERSION.zip" \
-              --title "TokenStep $VERSION" \
-              --notes-file "$NOTES_FILE"
-          else
-            gh release create "v$VERSION" \
-              "release/TokenStep-$VERSION.dmg" \
-              "release/TokenStep-$VERSION.zip" \
-              --title "TokenStep $VERSION" \
-              --notes "TokenStep $VERSION"
-          fi
+          set -euo pipefail
+          gh release create "v$VERSION" \
+            "release/TokenStep-$VERSION.dmg" \
+            "release/TokenStep-$VERSION.zip" \
+            "release/TokenStep-$VERSION-SHA256SUMS.txt" \
+            --draft \
+            --latest=false \
+            --fail-on-no-commits \
+            --target "$GITHUB_SHA" \
+            --title "TokenStep $VERSION" \
+            --notes-file "docs/RELEASE_NOTES_$VERSION.md"
+
+      - name: Download and verify draft assets
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          DOWNLOAD_DIR="$RUNNER_TEMP/tokenstep-release-download"
+          mkdir -p "$DOWNLOAD_DIR"
+          gh release download "v$VERSION" --dir "$DOWNLOAD_DIR"
+          (
+            cd "$DOWNLOAD_DIR"
+            shasum -a 256 --check --strict "TokenStep-$VERSION-SHA256SUMS.txt"
+          )
+          TOKENSTEP_EXPECTED_TEAM_ID="$APPLE_TEAM_ID" \
+            ./script/verify_release_artifacts.sh \
+              "$DOWNLOAD_DIR/TokenStep-$VERSION.dmg" \
+              "$DOWNLOAD_DIR/TokenStep-$VERSION.zip" \
+              "$VERSION"
+          ./script/verify_update_installer.sh \
+            "$DOWNLOAD_DIR/TokenStep-$VERSION.dmg" \
+            "$VERSION" \
+            "TokenStepSwift/dist/TokenStep.app/Contents/Helpers/TokenStepHelper"
+
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release edit "v$VERSION" --draft=false --latest
+
+      - name: Verify public release state and links
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$(gh release view "v$VERSION" --json isDraft --jq .isDraft)" == "false" ]]
+          [[ "$(gh release view "v$VERSION" --json isPrerelease --jq .isPrerelease)" == "false" ]]
+          ASSET_NAMES="$(gh release view "v$VERSION" --json assets --jq '.assets[].name')"
+          for expected in \
+            "TokenStep-$VERSION.dmg" \
+            "TokenStep-$VERSION.zip" \
+            "TokenStep-$VERSION-SHA256SUMS.txt"; do
+            grep -Fx "$expected" <<<"$ASSET_NAMES"
+          done
+          curl --fail --silent --show-error --location --head --retry 5 \
+            "https://github.com/Backtthefuture/TokenStep/releases/download/v$VERSION/TokenStep-$VERSION.dmg" \
+            >/dev/null
+          curl --fail --silent --show-error --location --head --retry 5 \
+            "https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-$VERSION.dmg" \
+            >/dev/null
+          gh release view "v$VERSION" --json tagName,publishedAt,url,assets

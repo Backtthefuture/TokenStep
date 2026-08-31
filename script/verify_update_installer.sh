@@ -19,6 +19,9 @@ if [[ ! -x "$HELPER_SOURCE" ]]; then
   exit 2
 fi
 
+/usr/bin/codesign --verify --verbose=2 "$DMG_PATH"
+/usr/bin/xcrun stapler validate "$DMG_PATH"
+
 VERIFY_ROOT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/tokenstep-update-verify.XXXXXX")"
 VERIFY_DESTINATION="$VERIFY_ROOT/Applications/TokenStep.app"
 VERIFY_HELPER="$VERIFY_ROOT/TokenStepHelper"
@@ -53,6 +56,8 @@ if [[ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]]; then
 fi
 
 /usr/bin/codesign --verify --deep --strict "$VERIFY_DESTINATION"
+/usr/bin/xcrun stapler validate "$VERIFY_DESTINATION"
+/usr/bin/syspolicy_check distribution "$VERIFY_DESTINATION"
 /usr/sbin/spctl --assess --type execute "$VERIFY_DESTINATION"
 /bin/cat "$VERIFY_LOG"
-echo "Verified TokenStep $INSTALLED_VERSION update installation in an isolated destination."
+echo "Verified signed, notarized TokenStep $INSTALLED_VERSION update installation in an isolated destination."
