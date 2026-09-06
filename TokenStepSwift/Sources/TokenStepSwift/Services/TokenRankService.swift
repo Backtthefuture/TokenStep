@@ -65,7 +65,7 @@ enum AgentWorkRankService {
             .appendingPathComponent(".token-rank/client-state.json")
     ) -> AgentWorkRankIdentity? {
         guard let data = try? Data(contentsOf: clientStateURL),
-              let state = try? JSONDecoder().decode(LocalClientState.self, from: data),
+              let state = try? JSONDecoder().decode(LocalClientStateDocument.self, from: data).state,
               let user = state.user,
               user.id > 0
         else {
@@ -88,6 +88,34 @@ enum AgentWorkRankService {
             return date
         }
         return ISO8601DateFormatter().date(from: value)
+    }
+}
+
+// Read a public identity projection only. Credential and checksum validation
+// remain the uploader's responsibility; this reader never writes its state.
+private struct LocalClientStateDocument: Decodable {
+    let state: LocalClientState
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case payload
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.schemaVersion) || container.contains(.payload) {
+            let version = try container.decode(Int.self, forKey: .schemaVersion)
+            guard version == 2 || version == 3 else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .schemaVersion,
+                    in: container,
+                    debugDescription: "Unsupported Token Rank state format"
+                )
+            }
+            state = try container.decode(LocalClientState.self, forKey: .payload)
+        } else {
+            state = try LocalClientState(from: decoder)
+        }
     }
 }
 
