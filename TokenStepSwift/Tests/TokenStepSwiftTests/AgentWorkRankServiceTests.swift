@@ -77,6 +77,53 @@ final class AgentWorkRankServiceTests: XCTestCase {
         XCTAssertNotNil(identity.lastSyncedAt)
     }
 
+    private func identity(from json: String) throws -> AgentWorkRankIdentity? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rank-state-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(json.utf8).write(to: url)
+        return AgentWorkRankService.loadLocalIdentity(clientStateURL: url)
+    }
+
+    func testVersionedStatesReadPayloadIdentityAndSyncTime() throws {
+        for version in [2, 3] {
+            let result = try XCTUnwrap(identity(from: """
+            {
+              "schema_version": \(version), "state_revision": 7,
+              "checksum": "ignored-by-public-identity-reader",
+              "user": {"id": 99, "name": "Stale root identity"},
+              "payload": {
+                "device_token": "never-decoded",
+                "last_successful_sync_at": "2026-09-05T08:00:00Z",
+                "user": {"id": 4, "name": "Agent User", "avatar_url": "https://example.com/a.png"}
+              }
+            }
+            """))
+            XCTAssertEqual(result.id, 4)
+            XCTAssertEqual(result.name, "Agent User")
+            XCTAssertEqual(result.avatarURL, "https://example.com/a.png")
+            XCTAssertEqual(result.lastSyncedAt, ISO8601DateFormatter().date(from: "2026-09-05T08:00:00Z"))
+        }
+    }
+
+    func testInvalidEnvelopesNeverFallBackToRootIdentity() throws {
+        let rootUser = "\"user\":{\"id\":99,\"name\":\"Stale\"}"
+        for fields in [
+            "\"schema_version\":4,\"payload\":{}",
+            "\"schema_version\":3",
+            "\"schema_version\":3,\"payload\":null",
+            "\"schema_version\":3,\"payload\":[]",
+            "\"schema_version\":3,\"payload\":{}",
+            "\"schema_version\":null,\"payload\":{}",
+            "\"payload\":{}",
+            "\"schema_version\":3,\"payload\":{\"user\":{\"id\":0,\"name\":\"Invalid\"}}"
+        ] {
+            XCTAssertNil(try identity(from: "{\(rootUser),\(fields)}"), fields)
+        }
+        XCTAssertNil(try identity(from: "not json"))
+        XCTAssertNil(try identity(from: "{}"))
+    }
+
     func testLegacyShengcaiSettingsMigrateToAutomaticAgentWorkRank() throws {
         let data = Data("""
         {
