@@ -102,7 +102,8 @@ enum CodexQuotaService {
             throw error
         }
 
-        let _ = responseSemaphore.wait(timeout: .now() + 4)
+        // codex app-server can take ~8s to answer after a cold start.
+        let _ = responseSemaphore.wait(timeout: .now() + 12)
         process.terminate()
 
         let exitSemaphore = DispatchSemaphore(value: 0)
@@ -150,7 +151,8 @@ enum CodexQuotaService {
             "id": requestID
         ]
 
-        for request in [initialize, quota] {
+        let initialized: [String: Any] = ["method": "initialized"]
+        for request in [initialize, initialized, quota] {
             let data = try JSONSerialization.data(withJSONObject: request)
             try write(data, to: handle)
             try write(Data("\n".utf8), to: handle)
@@ -190,7 +192,10 @@ enum CodexQuotaService {
 
     private static func appServerEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        // GUI launches inherit launchd's minimal PATH, so also cover user-local
+        // install locations such as npm -g prefixes and Homebrew.
+        let defaultPath = "\(home)/.local/bin:\(home)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         if let existing = environment["PATH"], !existing.isEmpty {
             environment["PATH"] = "\(defaultPath):\(existing)"
         } else {

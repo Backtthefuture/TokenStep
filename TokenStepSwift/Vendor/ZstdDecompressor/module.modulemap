@@ -1,0 +1,4 @@
+module ZstdDecompressor [system] {
+    header "zstd_decompressor.h"
+    export *
+}

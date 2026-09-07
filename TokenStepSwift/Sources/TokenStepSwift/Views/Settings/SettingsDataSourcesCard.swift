@@ -17,7 +17,7 @@ struct SettingsDataSourcesPane: View {
                         sourceRow(source)
                     }
                     SettingsSourceRow(
-                        title: L("实验来源（ZCode / Hermes / WorkBuddy）"),
+                        title: L("实验来源（ZCode / Hermes / DeepSeek Harness / WorkBuddy）"),
                         detail: L("只读取本地 usage 字段，不读取对话正文。"),
                         badge: appState.settings.showExperimentalAgentSources ? L("已开启") : L("未启用"),
                         badgeStyle: appState.settings.showExperimentalAgentSources ? .ok : .off,
@@ -211,6 +211,10 @@ enum AgentSourceCopy {
             return L("~/.hermes/state.db · 实验")
         case "workbuddy":
             return L("~/.workbuddy/projects · 实验")
+        case "deepseek-harness":
+            return L("DeepSeek Harness 会话压缩档 · 实验")
+        case "autoclaw":
+            return L("~/.openclaw-autoclaw · 会话 JSONL")
         case "cursor":
             return L("本地无 token 账本 · 官方事件计入圆环")
         case "cursor-code":

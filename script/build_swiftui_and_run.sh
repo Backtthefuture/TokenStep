@@ -79,14 +79,17 @@ SOURCES=()
 while IFS= read -r source; do
   SOURCES+=("$source")
 done < <(find "$SWIFT_DIR/Sources/TokenStepSwift" -type f -name '*.swift' | sort)
+ZSTD_SOURCE="$SWIFT_DIR/Vendor/ZstdDecompressor/zstddeclib.c"
 
 if ! swiftc \
   -target arm64-apple-macos14.0 \
+  -I "$SWIFT_DIR/Vendor/ZstdDecompressor" \
   -vfsoverlay "$OVERLAY_FILE" \
   -Xcc -ivfsoverlay \
   -Xcc "$OVERLAY_FILE" \
   -parse-as-library \
   "${SOURCES[@]}" \
+  "$ZSTD_SOURCE" \
   -o "$EXECUTABLE" >"$BUILD_LOG" 2>&1; then
   echo "TokenStep SwiftUI build failed. Full log: $BUILD_LOG" >&2
   tail -n 24 "$BUILD_LOG" >&2
@@ -101,6 +104,7 @@ HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/SQLiteReadonly.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/QuotaModels.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/DeepSeekHarnessDecoder.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"
   "$SWIFT_DIR/Sources/TokenStepHelper/main.swift"
@@ -108,18 +112,24 @@ HELPER_SOURCES=(
 
 if ! swiftc \
   -target arm64-apple-macos14.0 \
+  -I "$SWIFT_DIR/Vendor/ZstdDecompressor" \
   -vfsoverlay "$OVERLAY_FILE" \
   -Xcc -ivfsoverlay \
   -Xcc "$OVERLAY_FILE" \
   -parse-as-library \
   "${HELPER_SOURCES[@]}" \
+  "$ZSTD_SOURCE" \
   -o "$HELPER_EXECUTABLE" >"$HELPER_BUILD_LOG" 2>&1; then
   echo "TokenStep helper build failed. Full log: $HELPER_BUILD_LOG" >&2
   tail -n 24 "$HELPER_BUILD_LOG" >&2
   exit 1
 fi
 
-rm -rf "$APP_BUNDLE"
+# Keep stale bundles recoverable by moving them aside instead of deleting them.
+if [[ -e "$APP_BUNDLE" ]]; then
+  previous_bundle="$APP_BUNDLE.previous-$(date +%Y%m%d%H%M%S)-$$"
+  mv "$APP_BUNDLE" "$previous_bundle"
+fi
 mkdir -p "$MACOS" "$HELPERS" "$RESOURCES"
 cp "$EXECUTABLE" "$MACOS/$PRODUCT_NAME"
 cp "$HELPER_EXECUTABLE" "$HELPERS/$HELPER_NAME"

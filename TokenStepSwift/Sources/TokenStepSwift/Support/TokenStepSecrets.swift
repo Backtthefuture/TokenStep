@@ -20,14 +20,22 @@ enum TokenStepSecrets {
         process.arguments = ["find-generic-password", "-s", service, "-a", account.rawValue, "-w"]
         process.standardOutput = output
         process.standardError = Pipe()
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return nil
+        // waitUntilExit() runs the main run loop and can reenter SwiftUI observers,
+        // which has crashed the app. Drain output and poll exit state instead.
+        let errPipe = Pipe()
+        process.standardError = errPipe
+        var stdoutData = Data()
+        var stderrData = Data()
+        guard (try? process.run()) != nil else { return nil }
+        while process.isRunning {
+            stdoutData.append(output.fileHandleForReading.availableData)
+            stderrData.append(errPipe.fileHandleForReading.availableData)
+            if !process.isRunning { break }
+            Thread.sleep(forTimeInterval: 0.01)
         }
+        stdoutData.append(output.fileHandleForReading.readDataToEndOfFile())
         guard process.terminationStatus == 0 else { return nil }
-        let text = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+        let text = String(data: stdoutData, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (text?.isEmpty == false) ? text : nil
     }
@@ -49,8 +57,11 @@ enum TokenStepSecrets {
         ]
         process.standardOutput = Pipe()
         process.standardError = Pipe()
-        try? process.run()
-        process.waitUntilExit()
+        // See get(): poll exit state instead of run-loop pumping waitUntilExit().
+        _ = try? process.run()
+        while process.isRunning {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
     }
 
     static func delete(_ account: Account) {
@@ -59,8 +70,11 @@ enum TokenStepSecrets {
         process.arguments = ["delete-generic-password", "-s", service, "-a", account.rawValue]
         process.standardOutput = Pipe()
         process.standardError = Pipe()
-        try? process.run()
-        process.waitUntilExit()
+        // See get(): poll exit state instead of run-loop pumping waitUntilExit().
+        _ = try? process.run()
+        while process.isRunning {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
     }
 }
 

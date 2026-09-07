@@ -100,7 +100,18 @@ struct PopoverQuotaCard: View {
                 }
             }
             .frame(height: voyage ? 4 : 5)
+            if let resetsAt = window.resetsAt {
+                Text(LFormat("重置于 %@", Self.resetTimeText(resetsAt)))
+                    .font(.system(size: voyage ? 9.5 : 9.5, weight: .semibold))
+                    .foregroundStyle(Color.tokenInk.opacity(0.55))
+                }
         }
+    }
+
+    private static func resetTimeText(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d HH:mm"
+        return formatter.string(from: date)
     }
 
     private func statusText(_ quota: ProviderQuota) -> String {
