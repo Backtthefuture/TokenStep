@@ -10,7 +10,8 @@ APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 CONTENTS="$APP_BUNDLE/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
-ICON_FILE="$APP_DIR/assets/TokenStepIcon.icns"
+# Icon assets are shared with the Swift app and stay in the repository root.
+ICON_FILE="$ROOT_DIR/../TokenUsageMenuApp/assets/TokenStepIcon.icns"
 PYTHON="/opt/homebrew/opt/python@3.14/bin/python3.14"
 
 if [ ! -x "$PYTHON" ]; then

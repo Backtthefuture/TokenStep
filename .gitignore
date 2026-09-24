@@ -2,14 +2,15 @@
 __pycache__/
 *.pyc
 
-logs/
-data/
-dashboard.html
-config/settings.json
-config/autostart-default-applied
+# Runtime output of the legacy Python prototype (see legacy/README.md).
+legacy/logs/
+legacy/data/
+legacy/dashboard.html
+legacy/config/settings.json
+legacy/config/autostart-default-applied
+legacy/TokenUsageMenuApp/dist/
 
 TokenStepSwift/.build/
 TokenStepSwift/dist/
-TokenUsageMenuApp/dist/
 release/
 docs/validation/
