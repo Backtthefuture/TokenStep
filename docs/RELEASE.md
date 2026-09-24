@@ -76,6 +76,12 @@ The packaging command already runs all of these gates and fails before producing
 
 ## Publish to GitHub
 
+Before the release commit, update the release documents (the Release workflow checks the first and last items):
+
+- Add `docs/RELEASE_NOTES_<version>.md` starting with `# TokenStep <version>`.
+- Add the version's summary at the top of `CHANGELOG.md`.
+- Update the "最新版本" section and the DMG download links in `README.md` to `TokenStep-<version>.dmg`.
+
 1. Merge the release commit to `main` and wait for CI.
 2. Run the repository's `Release` workflow from `main` with the exact version.
 3. The workflow creates a draft and uploads the notarized DMG, ZIP, and checksum file.
