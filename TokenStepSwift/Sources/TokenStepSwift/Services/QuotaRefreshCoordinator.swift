@@ -16,6 +16,10 @@ enum QuotaRefreshCoordinator {
             }
         }
         _ = group.wait(timeout: .now() + 12)
+        // Providers that missed the deadline keep running and may still write;
+        // snapshot under the same lock so the read never races those writes.
+        lock.lock()
+        defer { lock.unlock() }
         return result
     }
 
