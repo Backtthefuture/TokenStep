@@ -95,13 +95,14 @@ fi
 
 HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/AppPaths.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Support/TokenStepClock.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Localization.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/MemoryPressure.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/SQLiteReadonly.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/QuotaModels.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift"
-  "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/Collector/"*.swift
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"
   "$SWIFT_DIR/Sources/TokenStepHelper/main.swift"
 )

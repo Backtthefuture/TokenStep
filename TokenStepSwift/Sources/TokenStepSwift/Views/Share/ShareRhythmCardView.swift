@@ -200,7 +200,7 @@ struct ShareRhythmCardView: View {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        formatter.timeZone = TokenStepClock.timeZone
         formatter.dateFormat = "yyyy.MM.dd"
         guard let date = DateFormatter.tokenStepDay.date(from: day.date) else { return day.date }
         return formatter.string(from: date)
@@ -211,7 +211,7 @@ struct ShareRhythmCardView: View {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = TokenStepLocalization.locale
-        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        formatter.timeZone = TokenStepClock.timeZone
         formatter.dateFormat = TokenStepLocalization.language == .en ? "EEE" : "EEEE"
         return formatter.string(from: date)
     }

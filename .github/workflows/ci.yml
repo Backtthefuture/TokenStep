@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    env:
+      # Test fixtures encode day boundaries in this zone.
+      TOKENSTEP_TIMEZONE: Asia/Shanghai
     steps:
       - uses: actions/checkout@v4
       - name: Check release safety contract
@@ -20,5 +23,11 @@ jobs:
         run: ./script/test_codex_cumulative_collector.sh
       - name: Run accounting migration checks
         run: ./script/test_usage_recalibration_migration.sh
+      - name: Run time zone collector checks
+        run: ./script/test_time_zone_collector.sh
+      - name: Run Claude incremental collector checks
+        run: ./script/test_claude_incremental_collector.sh
+      - name: Run settings Codable checks
+        run: ./script/test_settings_codable.sh
       - name: Build TokenStep
         run: ./script/build_swiftui_and_run.sh --no-launch

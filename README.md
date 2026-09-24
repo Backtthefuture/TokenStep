@@ -268,6 +268,17 @@ python3 script/github_download_stats.py
 TokenStepSwift/dist/TokenStep.app
 ```
 
+运行全部测试：
+
+```bash
+./script/test_all.sh
+```
+
+- 采集器 fixture 检查只依赖 `swiftc`，装 Command Line Tools 就能跑。
+- XCTest 单元测试需要完整的 Xcode（Command Line Tools 不带 XCTest）；没装 Xcode 时脚本会跳过这一步并提示。
+- 测试会固定 `TOKENSTEP_TIMEZONE=Asia/Shanghai`，因为 fixture 的日期边界按这个时区编写。App 本身按系统时区切分每天的用量。
+- 如果 `swift build` / `swift test` 在解析 `Package.swift` 时报 `PackageDescription.Package.__allocating_init` 链接错误，说明 Command Line Tools 安装里残留了旧版本的 `PackageDescription` 私有接口文件，重新安装 Command Line Tools 即可。
+
 ## 发布打包
 
 公开发布强制执行 Developer ID 签名、Apple 公证、票据装订、系统分发检查和隔离安装验证。不再生成可被误上传的“仅签名、未公证”发布包：

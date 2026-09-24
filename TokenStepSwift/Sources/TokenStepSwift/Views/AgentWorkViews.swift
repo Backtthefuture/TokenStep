@@ -114,8 +114,7 @@ struct TodayAgentWorkCard: View {
     }
 
     private var trailingSevenDayWorks: [DailyAgentWork] {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        let calendar = TokenStepClock.calendar
         let todayKey = DateFormatter.tokenStepDay.string(from: Date())
         guard let today = DateFormatter.tokenStepDay.date(from: todayKey) else {
             return [work]

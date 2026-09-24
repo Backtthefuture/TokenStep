@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Fixture expectations are written in this zone; pin it so results do not
+# depend on the machine running the check.
+export TOKENSTEP_TIMEZONE="Asia/Shanghai"
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
 BUILD_DIR="$SWIFT_DIR/.build/ccswitch-fixture"
@@ -39,13 +43,14 @@ swiftc \
   -Xcc "$OVERLAY_FILE" \
   -parse-as-library \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/AppPaths.swift" \
+  "$SWIFT_DIR/Sources/TokenStepSwift/Support/TokenStepClock.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Localization.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/SQLiteReadonly.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/QuotaModels.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/TokenRankService.swift" \
-  "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift" \
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/Collector/"*.swift \
   "$SWIFT_DIR/Tests/Fixtures/CCSwitchProxyFixtureCheck.swift" \
   -o "$EXECUTABLE"
 
