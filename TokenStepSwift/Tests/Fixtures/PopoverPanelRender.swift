@@ -29,7 +29,7 @@ struct PopoverPanelRender {
         let showsRank = ProcessInfo.processInfo.environment["TOKENSTEP_POPOVER_RANK"] != "hidden"
         let showsQuotas = ProcessInfo.processInfo.environment["TOKENSTEP_POPOVER_QUOTAS"] != "hidden"
         let updateState = ProcessInfo.processInfo.environment["TOKENSTEP_POPOVER_UPDATE_STATE"] ?? "idle"
-        let rank = fixtureRank()
+        let rank = ProcessInfo.processInfo.environment["TOKENSTEP_POPOVER_RANK"] == "chase" ? chaseRank() : fixtureRank()
         let update = fixtureUpdate()
         let appState = AppState()
         appState.installRenderFixture(
@@ -41,7 +41,9 @@ struct PopoverPanelRender {
                 showsQuotas: showsQuotas,
                 language: language
             ),
-            quotas: showsQuotas ? fixtureQuotas() : [:],
+            quotas: showsQuotas
+                ? (ProcessInfo.processInfo.environment["TOKENSTEP_POPOVER_QUOTAS"] == "many" ? manyQuotas() : fixtureQuotas())
+                : [:],
             tokenRank: showsRank ? rank.leaderboard : nil,
             agentWorkRankIdentity: showsRank ? rank.identity : nil,
             updateCheckPhase: fixtureUpdatePhase(updateState, update: update),
@@ -73,7 +75,7 @@ struct PopoverPanelRender {
             throw NSError(domain: "PopoverPanelRender", code: 1)
         }
         try png.write(to: output, options: .atomic)
-        guard bitmap.pixelsWide == 1_800, bitmap.pixelsHigh >= 600 else {
+        guard bitmap.pixelsWide == Int(CompactPopoverStyle.width * 2), bitmap.pixelsHigh >= 300 else {
             throw NSError(domain: "PopoverPanelRender", code: 2, userInfo: [
                 NSLocalizedDescriptionKey: "Unexpected render size: \(bitmap.pixelsWide)x\(bitmap.pixelsHigh)"
             ])
@@ -230,7 +232,7 @@ struct PopoverPanelRender {
             requireVerifiedUpdates: true,
             tokenIslandEnabled: false,
             tokenIslandPlacement: .menuBar,
-            enabledQuotaProviders: showsQuotas ? [.codex, .claude, .cursor] : [],
+            enabledQuotaProviders: showsQuotas ? Set(QuotaProviderID.allCases) : [],
             cursorQuotaEnabled: showsQuotas,
             cursorCodeSignalEnabled: false,
             agentWorkRankVisibility: showsRank ? .visible : .hidden,
@@ -273,6 +275,52 @@ struct PopoverPanelRender {
             ),
             identity
         )
+    }
+
+    /// Mid-board: the viewer at #35 chasing #34, with the podium ahead.
+    private static func chaseRank() -> (leaderboard: TokenRankLeaderboard, identity: AgentWorkRankIdentity) {
+        let identity = AgentWorkRankIdentity(id: 42, name: "Agent 黄叔", avatarURL: nil, lastSyncedAt: Date())
+        let rows: [(Int, Int, String, Int)] = [
+            (1, 1, "十七°", 860_255_773), (2, 2, "开水庆余年", 716_395_709), (3, 3, "柳间君", 666_412_269),
+            (34, 34, "ancson", 32_630_000), (35, 42, identity.name, 28_510_000), (36, 36, "Susan", 20_122_373)
+        ]
+        return (
+            TokenRankLeaderboard(
+                fetchedAt: Date().addingTimeInterval(-2 * 60),
+                range: "today",
+                client: "all",
+                usageMode: "all",
+                totalTokens: 8_193_118_395,
+                totalRankedUsers: 88,
+                topLimit: 100,
+                entries: rows.map {
+                    TokenRankEntry(rank: $0.0, userID: $0.1, name: $0.2, avatarURL: nil, totalTokens: $0.3, callCount: 0, sessionCount: 0, clients: [:], models: [:])
+                }
+            ),
+            identity
+        )
+    }
+
+    /// Six providers: one critical, one running out early, the rest calm.
+    private static func manyQuotas() -> [QuotaProviderID: ProviderQuota] {
+        let now = Date()
+        func quota(_ provider: QuotaProviderID, _ windows: [QuotaWindow]) -> ProviderQuota {
+            ProviderQuota(provider: provider, windows: windows, status: .available, fetchedAt: now.addingTimeInterval(-7 * 60), message: nil)
+        }
+        return [
+            .codex: quota(.codex, [
+                QuotaWindow(kind: .fiveHour, usedPercent: 96, resetsAt: now.addingTimeInterval(2 * 3600)),
+                QuotaWindow(kind: .sevenDay, usedPercent: 89, resetsAt: now.addingTimeInterval(34.5 * 3600))
+            ]),
+            .claude: quota(.claude, [
+                QuotaWindow(kind: .fiveHour, usedPercent: 58, resetsAt: now.addingTimeInterval(3 * 3600)),
+                QuotaWindow(kind: .sevenDay, usedPercent: 71, resetsAt: now.addingTimeInterval(96 * 3600))
+            ]),
+            .grok: quota(.grok, [QuotaWindow(kind: .monthlyCredits, usedPercent: 32, resetsAt: now.addingTimeInterval(9 * 86_400))]),
+            .glm: quota(.glm, [QuotaWindow(kind: .monthlyCredits, usedPercent: 24, resetsAt: now.addingTimeInterval(6 * 86_400))]),
+            .kimi: quota(.kimi, [QuotaWindow(kind: .weekly, usedPercent: 12, resetsAt: now.addingTimeInterval(5 * 86_400))]),
+            .cursor: quota(.cursor, [QuotaWindow(kind: .cursorModels, usedPercent: 45, resetsAt: now.addingTimeInterval(6 * 86_400))])
+        ]
     }
 
     private static func fixtureUpdatePhase(
