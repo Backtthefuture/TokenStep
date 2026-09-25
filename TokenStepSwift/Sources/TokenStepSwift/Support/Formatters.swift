@@ -53,7 +53,7 @@ enum TokenStepFormat {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        formatter.timeZone = TokenStepClock.timeZone
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
         return formatter.string(from: date)
     }
@@ -96,7 +96,7 @@ extension DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        formatter.timeZone = TokenStepClock.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()

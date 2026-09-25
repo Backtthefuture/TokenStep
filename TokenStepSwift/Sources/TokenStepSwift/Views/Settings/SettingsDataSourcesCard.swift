@@ -130,15 +130,20 @@ struct SettingsDataSourcesPane: View {
         if let info = appState.snapshot.sources[source.displayName] ?? appState.snapshot.sources[source.id],
            (raw == "ok" || raw == "ok_sqlite"),
            let records = info.records, records > 0 {
-            return LFormat("正常 · %d 请求", records)
+            // The SQLite fallback only has per-session totals, dated by session start.
+            return raw == "ok_sqlite"
+                ? LFormat("近似 · %d 会话", records)
+                : LFormat("正常 · %d 请求", records)
         }
         return SourceStatusCopy.text(raw)
     }
 
     private func badgeStyle(for source: AgentSourceDescriptor) -> SettingsBadgeStyle {
         switch rawStatus(for: source) {
-        case "ok", "ok_sqlite", "available":
+        case "ok", "available":
             return .ok
+        case "ok_sqlite":
+            return .warn
         case "disabled":
             return .off
         case "missing", "missing_db", "empty":
@@ -224,7 +229,8 @@ enum AgentSourceCopy {
 enum SourceStatusCopy {
     static func text(_ status: String?) -> String {
         switch status {
-        case "ok", "ok_sqlite": return L("已读取")
+        case "ok": return L("已读取")
+        case "ok_sqlite": return L("近似值（按会话开始日汇总）")
         case "available": return L("额度可用")
         case "missing", "missing_db": return L("数据库未找到")
         case "unreadable_db": return L("无法读取")

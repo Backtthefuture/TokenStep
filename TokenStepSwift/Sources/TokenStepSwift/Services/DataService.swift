@@ -256,6 +256,27 @@ enum DataService {
         }
     }
 
+    /// Foundation's atomic writes stage data in `.dat.nosync*` files beside the
+    /// target. A crash or forced quit mid-write leaves them behind. Only files a day
+    /// old are removed so an in-flight write is never touched.
+    static func removeStaleAtomicWriteLeftovers(
+        root: URL = AppPaths.appSupportRoot,
+        now: Date = Date()
+    ) {
+        let fileManager = FileManager.default
+        for folder in ["data", "config", "cache"] {
+            let directory = root.appendingPathComponent(folder, isDirectory: true)
+            guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { continue }
+            for name in names where name.hasPrefix(".dat.nosync") {
+                let url = directory.appendingPathComponent(name)
+                guard let modified = (try? fileManager.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date,
+                      now.timeIntervalSince(modified) > 24 * 60 * 60
+                else { continue }
+                try? fileManager.removeItem(at: url)
+            }
+        }
+    }
+
     static func acknowledgeUsageRecalibrationNotice() {
         try? FileManager.default.removeItem(at: AppPaths.usageRecalibrationNoticeMarker)
     }

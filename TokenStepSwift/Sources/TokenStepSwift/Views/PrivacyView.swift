@@ -10,7 +10,7 @@ struct PrivacyView: View {
                     Text(L("本地优先"))
                         .font(.title3.weight(.heavy))
                         .foregroundStyle(Color.tokenInk)
-                    Text(L("默认不联网、不上传。Token 统计全部来自本机日志。"))
+                    Text(L("不上传用量与内容。Token 统计全部来自本机日志。"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     PrivacyFactRow(title: L("读取"), value: L("日期 · 模型名 · 客户端名 · token 计数"))
@@ -35,17 +35,18 @@ struct PrivacyView: View {
             HStack(alignment: .top, spacing: 13) {
                 TokenCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(L("联网项（全部默认关闭）"))
+                        Text(L("联网项（除检查更新外默认关闭）"))
                             .font(.title3.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
                         Text(L("开启后才会发起请求，逐项独立"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
+                        PrivacyNetworkRow(badge: L("版本"), style: .ok, title: L("检查更新"), detail: L("GitHub Release · 默认开启，可在设置关闭"))
                         PrivacyNetworkRow(badge: "L2", style: .l2, title: L("Codex 额度"), detail: L("本机 codex 登录态"))
                         PrivacyNetworkRow(badge: "L2", style: .l2, title: L("Claude 额度"), detail: L("钥匙串 OAuth → Anthropic"))
                         PrivacyNetworkRow(badge: "L2", style: .l2, title: L("Cursor 额度与官方用量"), detail: L("state.vscdb → cursor.com 事件计入圆环"))
                         PrivacyNetworkRow(badge: "L2", style: .l2, title: L("GLM / Kimi / Grok"), detail: L("各自本机凭证"))
-                        PrivacyNetworkRow(badge: L("榜"), style: .ok, title: L("消耗榜"), detail: L("仅在开启后上报"))
+                        PrivacyNetworkRow(badge: L("榜"), style: .ok, title: L("消耗榜"), detail: L("检测到本机 Token Rank 账号时读取公开榜单，不上传"))
                     }
                 }
 

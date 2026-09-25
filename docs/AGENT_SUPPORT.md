@@ -6,7 +6,7 @@ TokenStep 的原则是：能从本地日志中稳定读到 token 数，才进入
 
 | Agent | 状态 | 数据来源 | 说明 |
 | --- | --- | --- | --- |
-| Codex | 已支持 | `~/.codex/sessions` / `~/.codex/archived_sessions`，必要时回退 SQLite | 读取本地 token_count 事件，只统计数量；可选读取 5h / 7d 额度。 |
+| Codex | 已支持 | `~/.codex/sessions`，必要时回退 `~/.codex/state_5.sqlite`（回退时只有按会话汇总的近似值） | 读取本地 token_count 事件，只统计数量；可选读取 5h / 7d 额度。`archived_sessions` 可能是时间戳被改写的恢复日志，不计入。 |
 | Claude Code | 已支持 | `~/.claude/projects` | 读取 assistant message 的 usage 字段，按 `message.id` 去重，避免 thinking / text / tool_use 多行重复累计；可选通过 Claude Code 本机钥匙串凭证读取 usage 额度。 |
 
 ## 实验支持：CC Switch Proxy

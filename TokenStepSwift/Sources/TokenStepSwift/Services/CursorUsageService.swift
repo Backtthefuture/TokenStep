@@ -206,7 +206,7 @@ enum CursorUsageService {
 
         return UsageSnapshot(
             generatedAt: snapshot.generatedAt,
-            timezone: snapshot.timezone ?? "Asia/Shanghai",
+            timezone: snapshot.timezone ?? TokenStepClock.identifier,
             totals: UsageTotals(
                 tokens: totalTokens,
                 cost: rounded(totalCost, digits: 2),
@@ -364,8 +364,7 @@ enum CursorUsageService {
     }
 
     private static func dateWindow(lookbackDays: Int, now: Date) -> (start: Date, end: Date, startDate: String, endDate: String) {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        let calendar = TokenStepClock.calendar
         let start = calendar.date(
             byAdding: .day,
             value: -(lookbackDays - 1),
@@ -610,8 +609,7 @@ private struct DayAccumulator {
         chargedCents += event.chargedCents
         eventCount += 1
         models[event.model, default: 0] += event.totalTokens
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        let calendar = TokenStepClock.calendar
         let hour = calendar.component(.hour, from: event.timestamp)
         hourly[hour, default: HourAccumulator(hour: hour)].add(event)
     }

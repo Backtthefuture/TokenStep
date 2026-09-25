@@ -7,7 +7,7 @@ Safety contract:
 - The frozen copy preserves relative session paths and verbatim relevant JSONL lines.
 - TokenStep's production cache/App Support and installed/running app are never touched.
 
-The Python implementation intentionally mirrors the current UsageCollector.swift
+The Python implementation intentionally mirrors the current Swift collector (Services/Collector/)
 accounting revision. By default the script also compiles a temporary Swift harness from
 the current working tree, runs the real collector twice against the frozen copy, and
 checks the two implementations agree.
@@ -1034,10 +1034,13 @@ def compile_and_run_swift(repo_root: Path, output_root: Path, frozen_home: Path)
     swift_dir = repo_root / "TokenStepSwift"
     source_paths = [
         swift_dir / "Sources/TokenStepSwift/Support/AppPaths.swift",
+        swift_dir / "Sources/TokenStepSwift/Support/TokenStepClock.swift",
         swift_dir / "Sources/TokenStepSwift/Support/Localization.swift",
         swift_dir / "Sources/TokenStepSwift/Support/Theme.swift",
+        swift_dir / "Sources/TokenStepSwift/Support/SQLiteReadonly.swift",
+        swift_dir / "Sources/TokenStepSwift/Models/QuotaModels.swift",
         swift_dir / "Sources/TokenStepSwift/Models/UsageModels.swift",
-        swift_dir / "Sources/TokenStepSwift/Services/UsageCollector.swift",
+        *sorted((swift_dir / "Sources/TokenStepSwift/Services/Collector").glob("*.swift")),
     ]
     for source in source_paths:
         if not source.is_file():

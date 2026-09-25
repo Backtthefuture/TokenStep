@@ -68,7 +68,7 @@ struct UsageSnapshot: Codable {
 
     static let empty = UsageSnapshot(
         generatedAt: nil,
-        timezone: "Asia/Shanghai",
+        timezone: TokenStepClock.identifier,
         totals: UsageTotals(tokens: 0, cost: 0, activeDays: 0),
         daily: [],
         rhythms: [],

@@ -13,6 +13,9 @@ final class TokenStepAppDelegate: NSObject, NSApplicationDelegate {
         LifecycleLogger.log(
             "Application launched pid=\(ProcessInfo.processInfo.processIdentifier), version=\(UpdateService.currentVersion), bundle=\(Bundle.main.bundleURL.path)."
         )
+        DispatchQueue.global(qos: .utility).async {
+            DataService.removeStaleAtomicWriteLeftovers()
+        }
         if let url = Bundle.main.url(forResource: "TokenStepIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: url) {
             NSApp.applicationIconImage = icon

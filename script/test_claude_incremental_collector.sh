@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Fixture expectations are written in this zone; pin it so results do not
-# depend on the machine running the check.
+# Verifies that resuming Claude Code transcripts after the last complete line
+# matches a full re-read, including partial lines and rewritten files.
+
+# Fixture expectations are written in this zone.
 export TOKENSTEP_TIMEZONE="Asia/Shanghai"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
-BUILD_DIR="${TMPDIR:-/tmp}/tokenstep-energy-benchmark-$UID"
+BUILD_DIR="/tmp/tokenstep-claude-incremental-fixture-$UID-$$"
 OVERLAY_DIR="$BUILD_DIR/vfs-overlay"
 OVERLAY_FILE="$OVERLAY_DIR/overlay.yaml"
 EMPTY_MODULEMAP="$OVERLAY_DIR/empty.modulemap"
-EXECUTABLE="$BUILD_DIR/energy-efficiency-benchmark"
-DATABASE="${TOKENSTEP_BENCHMARK_DATABASE:-$BUILD_DIR/codex-incremental.sqlite3}"
+EXECUTABLE="$BUILD_DIR/claude-incremental-fixture-check"
+
+cleanup() {
+  rm -rf "$BUILD_DIR"
+}
+trap cleanup EXIT
 
 mkdir -p "$BUILD_DIR" "$OVERLAY_DIR"
 cat > "$EMPTY_MODULEMAP" <<'EOF'
@@ -51,8 +57,7 @@ swiftc \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/QuotaModels.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/Collector/"*.swift \
-  "$SWIFT_DIR/Tests/Fixtures/EnergyEfficiencyBenchmark.swift" \
+  "$SWIFT_DIR/Tests/Fixtures/ClaudeIncrementalFixtureCheck.swift" \
   -o "$EXECUTABLE"
 
-mode="${1:-warm}"
-/usr/bin/time -l "$EXECUTABLE" "$DATABASE" "$mode"
+"$EXECUTABLE"

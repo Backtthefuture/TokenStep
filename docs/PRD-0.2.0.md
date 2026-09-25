@@ -45,6 +45,12 @@ UsageSnapshotRefreshPolicyTests.swift    UsageCollectorExperimentalAgentTests.sw
 
 ### 0.3 已核实的代码事实（引用这些，不要凭记忆）
 
+> **当前代码位置**：下表是 0.1.48 时的快照，文件和行号已过时。
+> - `UsageCollector.swift` 已按职责拆到 `Services/Collector/`：`UsageCollector.swift`（入口与测试入口）、`+Codex`、`+Claude`、`+AgentSources`（CC Switch / ZCode / Hermes / WorkBuddy）、`+Dedupe`、`+Aggregate`、`+Cache`、`+Parsing`、`+Pricing`（单价规则表 `priceRules`）、`CodexIncrementalStore.swift`、`UsageCollectorModels.swift`。
+> - `sqliteJSONRows` 现在通过 `SQLiteReadonly` 在进程内以只读方式打开数据库（SQLite C API），不再启动 `sqlite3` 子进程。
+> - 日期切分使用 `TokenStepClock`（系统时区），不再固定为 `Asia/Shanghai`。
+> - 0.4 节的 6 处同步由 `script/test_settings_codable.sh` 自动检查。
+
 动手前这些都在 0.1.48 真机核对过。**行号是 0.1.48 的，改完代码会漂移，认符号名不认行号。**
 
 | 事实 | 位置 |

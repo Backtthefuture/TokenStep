@@ -44,6 +44,7 @@ final class AppState: ObservableObject {
     private var lastUsageObservedAt: Date?
     private var ledgerSnapshot: UsageSnapshot = .empty
     private var isRefreshingCursorUsage = false
+    private var timeZoneObserver: NSObjectProtocol?
 
     init() {
         load()
@@ -54,9 +55,22 @@ final class AppState: ObservableObject {
         refreshTokenRank()
         scheduleDeferredUpdateCheck()
         configureUpdateCheckTimer()
+        timeZoneObserver = NotificationCenter.default.addObserver(
+            forName: .NSSystemTimeZoneDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                LifecycleLogger.log("System time zone changed to \(TokenStepClock.identifier); recollecting usage.")
+                self?.refresh(forceCollection: true)
+            }
+        }
     }
 
     deinit {
+        if let timeZoneObserver {
+            NotificationCenter.default.removeObserver(timeZoneObserver)
+        }
         timer?.invalidate()
         foregroundTimer?.invalidate()
         updateCheckTimer?.invalidate()
@@ -93,8 +107,7 @@ final class AppState: ObservableObject {
     }
 
     var monthAverage: Int {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        let calendar = TokenStepClock.calendar
         let endDate = calendar.startOfDay(for: Date())
         let values = (0..<30).map { offset -> Int in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: endDate) else {
@@ -385,8 +398,7 @@ final class AppState: ObservableObject {
 
     func sevenDayAgentAverage(endingAt dateKey: String) -> Int {
         guard let endDate = DateFormatter.tokenStepDay.date(from: dateKey) else { return 0 }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        let calendar = TokenStepClock.calendar
         let total = (0..<7).reduce(0) { partial, offset in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: endDate) else {
                 return partial
@@ -1182,6 +1194,7 @@ final class AppState: ObservableObject {
 
 enum UsageSnapshotRefreshReason: Equatable {
     case accountingRevision
+    case timeZoneChanged
     case missingModelBreakdown
     case missingSnapshotTimestamp
     case stale
@@ -1195,6 +1208,9 @@ enum UsageSnapshotRefreshPolicy {
     ) -> UsageSnapshotRefreshReason? {
         if DataService.requiresImmediateCodexRecalibration(snapshot) {
             return .accountingRevision
+        }
+        if !snapshot.daily.isEmpty, !TokenStepClock.matchesCurrent(snapshot.timezone) {
+            return .timeZoneChanged
         }
         if snapshot.daily.contains(where: { $0.totalTokens > 0 && $0.models.isEmpty }) {
             return .missingModelBreakdown

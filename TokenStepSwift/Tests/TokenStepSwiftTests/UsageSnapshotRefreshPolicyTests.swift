@@ -61,10 +61,32 @@ final class UsageSnapshotRefreshPolicyTests: XCTestCase {
         )
     }
 
-    private func makeSnapshot(accountingRevision: Int?, records: Int) -> UsageSnapshot {
+    func testSnapshotFromAnotherTimeZoneRecollects() {
+        let otherZone = TokenStepClock.identifier == "Pacific/Chatham" ? "Pacific/Marquesas" : "Pacific/Chatham"
+        let snapshot = makeSnapshot(
+            accountingRevision: UsageCollector.codexAccountingRevision,
+            records: 1,
+            timezone: otherZone
+        )
+
+        XCTAssertEqual(
+            UsageSnapshotRefreshPolicy.reason(
+                snapshot: snapshot,
+                refreshIntervalSeconds: 0,
+                now: now
+            ),
+            .timeZoneChanged
+        )
+    }
+
+    private func makeSnapshot(
+        accountingRevision: Int?,
+        records: Int,
+        timezone: String = TokenStepClock.identifier
+    ) -> UsageSnapshot {
         UsageSnapshot(
             generatedAt: ISO8601DateFormatter().string(from: now),
-            timezone: "Asia/Shanghai",
+            timezone: timezone,
             totals: UsageTotals(tokens: 100, cost: 0, activeDays: 1),
             daily: [
                 DailyUsage(

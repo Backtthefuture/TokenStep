@@ -23,7 +23,7 @@ HELPER_EXECUTABLE="$BUILD_DIR/$HELPER_NAME"
 ICON_FILE="$ROOT_DIR/TokenUsageMenuApp/assets/TokenStepIcon.icns"
 ODYSSEY_ASSET_DIR="$ROOT_DIR/TokenUsageMenuApp/assets/odyssey"
 INTERSTELLAR_ASSET_DIR="$ROOT_DIR/TokenUsageMenuApp/assets/interstellar"
-VERSION="${TOKENSTEP_VERSION:-0.2.14}"
+VERSION="${TOKENSTEP_VERSION:-0.2.15}"
 LAUNCH=true
 VERIFY=false
 
@@ -95,13 +95,14 @@ fi
 
 HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/AppPaths.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Support/TokenStepClock.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Localization.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/MemoryPressure.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/SQLiteReadonly.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/QuotaModels.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift"
-  "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/Collector/"*.swift
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"
   "$SWIFT_DIR/Sources/TokenStepHelper/main.swift"
 )
