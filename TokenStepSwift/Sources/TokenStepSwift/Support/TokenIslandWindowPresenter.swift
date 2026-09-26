@@ -181,13 +181,17 @@ final class TokenIslandWindowPresenter {
         )
         .environmentObject(appState)
 
-        return makePanel(
+        let panel = makePanel(
             title: "TokenStep Island",
             identifier: "token-island",
             size: Self.collapsedSize,
             rootView: rootView,
             hasShadow: false
         )
+        // One level above the card window, so if the two ever overlap the
+        // island keeps its hover and the card cannot flicker.
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        return panel
     }
 
     private func makePopoverPanel(appState: AppState) -> TokenIslandPanel {
@@ -294,9 +298,11 @@ final class TokenIslandWindowPresenter {
             max(anchorX, screen.visibleFrame.minX + 8),
             screen.visibleFrame.maxX - cardSize.width - 8
         )
+        // No top margin (see TokenIslandMetrics.expandedWindowSize): the
+        // window's top edge is the card's top edge.
         let frame = NSRect(
             x: cardX - margin,
-            y: topY - cardSize.height - margin,
+            y: topY - size.height,
             width: size.width,
             height: size.height
         )
