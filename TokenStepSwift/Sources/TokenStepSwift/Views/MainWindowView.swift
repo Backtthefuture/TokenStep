@@ -128,7 +128,7 @@ struct MainWindowView: View {
                 .overlay(Capsule().stroke(Color.tokenDivider))
 
                 Button {
-                    appState.refresh()
+                    appState.refreshNow()
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 12, weight: .heavy))

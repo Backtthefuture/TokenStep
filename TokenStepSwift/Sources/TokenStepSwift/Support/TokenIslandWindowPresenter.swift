@@ -7,7 +7,6 @@ final class TokenIslandWindowPresenter {
     static let shared = TokenIslandWindowPresenter()
 
     static let collapsedSize = NSSize(width: 88, height: 24)
-    static let expandedSize = TokenIslandMetrics.expandedWindowSize
 
     private weak var appState: AppState?
     private var ringPanel: TokenIslandPanel?
@@ -16,6 +15,11 @@ final class TokenIslandWindowPresenter {
     private var screenObserver: NSObjectProtocol?
     private var hidePopoverTask: DispatchWorkItem?
     private var popoverVisible = false
+    private var popoverCardHeight = TokenIslandMetrics.initialCardHeight
+    /// The popover's "..." menu opens outside the card. While any menu is
+    /// tracking, leaving the card must not collapse it.
+    private var menuTracking = false
+    private var menuObservers: [NSObjectProtocol] = []
 
     func bind(appState: AppState) {
         guard self.appState !== appState else {
@@ -43,7 +47,37 @@ final class TokenIslandWindowPresenter {
             }
         }
 
+        observeMenuTracking()
         syncVisibility()
+    }
+
+    private func observeMenuTracking() {
+        guard menuObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        menuObservers = [
+            center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.menuTracking = true
+                    self?.cancelHidePopover()
+                }
+            },
+            center.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.menuTracking = false
+                    if self.popoverVisible, !self.isMouseInsidePopover {
+                        self.scheduleHidePopover()
+                    }
+                }
+            }
+        ]
+    }
+
+    private var isMouseInsidePopover: Bool {
+        guard let panel = popoverPanel else { return false }
+        let card = panel.frame.insetBy(dx: TokenIslandMetrics.expandedShadowMargin, dy: TokenIslandMetrics.expandedShadowMargin)
+        let mouse = NSEvent.mouseLocation
+        return card.contains(mouse) || (ringPanel?.frame.contains(mouse) ?? false)
     }
 
     func showPopover() {
@@ -78,6 +112,7 @@ final class TokenIslandWindowPresenter {
 
     func scheduleHidePopover() {
         hidePopoverTask?.cancel()
+        guard !menuTracking else { return }
         let task = DispatchWorkItem { [weak self] in
             self?.hidePopover()
         }
@@ -156,19 +191,24 @@ final class TokenIslandWindowPresenter {
     }
 
     private func makePopoverPanel(appState: AppState) -> TokenIslandPanel {
-        let rootView = TokenIslandPopoverWindowView { [weak self] hovering in
-            if hovering {
-                self?.cancelHidePopover()
-            } else {
-                self?.scheduleHidePopover()
+        let rootView = TokenIslandPopoverWindowView(
+            onHoverChanged: { [weak self] hovering in
+                if hovering {
+                    self?.cancelHidePopover()
+                } else {
+                    self?.scheduleHidePopover()
+                }
+            },
+            onHeightChanged: { [weak self] height in
+                self?.updatePopoverCardHeight(height)
             }
-        }
+        )
         .environmentObject(appState)
 
         return makePanel(
             title: "TokenStep Island Popover",
             identifier: "token-island-popover",
-            size: Self.expandedSize,
+            size: TokenIslandMetrics.expandedWindowSize(cardHeight: popoverCardHeight),
             rootView: rootView,
             hasShadow: false
         )
@@ -183,6 +223,9 @@ final class TokenIslandWindowPresenter {
     ) -> TokenIslandPanel {
 
         let controller = NSHostingController(rootView: rootView)
+        // The presenter owns every frame; the hosting view must not resize
+        // the panel on its own.
+        controller.sizingOptions = []
         controller.view.wantsLayer = true
         controller.view.layer?.backgroundColor = NSColor.clear.cgColor
         controller.view.layer?.masksToBounds = false
@@ -224,10 +267,20 @@ final class TokenIslandWindowPresenter {
         panel.setFrame(frame, display: true, animate: false)
     }
 
+    private func updatePopoverCardHeight(_ height: CGFloat) {
+        guard height > 0, abs(height - popoverCardHeight) > 0.5 else { return }
+        popoverCardHeight = height
+        guard popoverVisible,
+              let panel = popoverPanel,
+              let screen = TokenIslandDisplayDetector.notchedPrimaryScreen
+        else { return }
+        positionPopoverPanel(panel, on: screen)
+    }
+
     private func positionPopoverPanel(_ panel: TokenIslandPanel, on screen: NSScreen) {
         let margin = TokenIslandMetrics.expandedShadowMargin
-        let cardSize = TokenIslandMetrics.expandedCardSize
-        let size = Self.expandedSize
+        let size = TokenIslandMetrics.expandedWindowSize(cardHeight: popoverCardHeight)
+        let cardSize = NSSize(width: TokenIslandMetrics.expandedCardWidth, height: popoverCardHeight)
         let ringFrame = ringPanel?.frame
             ?? TokenIslandDisplayDetector.collapsedFrame(
                 on: screen,

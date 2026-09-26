@@ -18,6 +18,7 @@ FIXTURE_CHECKS=(
   test_time_zone_collector
   test_claude_incremental_collector
   test_settings_codable
+  test_compact_popover
 )
 
 failed=()

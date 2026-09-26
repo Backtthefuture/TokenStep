@@ -1,14 +1,15 @@
 import Foundation
 
 enum QuotaRefreshCoordinator {
-    static func fetch(providers: Set<QuotaProviderID>) -> [QuotaProviderID: ProviderQuota] {
+    /// `bypassCache` skips provider file caches, for a refresh the user asked for.
+    static func fetch(providers: Set<QuotaProviderID>, bypassCache: Bool = false) -> [QuotaProviderID: ProviderQuota] {
         var result: [QuotaProviderID: ProviderQuota] = [:]
         let lock = NSLock()
         let group = DispatchGroup()
         for provider in providers {
             group.enter()
             DispatchQueue.global(qos: .utility).async {
-                let quota = read(provider)
+                let quota = read(provider, bypassCache: bypassCache)
                 lock.lock()
                 result[provider] = quota
                 lock.unlock()
@@ -23,15 +24,15 @@ enum QuotaRefreshCoordinator {
         return result
     }
 
-    static func read(_ provider: QuotaProviderID) -> ProviderQuota {
+    static func read(_ provider: QuotaProviderID, bypassCache: Bool = false) -> ProviderQuota {
         do {
             switch provider {
             case .codex:
                 return try CodexQuotaService.read().asProviderQuota(.codex)
             case .claude:
-                return try ClaudeQuotaService.read().asProviderQuota(.claude)
+                return try ClaudeQuotaService.read(useCache: !bypassCache).asProviderQuota(.claude)
             case .cursor:
-                return try CursorQuotaService.read()
+                return try CursorQuotaService.read(useCache: !bypassCache)
             case .glm:
                 return try GLMQuotaService.read()
             case .kimi:

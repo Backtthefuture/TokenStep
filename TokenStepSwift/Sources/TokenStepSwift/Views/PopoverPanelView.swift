@@ -10,19 +10,26 @@ struct PopoverPanelView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            if TokenStepThemeRuntime.isCinematic {
-                cinematicContent
-            } else {
-                classicColumns
+            let quotaSection = CompactPopoverModel.quotaSection(quotas: appState.visibleQuotas, now: Date())
+            if !quotaSection.isEmpty {
+                section {
+                    CompactQuotaSection(section: quotaSection, updatedAt: quotaUpdatedAt)
+                }
+                sectionDivider
+            }
+            section {
+                CompactTokenSection(usage: appState.today, lap: appState.todayLap)
+            }
+            if let rank = rankSection, let board = appState.tokenRank {
+                sectionDivider
+                section {
+                    CompactRankSection(section: rank, fetchedAt: board.fetchedAt)
+                }
             }
             notices
-            PopoverFooterView()
-                .padding(.horizontal, TokenStepThemeRuntime.isCinematic ? 22 : 16)
-                .padding(.top, TokenStepThemeRuntime.isCinematic ? 14 : 12)
-                .padding(.bottom, TokenStepThemeRuntime.isCinematic ? 20 : 14)
+            footer
         }
-        .frame(width: 900)
+        .frame(width: CompactPopoverStyle.width)
         .background {
             if TokenStepThemeRuntime.isInterstellar {
                 InterstellarBackdrop(
@@ -66,180 +73,185 @@ struct PopoverPanelView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 10) {
-            TokenStepBrandLockup(
-                markSize: TokenStepThemeRuntime.isCinematic ? 34 : 28,
-                titleSize: TokenStepThemeRuntime.isCinematic ? 20 : 17
-            )
-            Spacer()
-            if TokenStepThemeRuntime.isInterstellar,
-               InterstellarMotionLabConfiguration.isEnabled {
-                InterstellarMotionLabPicker(
-                    mode: $interstellarMotionMode,
-                    triggerPulse: {
-                        interstellarManualPulseTrigger &+= 1
+    /// Cinematic themes put each section on a translucent panel so text stays
+    /// readable over the artwork; the classic theme draws sections directly.
+    @ViewBuilder
+    private func section<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if TokenStepThemeRuntime.isCinematic {
+            content()
+                .padding(12)
+                .background {
+                    if TokenStepThemeRuntime.isInterstellar {
+                        InterstellarPanelBackground(opacity: 0.72, cornerRadius: 14)
+                    } else {
+                        OdysseyPopoverSectionBackground(opacity: 0.56, cornerRadius: 14)
                     }
-                )
-            }
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(appState.isRefreshing ? Color.secondary.opacity(0.68) : Color.tokenSuccess)
-                    .frame(width: 7, height: 7)
-                Text(appState.isRefreshing ? L("同步中") : L("已同步"))
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk.opacity(0.72))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.tokenSurface, in: Capsule())
-            .overlay(Capsule().stroke(Color.tokenDivider))
-
-            if !isScreenshotRendering {
-                PopoverCaptureMenuButton(
-                    shareTodayAction: { copyShareCard(.today) },
-                    shareYesterdayAction: { copyShareCard(.yesterday) },
-                    shareYesterdayRhythmAction: copyYesterdayRhythmCard,
-                    downloadTodayAction: { downloadShareCard(.today) },
-                    downloadYesterdayRhythmAction: downloadYesterdayRhythmCard,
-                    copyPopoverAction: copyPopoverScreenshot,
-                    savePopoverAction: savePopoverScreenshot
-                )
-            }
-        }
-        .padding(.horizontal, TokenStepThemeRuntime.isCinematic ? 26 : 16)
-        .frame(height: TokenStepThemeRuntime.isCinematic ? 72 : 48)
-        .background {
-            if TokenStepThemeRuntime.isCinematic {
-                LinearGradient(
-                    colors: [Color.black.opacity(0.30), Color.tokenCanvas.opacity(0.12), Color.black.opacity(0.16)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if TokenStepThemeRuntime.isCinematic {
-                LinearGradient(
-                    colors: [Color.tokenGreen.opacity(0.58), Color.tokenDivider.opacity(0.34), Color.clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(height: 1)
-                .padding(.horizontal, 22)
-            }
-        }
-    }
-
-    private var cinematicContent: some View {
-        VStack(spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                PopoverTodayRingCard()
-                    .frame(width: 250, height: odysseyTopCardHeight)
-                    .background(cinematicSectionBackground(opacity: TokenStepThemeRuntime.isInterstellar ? 0.66 : 0.16))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-                centralUsageCard
-                    .frame(minWidth: 330, maxWidth: .infinity, minHeight: odysseyTopCardHeight, maxHeight: odysseyTopCardHeight)
-                    .background(cinematicSectionBackground(opacity: TokenStepThemeRuntime.isInterstellar ? 0.70 : 0.46))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-                if appState.showsQuotaColumn {
-                    PopoverQuotaCard()
-                        .frame(width: 260, height: odysseyTopCardHeight)
-                        .background(cinematicSectionBackground(opacity: TokenStepThemeRuntime.isInterstellar ? 0.74 : 0.54))
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
-            }
-
-            if appState.shouldShowAgentWorkRank, appState.agentWorkRankIdentity != nil {
-                PopoverTokenRankCard(layout: .ribbon)
-                    .frame(height: 76)
-                    .background(cinematicSectionBackground(opacity: TokenStepThemeRuntime.isInterstellar ? 0.76 : 0.58, cornerRadius: 16))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.horizontal, 10)
+                .padding(.top, 10)
+        } else {
+            content()
+                .padding(.horizontal, CompactPopoverStyle.horizontalPadding)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
     }
 
-    private var classicColumns: some View {
-        HStack(alignment: .top, spacing: 0) {
-            PopoverTodayRingCard()
-                .frame(width: 188)
-            columnDivider
-            centralUsageCard
-                .frame(minWidth: 240, maxWidth: .infinity)
-            if appState.showsQuotaColumn {
-                columnDivider
-                PopoverQuotaCard()
-                    .frame(width: quotaColumnWidth)
-            }
-            if appState.shouldShowAgentWorkRank, appState.agentWorkRankIdentity != nil {
-                columnDivider
-                PopoverTokenRankCard()
-                    .frame(width: 196)
-            }
-        }
-        .frame(minHeight: columnsMinHeight)
-        .overlay(alignment: .top) {
+    @ViewBuilder
+    private var sectionDivider: some View {
+        if !TokenStepThemeRuntime.isCinematic {
             Rectangle()
                 .fill(Color.tokenDivider)
                 .frame(height: 1)
+                .padding(.horizontal, CompactPopoverStyle.horizontalPadding)
         }
     }
 
-    private var quotaColumnWidth: CGFloat {
-        appState.visibleQuotas.count >= 4 ? 248 : 208
+    private var quotaUpdatedAt: Date? {
+        appState.visibleQuotas.compactMap(\.fetchedAt).max()
     }
 
-    private var odysseyTopCardHeight: CGFloat { 288 }
-
-    @ViewBuilder
-    private func cinematicSectionBackground(opacity: Double, cornerRadius: CGFloat = 18) -> some View {
-        if TokenStepThemeRuntime.isInterstellar {
-            InterstellarPanelBackground(opacity: opacity, cornerRadius: cornerRadius)
-        } else {
-            OdysseyPopoverSectionBackground(opacity: opacity, cornerRadius: cornerRadius)
+    private var rankSection: CompactPopoverModel.RankSection? {
+        guard appState.shouldShowAgentWorkRank,
+              let identity = appState.agentWorkRankIdentity,
+              let board = appState.tokenRank
+        else {
+            return nil
         }
+        let now = Date()
+        let buckets = appState.snapshot.rhythm(for: appState.today.date)?.buckets ?? []
+        return CompactPopoverModel.rankSection(
+            board: board,
+            myUserID: identity.id,
+            localTodayTokens: appState.today.totalTokens,
+            tokensPerHour: CompactPopoverModel.tokensInLastHour(buckets: buckets, now: now, calendar: TokenStepClock.calendar),
+            localTimeZoneIdentifier: TokenStepClock.identifier
+        )
     }
 
-    private var showsModelUsageSection: Bool {
-        switch PopoverModelUsageRows.state(from: appState.today) {
-        case .hidden: return false
-        case .waiting, .rows: return true
-        }
-    }
+    private var footer: some View {
+        HStack(spacing: 4) {
+            Button {
+                appState.refreshNow()
+            } label: {
+                Group {
+                    if appState.isRefreshing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                }
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(appState.isRefreshing)
+            .help(appState.isRefreshing ? L("同步中") : L("刷新"))
+            .accessibilityLabel(L("刷新"))
 
-    private var centralUsageCard: some View {
-        let voyage = TokenStepThemeRuntime.isCinematic
-        return VStack(spacing: 0) {
-            PopoverAgentWorkTable()
-                .frame(height: voyage ? (showsModelUsageSection ? 128 : odysseyTopCardHeight) : nil)
+            Button {
+                MainWindowPresenter.shared.show(appState: appState)
+            } label: {
+                Label(L("打开仪表盘"), systemImage: "rectangle.on.rectangle")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.tokenGreenDark)
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .background(Color.tokenGreen.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .buttonStyle(.plain)
 
-            if showsModelUsageSection {
-                Rectangle()
-                    .fill(Color.tokenDivider)
-                    .frame(height: 1)
-                    .padding(.horizontal, voyage ? 14 : 12)
+            Spacer(minLength: 4)
 
-                PopoverModelUsageSection(usage: appState.today)
+            Text(appState.settings.refreshIntervalSeconds == 0
+                ? L("手动刷新")
+                : LFormat("刷新 %@", TokenStepFormat.intervalLabel(appState.settings.refreshIntervalSeconds)))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            if appState.availableUpdate != nil || appState.isCheckingForUpdates {
+                let update = appState.updateActionVisualState
+                Button {
+                    appState.showUpdateDetails()
+                } label: {
+                    Image(systemName: update.symbol)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(update.tint)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(update.isChecking)
+                .help(update.help)
+                .accessibilityLabel(update.accessibilityLabel)
+            }
+
+            Button {
+                SettingsWindowPresenter.shared.show(appState: appState)
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(L("设置"))
+            .accessibilityLabel(L("设置"))
+
+            if !isScreenshotRendering {
+                moreMenu
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: voyage ? .infinity : nil, alignment: .top)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            MainWindowPresenter.shared.show(appState: appState, section: .today)
+        .foregroundStyle(Color.tokenInk.opacity(0.78))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(TokenStepThemeRuntime.isCinematic ? Color.clear : Color.tokenCanvas.opacity(0.6))
+        .overlay(alignment: .top) {
+            if !TokenStepThemeRuntime.isCinematic {
+                Rectangle().fill(Color.tokenDivider).frame(height: 1)
+            }
         }
+        .padding(.top, TokenStepThemeRuntime.isCinematic ? 6 : 0)
     }
 
-    private var columnsMinHeight: CGFloat {
-        appState.visibleQuotas.count >= 5 ? 300 : 248
-    }
-
-    private var columnDivider: some View {
-        Rectangle().fill(Color.tokenDivider)
-        .frame(width: 1)
+    private var moreMenu: some View {
+        Menu {
+            Section(L("分享")) {
+                Button(L("分享昨日节奏"), systemImage: "waveform.path.ecg") { copyYesterdayRhythmCard() }
+                Button(L("分享昨日成绩"), systemImage: "calendar.badge.clock") { copyShareCard(.yesterday) }
+                Button(L("分享今日卡片"), systemImage: "sun.max.fill") { copyShareCard(.today) }
+                Button(L("下载昨日节奏"), systemImage: "arrow.down.heart.fill") { downloadYesterdayRhythmCard() }
+                Button(L("下载今日卡片"), systemImage: "arrow.down.circle.fill") { downloadShareCard(.today) }
+            }
+            Section(L("截图")) {
+                Button(L("复制浮层截图"), systemImage: "doc.on.clipboard") { copyPopoverScreenshot() }
+                Button(L("保存浮层 PNG"), systemImage: "square.and.arrow.down") { savePopoverScreenshot() }
+            }
+            if TokenStepThemeRuntime.isInterstellar, InterstellarMotionLabConfiguration.isEnabled {
+                Picker(L("引力动效"), selection: $interstellarMotionMode) {
+                    ForEach(InterstellarMotionMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                Button(L("触发坠落脉冲"), systemImage: "waveform") { interstellarManualPulseTrigger &+= 1 }
+            }
+            Divider()
+            Button(L("退出 TokenStep"), systemImage: "power") { NSApplication.shared.terminate(nil) }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help(L("更多"))
+        .accessibilityLabel(L("更多：分享、截图、退出"))
     }
 
     @ViewBuilder
@@ -398,77 +410,5 @@ struct PopoverPanelView: View {
             return nil
         }
         return (day, rhythm, previousDay(before: day))
-    }
-}
-
-private struct PopoverCaptureMenuButton: View {
-    var shareTodayAction: () -> Void
-    var shareYesterdayAction: () -> Void
-    var shareYesterdayRhythmAction: () -> Void
-    var downloadTodayAction: () -> Void
-    var downloadYesterdayRhythmAction: () -> Void
-    var copyPopoverAction: () -> Void
-    var savePopoverAction: () -> Void
-
-    var body: some View {
-        Menu {
-            Button {
-                shareYesterdayRhythmAction()
-            } label: {
-                Label(L("分享昨日节奏"), systemImage: "waveform.path.ecg")
-            }
-
-            Button {
-                shareYesterdayAction()
-            } label: {
-                Label(L("分享昨日成绩"), systemImage: "calendar.badge.clock")
-            }
-
-            Button {
-                shareTodayAction()
-            } label: {
-                Label(L("分享今日卡片"), systemImage: "sun.max.fill")
-            }
-
-            Divider()
-
-            Button {
-                downloadYesterdayRhythmAction()
-            } label: {
-                Label(L("下载昨日节奏"), systemImage: "arrow.down.heart.fill")
-            }
-
-            Button {
-                downloadTodayAction()
-            } label: {
-                Label(L("下载今日卡片"), systemImage: "arrow.down.circle.fill")
-            }
-
-            Divider()
-
-            Button {
-                copyPopoverAction()
-            } label: {
-                Label(L("复制浮层截图"), systemImage: "doc.on.clipboard")
-            }
-
-            Button {
-                savePopoverAction()
-            } label: {
-                Label(L("保存浮层 PNG"), systemImage: "square.and.arrow.down")
-            }
-        } label: {
-            Image(systemName: "camera.fill")
-                .font(.system(size: 13, weight: .heavy))
-                .foregroundStyle(Color.tokenInk.opacity(0.76))
-                .frame(width: 30, height: 30)
-                .background(Color.tokenSurface, in: Circle())
-                .overlay(Circle().stroke(Color.tokenHairline))
-                .contentShape(Circle())
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .help(L("截图与分享"))
-        .accessibilityLabel(L("截图与分享"))
     }
 }

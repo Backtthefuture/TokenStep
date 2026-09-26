@@ -9,7 +9,10 @@ enum TokenStepPowerSource: Equatable {
 enum EnergyRefreshPolicy {
     static let acBackgroundFloorSeconds = 15 * 60
     static let batteryBackgroundFloorSeconds = 30 * 60
-    static let quotaTTL: TimeInterval = 15 * 60
+    /// Quotas move fast during heavy use, and the calls are small, so an open
+    /// popover checks them every 5 minutes. Background refresh still follows
+    /// the 15/30-minute floors above.
+    static let quotaTTL: TimeInterval = 5 * 60
     static let rankTTL: TimeInterval = 30 * 60
     static let minimumAutomaticRetryTTL: TimeInterval = 60
     static let maximumForegroundTickSeconds = 60

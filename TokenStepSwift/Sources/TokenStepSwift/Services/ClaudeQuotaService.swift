@@ -2,11 +2,13 @@ import Foundation
 
 enum ClaudeQuotaService {
     private static let keychainServices = ["Claude Code-credentials"]
-    private static let cacheTTL: TimeInterval = 10 * 60
+    // Shorter than EnergyRefreshPolicy.quotaTTL so the file cache only spares
+    // repeat calls across relaunches and never adds to the app's own interval.
+    private static let cacheTTL: TimeInterval = 4 * 60
     private static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 
-    static func read() throws -> CodexQuotaSnapshot {
-        if let cached = readFreshCache() {
+    static func read(useCache: Bool = true) throws -> CodexQuotaSnapshot {
+        if useCache, let cached = readFreshCache() {
             return cached
         }
 

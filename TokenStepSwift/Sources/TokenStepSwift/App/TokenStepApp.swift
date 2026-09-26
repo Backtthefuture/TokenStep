@@ -65,7 +65,7 @@ struct TokenStepApp: App {
         .commands {
             CommandMenu("TokenStep") {
                 Button(L("刷新")) {
-                    appState.refresh()
+                    appState.refreshNow()
                 }
                 .keyboardShortcut("r", modifiers: [.command])
 

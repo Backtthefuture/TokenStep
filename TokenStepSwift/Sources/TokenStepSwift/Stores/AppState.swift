@@ -195,6 +195,12 @@ final class AppState: ObservableObject {
         autostartEnabled = AutostartService.isEnabled
     }
 
+    /// The refresh button and ⌘R: usage plus quotas, skipping quota caches.
+    func refreshNow() {
+        refresh()
+        refreshCodexQuota(force: true, bypassCache: true)
+    }
+
     func refresh(forceCollection: Bool = true) {
         guard !isRefreshing else {
             if forceCollection {
@@ -280,7 +286,7 @@ final class AppState: ObservableObject {
         configureForegroundTimer()
     }
 
-    func refreshCodexQuota(force: Bool = false, now: Date = Date()) {
+    func refreshCodexQuota(force: Bool = false, bypassCache: Bool = false, now: Date = Date()) {
         refreshCursorOfficialUsage(force: force, now: now)
         let providers = settings.enabledQuotaProviders
         guard !providers.isEmpty else {
@@ -301,10 +307,17 @@ final class AppState: ObservableObject {
         isRefreshingCodexQuota = true
         Task {
             let fetched = await Task.detached(priority: .utility) {
-                QuotaRefreshCoordinator.fetch(providers: providers)
+                QuotaRefreshCoordinator.fetch(providers: providers, bypassCache: bypassCache)
             }.value
             for provider in providers {
                 if let quota = fetched[provider] {
+                    // A transient failure (rate limit, network) keeps the last
+                    // good reading; its "N minutes ago" shows how old it is.
+                    // Login and key problems still replace it.
+                    if !quota.isAvailable, quota.status == .unavailable,
+                       quotas[provider]?.isAvailable == true {
+                        continue
+                    }
                     quotas[provider] = quota
                 } else if quotas[provider]?.isAvailable != true {
                     quotas[provider] = .unavailable(provider)
