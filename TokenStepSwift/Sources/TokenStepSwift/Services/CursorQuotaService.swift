@@ -4,8 +4,8 @@ enum CursorQuotaService {
     static var databaseURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
 
-    static func read() throws -> ProviderQuota {
-        if let cached = readFreshCache() {
+    static func read(useCache: Bool = true) throws -> ProviderQuota {
+        if useCache, let cached = readFreshCache() {
             return cached
         }
         let token = try readAccessToken()
@@ -221,7 +221,8 @@ enum CursorQuotaService {
     private static func readFreshCache(now: Date = Date()) -> ProviderQuota? {
         guard let data = try? Data(contentsOf: AppPaths.cursorQuotaCacheJSON),
               let cache = try? JSONDecoder().decode(ProviderQuotaCache.self, from: data),
-              now.timeIntervalSince(cache.fetchedAt) <= 10 * 60
+              // Shorter than EnergyRefreshPolicy.quotaTTL; see ClaudeQuotaService.
+              now.timeIntervalSince(cache.fetchedAt) <= 4 * 60
         else { return nil }
         let quota = cache.quota
         guard quota.isAvailable else { return nil }

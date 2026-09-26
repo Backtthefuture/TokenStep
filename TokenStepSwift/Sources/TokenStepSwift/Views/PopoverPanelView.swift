@@ -133,7 +133,7 @@ struct PopoverPanelView: View {
     private var footer: some View {
         HStack(spacing: 4) {
             Button {
-                appState.refresh()
+                appState.refreshNow()
             } label: {
                 Group {
                     if appState.isRefreshing {
