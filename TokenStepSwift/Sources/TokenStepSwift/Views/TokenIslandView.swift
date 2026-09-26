@@ -10,10 +10,15 @@ enum TokenIslandMetrics {
     /// Used before the card reports its measured height.
     static let initialCardHeight: CGFloat = 420
 
+    /// The window has no margin above the card: the card hangs just below the
+    /// island, and a top margin would cover the island's lower edge. The
+    /// shadow's alpha there then takes the hover, the island reads it as the
+    /// mouse leaving, the card closes, the island gets the hover back, and the
+    /// card flickers open and shut.
     static func expandedWindowSize(cardHeight: CGFloat) -> NSSize {
         NSSize(
             width: expandedCardWidth + expandedShadowMargin * 2,
-            height: cardHeight + expandedShadowMargin * 2
+            height: cardHeight + expandedShadowMargin
         )
     }
 }
@@ -75,7 +80,7 @@ struct TokenIslandPopoverWindowView: View {
             .onHover { hovering in
                 onHoverChanged(hovering)
             }
-            .padding(TokenIslandMetrics.expandedShadowMargin)
+            .padding([.horizontal, .bottom], TokenIslandMetrics.expandedShadowMargin)
             .frame(maxHeight: .infinity, alignment: .top)
             .environment(\.colorScheme, appState.settings.theme.colorScheme)
             .id(appState.appearanceID)
