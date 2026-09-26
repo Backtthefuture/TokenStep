@@ -3,9 +3,8 @@ import SwiftUI
 
 // MARK: - Provider icon
 
-/// The provider's installed app icon when one is found, otherwise a monogram
-/// tile in the provider's color. Icons come from the user's own apps at
-/// runtime; none are bundled.
+/// The provider's installed app icon when one is found, then a bundled mark
+/// (see `ProviderMark`), otherwise a monogram tile in the provider's color.
 struct QuotaProviderIcon: View {
     var provider: QuotaProviderID
     var size: CGFloat = 20
@@ -16,6 +15,22 @@ struct QuotaProviderIcon: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        } else if provider == .claude {
+            // Cream tile like Claude's app icon, so the mark sits at the same
+            // visual weight as the other providers' app icons.
+            RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+                .fill(Color(red: 244 / 255, green: 243 / 255, blue: 238 / 255))
+                .frame(width: size, height: size)
+                .overlay {
+                    SVGPathShape(pathData: ProviderMark.claudePath)
+                        .fill(ProviderMark.claudeColor)
+                        .padding(size * 0.12)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 0.5)
+                }
                 .accessibilityHidden(true)
         } else {
             RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
@@ -240,6 +255,19 @@ struct CompactQuotaSection: View {
         )
     }
 
+    /// Explains the bar's tick: how much of the window's time has passed.
+    private func paceHelp(_ window: CompactPopoverModel.QuotaWindowRow) -> String {
+        guard let elapsed = window.elapsedFraction else {
+            return LFormat("已用 %@", CompactPopoverStyle.percent(window.usedPercent))
+        }
+        let text = LFormat(
+            "竖线是时间进度：已过 %@，已用 %@",
+            CompactPopoverStyle.percent(elapsed * 100),
+            CompactPopoverStyle.percent(window.usedPercent)
+        )
+        return window.runsOutEarly ? text + L("。用得比时间快，照此速度会在重置前用完") : text
+    }
+
     private func providerBlock(_ provider: CompactPopoverModel.QuotaProviderRow) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
@@ -260,8 +288,8 @@ struct CompactQuotaSection: View {
             ForEach(provider.windows) { window in
                 HStack(spacing: 8) {
                     Text(window.title)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11, weight: window.runsOutEarly ? .semibold : .regular))
+                        .foregroundStyle(window.runsOutEarly ? CompactPopoverStyle.color(for: .warning) : Color.secondary)
                         .frame(width: 58, alignment: .leading)
                         .lineLimit(1)
                     CompactBar(
@@ -280,6 +308,8 @@ struct CompactQuotaSection: View {
                         .lineLimit(1)
                         .frame(width: 72, alignment: .trailing)
                 }
+                .contentShape(Rectangle())
+                .help(paceHelp(window))
                 .accessibilityElement(children: .combine)
             }
         }
@@ -354,10 +384,16 @@ struct CompactRankSection: View {
         VStack(alignment: .leading, spacing: 10) {
             CompactSectionHeader(title: L("今日排名"), trailing: LFormat("榜单 %@", CompactPopoverStyle.relative(fetchedAt)))
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(section.myRank.map { "#\($0)" } ?? "—")
-                    .font(.system(size: 26, weight: .heavy, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.tokenInk)
+                if let rank = section.myRank {
+                    Text("#\(rank)")
+                        .font(.system(size: 26, weight: .heavy, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.tokenInk)
+                } else {
+                    Text(L("未上榜"))
+                        .font(.system(size: 17, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.tokenInk)
+                }
                 Text(rankCaption)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -398,8 +434,12 @@ struct CompactRankSection: View {
     }
 
     private var rankCaption: String {
-        if section.myRank == nil, section.chase != nil {
-            return LFormat("未进入前 %d 名", section.listedLimit)
+        if section.myRank == nil {
+            // A full board may hide ranks past the limit; a short one lists
+            // everyone, so being absent means nothing uploaded today.
+            return section.chase != nil
+                ? LFormat("未进入前 %d 名", section.listedLimit)
+                : L("今日还没有你的上传")
         }
         return LFormat("/ %d 人", section.rankedUsers)
     }
@@ -456,14 +496,14 @@ struct CompactRankSection: View {
     }
 
     private func chaseHeadline(gap: Int, target: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(L("再跑"))
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .medium))
             Text(TokenStepFormat.tokens(gap, compact: true))
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .font(.system(size: 13, weight: .bold, design: .rounded))
                 .monospacedDigit()
             Text(target)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
