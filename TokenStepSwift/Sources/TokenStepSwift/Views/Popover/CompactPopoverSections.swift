@@ -390,10 +390,20 @@ struct CompactTokenSection: View {
 struct CompactRankSection: View {
     var section: CompactPopoverModel.RankSection
     var fetchedAt: Date
+    /// Opens the Token Rank board in the browser.
+    var openBoard: (() -> Void)?
+    /// Opens the user's own Token Rank page.
+    var openMyPage: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            CompactSectionHeader(title: L("今日排名"), trailing: LFormat("榜单 %@", CompactPopoverStyle.relative(fetchedAt)))
+            HStack(alignment: .firstTextBaseline) {
+                Text(L("今日排名"))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.tokenInk.opacity(0.62))
+                Spacer(minLength: 8)
+                boardLink
+            }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if let rank = section.myRank {
                     Text("#\(rank)")
@@ -415,6 +425,13 @@ struct CompactRankSection: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture { openMyPage?() }
+            .onHover { hovering in
+                guard openMyPage != nil else { return }
+                if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
+            .help(openMyPage == nil ? "" : L("打开我的 Token Rank 主页"))
             ForEach(section.podium) { entry in
                 HStack(spacing: 8) {
                     Text("\(entry.rank)")
@@ -441,6 +458,30 @@ struct CompactRankSection: View {
             if let chase = section.chase {
                 chaseCard(chase)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var boardLink: some View {
+        let label = HStack(spacing: 3) {
+            Text(LFormat("榜单 %@", CompactPopoverStyle.relative(fetchedAt)))
+            if openBoard != nil {
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 9, weight: .semibold))
+            }
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+
+        if let openBoard {
+            Button(action: openBoard) { label.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                }
+                .help(L("在浏览器打开 Token Rank 榜单"))
+        } else {
+            label
         }
     }
 

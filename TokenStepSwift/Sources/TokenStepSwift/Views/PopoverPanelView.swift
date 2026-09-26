@@ -23,7 +23,12 @@ struct PopoverPanelView: View {
             if let rank = rankSection, let board = appState.tokenRank {
                 sectionDivider
                 section {
-                    CompactRankSection(section: rank, fetchedAt: board.fetchedAt)
+                    CompactRankSection(
+                        section: rank,
+                        fetchedAt: board.fetchedAt,
+                        openBoard: { appState.openTokenRankLeaderboardPage() },
+                        openMyPage: { appState.openTokenRankUserPage() }
+                    )
                 }
             }
             notices
