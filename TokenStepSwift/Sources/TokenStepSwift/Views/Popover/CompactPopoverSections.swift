@@ -255,6 +255,15 @@ struct CompactQuotaSection: View {
         )
     }
 
+    /// Names the window that runs out early, so a warning next to a window
+    /// about to reset is not read as being about that one.
+    private func runsOutEarlyBadge(_ provider: CompactPopoverModel.QuotaProviderRow) -> String {
+        let titles = provider.windows.filter(\.runsOutEarly).map(\.title)
+        guard !titles.isEmpty else { return L("照此速度会提前用完") }
+        let separator = TokenStepLocalization.language == .en ? ", " : "、"
+        return LFormat("%@额度会提前用完", titles.joined(separator: separator))
+    }
+
     /// Explains the bar's tick: how much of the window's time has passed.
     private func paceHelp(_ window: CompactPopoverModel.QuotaWindowRow) -> String {
         guard let elapsed = window.elapsedFraction else {
@@ -277,8 +286,10 @@ struct CompactQuotaSection: View {
                     .foregroundStyle(Color.tokenInk)
                 Spacer(minLength: 4)
                 if provider.runsOutEarly {
-                    Text(L("照此速度会提前用完"))
+                    Text(runsOutEarlyBadge(provider))
                         .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                         .foregroundStyle(CompactPopoverStyle.color(for: .warning))
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
