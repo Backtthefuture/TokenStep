@@ -75,7 +75,15 @@ final class TokenIslandWindowPresenter {
 
     private var isMouseInsidePopover: Bool {
         guard let panel = popoverPanel else { return false }
-        let card = panel.frame.insetBy(dx: TokenIslandMetrics.expandedShadowMargin, dy: TokenIslandMetrics.expandedShadowMargin)
+        // The window has shadow margin on the sides and bottom only.
+        let margin = TokenIslandMetrics.expandedShadowMargin
+        let frame = panel.frame
+        let card = NSRect(
+            x: frame.minX + margin,
+            y: frame.minY + margin,
+            width: frame.width - margin * 2,
+            height: frame.height - margin
+        )
         let mouse = NSEvent.mouseLocation
         return card.contains(mouse) || (ringPanel?.frame.contains(mouse) ?? false)
     }

@@ -97,6 +97,9 @@ struct CompactPopoverFixtureCheck {
         let cursor = row(.cursorModels, used: 50, resetsIn: hours(24)).elapsedFraction ?? 0
         try expect(cursor > 0.9 && cursor < 1, "cursor model window follows the monthly billing cycle: \(cursor)")
         try expect(row(.fiveHour, used: 50, resetsIn: nil).elapsedFraction == nil, "no reset time has no marker")
+        let pastReset = row(.fiveHour, used: 71, resetsIn: -hours(1))
+        try expect(pastReset.isReset && pastReset.usedPercent == 0 && !pastReset.runsOutEarly && pastReset.elapsedFraction == nil,
+                   "a window past its reset drops the stale percentage")
         // Resets 2026-10-01 00:00 Shanghai; the window began 2026-09-01 00:00.
         let reset = ISO8601DateFormatter().date(from: "2026-09-30T16:00:00Z")!
         let monthly = CompactPopoverModel.windowRow(

@@ -82,6 +82,14 @@ Before the release commit, update the release documents (the Release workflow ch
 - Add the version's summary at the top of `CHANGELOG.md`.
 - Update the "最新版本" section and the DMG download links in `README.md` to `TokenStep-<version>.dmg`.
 
+`script/prepare_release.sh` does all of this except writing the notes. The first run creates a notes template and stops. Fill it in, then run it again:
+
+```bash
+./script/prepare_release.sh 0.2.20 "<CHANGELOG title>" "<one-paragraph summary>"
+```
+
+It also moves the default build version and runs the release contract check. It does not commit.
+
 1. Merge the release commit to `main` and wait for CI.
 2. Run the repository's `Release` workflow from `main` with the exact version.
 3. The workflow creates a draft and uploads the notarized DMG, ZIP, and checksum file.
