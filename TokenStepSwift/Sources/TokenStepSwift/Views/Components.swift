@@ -260,11 +260,16 @@ struct TokenCard<Content: View>: View {
         self.content = content()
     }
 
+    /// Close to the Token Rank profile cards: a small radius, a hairline and,
+    /// on the classic theme, only a faint shadow.
+    static var cornerRadius: CGFloat { 16 }
+
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
 
         content
-            .padding(24)
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
                     shape.fill(Color.tokenSurface)
@@ -286,13 +291,18 @@ struct TokenCard<Content: View>: View {
                 ZStack {
                     shape.stroke(Color.tokenHairline)
                     if TokenStepThemeRuntime.isVoyage {
-                        VoyageCardOrnament(cornerRadius: 24)
+                        VoyageCardOrnament(cornerRadius: Self.cornerRadius)
                     } else if TokenStepThemeRuntime.isInterstellar {
-                        InterstellarCardOrnament(cornerRadius: 24)
+                        InterstellarCardOrnament(cornerRadius: Self.cornerRadius)
                     }
                 }
             }
-            .shadow(color: Color.tokenShadow, radius: 24, x: 0, y: 14)
+            .shadow(
+                color: TokenStepThemeRuntime.isCinematic ? Color.tokenShadow : Color.black.opacity(0.04),
+                radius: TokenStepThemeRuntime.isCinematic ? 24 : 2,
+                x: 0,
+                y: TokenStepThemeRuntime.isCinematic ? 14 : 1
+            )
     }
 }
 
@@ -616,102 +626,6 @@ struct TokenToolLegend: View {
             seen.insert(tool)
             return true
         }
-    }
-}
-
-struct ContributionWallView: View {
-    var rows: [DailyUsage]
-    var goal: Int
-    var weeks: Int = 34
-
-    private var rowByDate: [String: DailyUsage] {
-        Dictionary(uniqueKeysWithValues: rows.map { ($0.date, $0) })
-    }
-
-    var body: some View {
-        let calendar = Calendar(identifier: .gregorian)
-        let today = calendar.startOfDay(for: Date())
-        let rawStart = calendar.date(byAdding: .day, value: -(weeks * 7 - 1), to: today) ?? today
-        let weekday = calendar.component(.weekday, from: rawStart)
-        let mondayOffset = (weekday + 5) % 7
-        let start = calendar.date(byAdding: .day, value: -mondayOffset, to: rawStart) ?? rawStart
-
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 5) {
-                ForEach(0..<weeks, id: \.self) { week in
-                    let firstDay = calendar.date(byAdding: .day, value: week * 7, to: start) ?? today
-                    let showMonth = week == 0 || calendar.component(.month, from: firstDay) != calendar.component(.month, from: calendar.date(byAdding: .day, value: -7, to: firstDay) ?? firstDay)
-                    VStack(spacing: 5) {
-                        Text(showMonth ? monthLabel(firstDay) : " ")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 15, alignment: .leading)
-                            .lineLimit(1)
-                        ForEach(0..<7, id: \.self) { dayIndex in
-                            let day = calendar.date(byAdding: .day, value: week * 7 + dayIndex, to: start) ?? today
-                            let key = DateFormatter.tokenStepDay.string(from: day)
-                            let usage = rowByDate[key]
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(day > today ? Color.clear : contributionColor(tokens: usage?.totalTokens ?? 0, goal: goal))
-                                .frame(width: 15, height: 15)
-                                .overlay {
-                                    if calendar.isDate(day, inSameDayAs: today) {
-                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                            .stroke(Color.tokenGreenDark, lineWidth: 1.5)
-                                    }
-                                }
-                                .help(day > today ? "" : cellHelp(date: key, usage: usage))
-                        }
-                    }
-                }
-            }
-
-            HStack {
-                MetricPill(label: L("活跃"), value: localizedDays(rows.filter { $0.totalTokens > 0 }.count))
-                MetricPill(label: L("达标"), value: localizedDays(rows.filter { $0.totalTokens >= goal }.count))
-                MetricPill(label: L("最高"), value: TokenStepFormat.tokens(rows.map(\.totalTokens).max() ?? 0, compact: true))
-                Spacer()
-                Text(L("少"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ForEach([0, Int(Double(goal) * 0.25), Int(Double(goal) * 0.7), goal, goal * 2, goal * 3], id: \.self) { value in
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(contributionColor(tokens: value, goal: goal))
-                        .frame(width: 15, height: 15)
-                }
-                Text(L("多"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func localizedDays(_ count: Int) -> String {
-        TokenStepLocalization.language == .en ? "\(count)d" : "\(count) 天"
-    }
-
-    private func monthLabel(_ date: Date) -> String {
-        let month = Calendar(identifier: .gregorian).component(.month, from: date)
-        if TokenStepLocalization.language == .en {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US")
-            formatter.dateFormat = "MMM"
-            return formatter.string(from: date)
-        }
-        return "\(month)月"
-    }
-
-    private func cellHelp(date: String, usage: DailyUsage?) -> String {
-        let tokens = usage?.totalTokens ?? 0
-        var lines = ["\(date) · \(TokenStepFormat.tokens(tokens, compact: true))"]
-        if let tools = usage?.tools, !tools.isEmpty, tokens > 0 {
-            let parts = orderedToolEntries(tools).prefix(4).map { entry in
-                let percent = Int((Double(entry.tokens) / Double(tokens) * 100).rounded())
-                return "\(entry.name) \(percent)%"
-            }
-            lines.append(parts.joined(separator: " · "))
-        }
-        return lines.joined(separator: "\n")
     }
 }
 

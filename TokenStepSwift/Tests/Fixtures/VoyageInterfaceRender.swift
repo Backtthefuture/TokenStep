@@ -78,7 +78,7 @@ struct VoyageInterfaceRender {
 
         for pane in SettingsPane.allCases {
             try render(
-                VoyageSettingsPaneRenderView(pane: pane)
+                SettingsView(captureMode: true, capturePane: pane)
                     .environmentObject(appState),
                 named: "settings-\(pane.rawValue)",
                 in: outputDirectory
@@ -401,114 +401,5 @@ struct VoyageInterfaceRender {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(value).write(to: url, options: .atomic)
-    }
-}
-
-private struct VoyageSettingsPaneRenderView: View {
-    @EnvironmentObject private var appState: AppState
-    var pane: SettingsPane
-
-    var body: some View {
-        ZStack {
-            TokenStepBackdrop(role: .settings)
-
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                paneContent
-                footer
-            }
-            .padding(.top, 28)
-            .padding(.horizontal, 22)
-            .padding(.bottom, 18)
-
-            if TokenStepThemeRuntime.isVoyage {
-                VoyageWindowFrame(inset: 8)
-            }
-        }
-        .frame(width: 920)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            TokenStepBrandLockup(markSize: 28, titleSize: 17)
-            Rectangle()
-                .fill(Color.tokenDivider)
-                .frame(width: 1, height: 24)
-            Text(L("设置"))
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
-                .foregroundStyle(Color.tokenInk)
-
-            Spacer()
-
-            HStack(spacing: 3) {
-                ForEach(SettingsPane.allCases) { item in
-                    Text(item.title)
-                        .font(.system(size: 12, weight: .heavy))
-                        .foregroundStyle(item == pane ? Color.tokenInk : Color.tokenInk.opacity(0.55))
-                        .padding(.horizontal, 14)
-                        .frame(height: 28)
-                        .background(
-                            item == pane ? Color.tokenGreen.opacity(0.16) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .stroke(item == pane ? Color.tokenHairlineStrong : Color.clear)
-                        )
-                }
-            }
-            .padding(3)
-            .background(Color.tokenTrack.opacity(0.55), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        }
-        .background(alignment: .trailing) {
-            if TokenStepThemeRuntime.isVoyage {
-                OdysseySurfaceEmblem(role: .settings)
-                    .frame(width: 124, height: 72)
-                    .opacity(0.38)
-                    .offset(x: -92, y: 3)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var paneContent: some View {
-        switch pane {
-        case .dataSources:
-            SettingsDataSourcesPane(openQuotaTab: {})
-        case .quotas:
-            SettingsQuotaProvidersPane()
-        case .general:
-            SettingsGeneralPane()
-        }
-    }
-
-    private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(L("TokenStep · Local usage tracker"))
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Text(LFormat("当前版本 %@", "0.2.4"))
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary.opacity(0.82))
-            }
-            Spacer()
-            Text(L("恢复默认"))
-                .font(.callout.weight(.bold))
-                .foregroundStyle(Color.tokenInk.opacity(0.72))
-                .frame(width: 92, height: 36)
-                .background(Color.tokenTrack.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.tokenHairline))
-            Text(L("完成"))
-                .font(.callout.weight(.heavy))
-                .foregroundStyle(Color.tokenActionText)
-                .frame(width: 82, height: 36)
-                .background(Color.tokenGreen, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .padding(.top, 12)
-        .overlay(alignment: .top) {
-            Rectangle().fill(Color.tokenDivider).frame(height: 1)
-        }
     }
 }

@@ -31,5 +31,7 @@ jobs:
         run: ./script/test_settings_codable.sh
       - name: Run compact popover checks
         run: ./script/test_compact_popover.sh
+      - name: Run Today overview checks
+        run: ./script/test_today_overview.sh
       - name: Build TokenStep
         run: ./script/build_swiftui_and_run.sh --no-launch

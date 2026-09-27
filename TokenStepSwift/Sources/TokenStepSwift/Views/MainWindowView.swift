@@ -230,7 +230,11 @@ struct MainWindowView: View {
     private var detailView: some View {
         switch navigation.section {
         case .today:
-            TodayView()
+            TodayView(openHistory: {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                    navigation.select(.history)
+                }
+            })
         case .history:
             HistoryView()
         case .privacy:

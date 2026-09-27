@@ -2,17 +2,51 @@ import AppKit
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable, Identifiable {
+    case general
+    case appearance
     case dataSources
     case quotas
-    case general
+    case tokenRank
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .general: L("通用")
+        case .appearance: L("外观")
         case .dataSources: L("数据源")
         case .quotas: L("额度")
-        case .general: L("通用")
+        case .tokenRank: "Token Rank"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .general: L("改动立即生效，不需要保存。")
+        case .appearance: L("主题和配色，随时切换。")
+        case .dataSources: L("只读取本机日志里的用量数字，不读对话内容。")
+        case .quotas: L("读取订阅的剩余额度，显示在面板顶部。密钥只存进钥匙串。")
+        case .tokenRank: L("在面板里显示你在 Token Rank 公开榜单上的排名。")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape.fill"
+        case .appearance: "paintpalette.fill"
+        case .dataSources: "externaldrive.fill"
+        case .quotas: "gauge.with.dots.needle.50percent"
+        case .tokenRank: "trophy.fill"
+        }
+    }
+
+    var tileColor: Color {
+        switch self {
+        case .general: Color(red: 0.54, green: 0.54, blue: 0.58)
+        case .appearance: Color(red: 0.48, green: 0.36, blue: 1.0)
+        case .dataSources: Color(red: 0.23, green: 0.44, blue: 0.85)
+        case .quotas: Color(red: 0.88, green: 0.54, blue: 0.18)
+        case .tokenRank: Color(red: 0.18, green: 0.62, blue: 0.36)
         }
     }
 }
@@ -21,11 +55,15 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.isScreenshotRendering) private var isScreenshotRendering
     var captureMode: Bool
+    /// In capture mode, render only this pane beside the sidebar; nil stacks
+    /// every pane (the full settings screenshot).
+    var capturePane: SettingsPane?
     @State private var pane: SettingsPane
 
-    init(captureMode: Bool = false, initialPane: SettingsPane = .dataSources) {
+    init(captureMode: Bool = false, initialPane: SettingsPane = .general, capturePane: SettingsPane? = nil) {
         self.captureMode = captureMode
-        _pane = State(initialValue: initialPane)
+        self.capturePane = capturePane
+        _pane = State(initialValue: capturePane ?? initialPane)
     }
 
     var body: some View {
@@ -41,24 +79,21 @@ struct SettingsView: View {
     }
 
     private var windowBody: some View {
-        ZStack {
-            TokenStepBackdrop(role: .settings)
-            VStack(spacing: 0) {
-                header
-                    .padding(.top, 28)
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, 14)
+        HStack(spacing: 0) {
+            sidebar
+            ZStack {
+                TokenStepBackdrop(role: .settings)
                 ScrollView(.vertical, showsIndicators: false) {
-                    paneContent
-                        .padding(.horizontal, 22)
-                        .padding(.bottom, 16)
+                    page(pane)
+                        .padding(.horizontal, 36)
+                        .padding(.top, 34)
+                        .padding(.bottom, 28)
+                        .frame(maxWidth: 720, alignment: .leading)
+                        .frame(maxWidth: .infinity)
                 }
-                footer
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 14)
             }
         }
-        .frame(width: 920, height: 760)
+        .frame(minWidth: 920, minHeight: 700)
         .overlay {
             if TokenStepThemeRuntime.isVoyage {
                 VoyageWindowFrame(inset: 8)
@@ -69,26 +104,112 @@ struct SettingsView: View {
     }
 
     private var captureBody: some View {
-        ZStack {
-            TokenStepBackdrop(role: .settings)
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                SettingsDataSourcesPane(openQuotaTab: {})
-                SettingsQuotaProvidersPane()
-                SettingsGeneralPane()
-                footer
+        HStack(alignment: .top, spacing: 0) {
+            sidebar
+            ZStack(alignment: .top) {
+                TokenStepBackdrop(role: .settings)
+                VStack(alignment: .leading, spacing: 36) {
+                    if let capturePane {
+                        page(capturePane)
+                    } else {
+                        ForEach(SettingsPane.allCases) { item in
+                            page(item)
+                        }
+                    }
+                }
+                .padding(.horizontal, 36)
+                .padding(.vertical, 34)
             }
-            .padding(.top, 28)
-            .padding(.horizontal, 22)
-            .padding(.bottom, 18)
         }
         .frame(width: 920)
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    // MARK: Sidebar
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            // Room for the window's traffic lights.
+            Color.clear.frame(height: 40)
+            ForEach(SettingsPane.allCases) { item in
+                SettingsSidebarItem(pane: item, selected: item == pane && (!captureMode || capturePane != nil)) {
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        pane = item
+                    }
+                }
+            }
+            Spacer(minLength: 16)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(LFormat("TokenStep %@", UpdateService.currentVersion))
+                Text(L("只在本机统计，不上传用量"))
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.top, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color.tokenHairline).frame(height: 1)
+            }
+            .padding(.bottom, 16)
+        }
+        .padding(.horizontal, 12)
+        .frame(width: 214)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(
+            TokenStepThemeRuntime.isCinematic
+                ? Color.tokenSurface.opacity(0.7)
+                : Color(nsColor: .windowBackgroundColor).opacity(0.94)
+        )
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(Color.tokenHairline).frame(width: 1)
+        }
+    }
+
+    // MARK: Pages
+
+    private func page(_ item: SettingsPane) -> some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(item.title)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(Color.tokenInk)
+                    Text(item.subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !isScreenshotRendering && !captureMode && item == pane {
+                    ScreenshotMenuButton(
+                        copyTitle: L("复制设置截图"),
+                        saveTitle: L("保存设置 PNG"),
+                        help: L("截取设置页"),
+                        copyAction: copySettingsScreenshot,
+                        saveAction: saveSettingsScreenshot
+                    )
+                }
+            }
+            paneContent(item)
+            if item == .general {
+                HStack {
+                    Spacer()
+                    Button(L("恢复默认设置")) { resetDefaults() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
-    private var paneContent: some View {
-        switch pane {
+    private func paneContent(_ item: SettingsPane) -> some View {
+        switch item {
+        case .general:
+            SettingsGeneralPane()
+        case .appearance:
+            SettingsAppearancePane()
         case .dataSources:
             SettingsDataSourcesPane {
                 withAnimation(.easeOut(duration: 0.18)) {
@@ -97,59 +218,12 @@ struct SettingsView: View {
             }
         case .quotas:
             SettingsQuotaProvidersPane()
-        case .general:
-            SettingsGeneralPane()
+        case .tokenRank:
+            SettingsTokenRankCard()
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            TokenStepBrandLockup(markSize: 28, titleSize: 17)
-            Rectangle()
-                .fill(Color.tokenDivider)
-                .frame(width: 1, height: 24)
-            Text(L("设置"))
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
-                .foregroundStyle(Color.tokenInk)
-
-            Spacer()
-
-            HStack(spacing: 3) {
-                ForEach(SettingsPane.allCases) { item in
-                    DashboardSettingsTab(title: item.title, selected: pane == item) {
-                        withAnimation(.easeOut(duration: 0.16)) {
-                            pane = item
-                        }
-                    }
-                }
-            }
-            .padding(3)
-            .background(Color.tokenTrack.opacity(0.55), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-
-            if !isScreenshotRendering && !captureMode {
-                ScreenshotMenuButton(
-                    copyTitle: L("复制设置截图"),
-                    saveTitle: L("保存设置 PNG"),
-                    help: L("截取设置页"),
-                    copyAction: copySettingsScreenshot,
-                    saveAction: saveSettingsScreenshot
-                )
-            }
-        }
-        .background(alignment: .trailing) {
-            if TokenStepThemeRuntime.isVoyage {
-                OdysseySurfaceEmblem(role: .settings)
-                    .frame(width: 124, height: 72)
-                    .opacity(0.38)
-                    .offset(x: -92, y: 3)
-            } else if TokenStepThemeRuntime.isInterstellar {
-                InterstellarEventHorizonEmblem()
-                    .frame(width: 136, height: 58)
-                    .opacity(0.42)
-                    .offset(x: -92, y: 3)
-            }
-        }
-    }
+    // MARK: Screenshot and reset
 
     private var settingsScreenshot: some View {
         SettingsView(captureMode: true)
@@ -176,46 +250,6 @@ struct SettingsView: View {
         }
     }
 
-    private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(L("TokenStep · Local usage tracker"))
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Text(LFormat("当前版本 %@", UpdateService.currentVersion))
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary.opacity(0.82))
-            }
-
-            Spacer()
-
-            Button {
-                resetDefaults()
-            } label: {
-                Text(L("恢复默认"))
-                    .font(.callout.weight(.bold))
-                    .frame(width: 92, height: 36)
-            }
-            .buttonStyle(SettingsSecondaryButtonStyle())
-
-            Button {
-                SettingsWindowPresenter.shared.close()
-                NSApp.keyWindow?.close()
-            } label: {
-                Text(L("完成"))
-                    .font(.callout.weight(.heavy))
-                    .frame(width: 82, height: 36)
-            }
-            .buttonStyle(SettingsPrimaryButtonStyle())
-        }
-        .padding(.top, 12)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.tokenDivider)
-                .frame(height: 1)
-        }
-    }
-
     private func resetDefaults() {
         appState.setGoal(TokenStepSettings.defaults.dailyGoalTokens)
         appState.setRefreshInterval(TokenStepSettings.defaults.refreshIntervalSeconds)
@@ -239,30 +273,33 @@ struct SettingsView: View {
     }
 }
 
-private struct DashboardSettingsTab: View {
-    var title: String
+private struct SettingsSidebarItem: View {
+    var pane: SettingsPane
     var selected: Bool
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: .heavy))
-                .foregroundStyle(selected ? Color.tokenInk : Color.tokenInk.opacity(0.55))
-                .padding(.horizontal, 14)
-                .frame(height: 28)
-                .background(
-                    selected
-                        ? (TokenStepThemeRuntime.isCinematic ? Color.tokenGreen.opacity(0.16) : Color.tokenSurface)
-                        : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .stroke(selected && TokenStepThemeRuntime.isCinematic ? Color.tokenHairlineStrong : Color.clear)
-                )
-                .shadow(color: selected ? Color.tokenShadow : .clear, radius: 3, y: 1)
+            HStack(spacing: 10) {
+                Image(systemName: pane.symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(pane.tileColor, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                Text(pane.title)
+                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Color.tokenGreenDark : Color.tokenInk.opacity(0.85))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 32)
+            .background(
+                selected ? Color.tokenGreen.opacity(0.13) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }

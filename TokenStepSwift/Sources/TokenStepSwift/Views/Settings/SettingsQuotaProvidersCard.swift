@@ -4,7 +4,7 @@ struct SettingsQuotaProvidersPane: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             SettingsSectionCard(
                 title: L("订阅额度提供商"),
                 subtitle: L("本机登录态或手动填写 · 密钥只进钥匙串")
@@ -20,7 +20,7 @@ struct SettingsQuotaProvidersPane: View {
                     .padding(.top, 8)
             }
 
-            HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 16) {
                 SettingsSectionCard(
                     title: L("预警"),
                     subtitle: L("额度紧张时的提示强度")
@@ -47,7 +47,6 @@ struct SettingsQuotaProvidersPane: View {
                     }
                 }
 
-                SettingsTokenRankCard()
             }
         }
     }
