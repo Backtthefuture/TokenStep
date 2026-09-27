@@ -98,22 +98,33 @@ struct TodayDashboardRender {
 
         let tools = total > 0 ? ["Codex": total * 87 / 100, "Cursor": total * 8 / 100, "Hermes Agent": total - total * 95 / 100] : [:]
         let daily = DailyUsage(date: today, tools: tools, models: models, modelCosts: costs, totalTokens: total, cost: costs.values.reduce(0, +))
-        let hourlySources = total > 0 ? (0..<13).map { hour in
-            AgentWorkHourBucket(hour: hour, sources: [
-                AgentWorkHourlySource(
-                    source: "Codex",
-                    tokens: total / 13,
-                    inputTokens: total / 14,
-                    cachedInputTokens: total / 15,
-                    outputTokens: total / 182,
-                    cacheCoverageComplete: true
-                )
-            ])
-        } : []
+        // Three clients over the hours so far, weighted like a working day.
+        let weights = [2, 1, 0, 0, 0, 0, 0, 0, 1, 4, 7, 9, 8]
+        let weightSum = weights.reduce(0, +)
+        func hourly(_ total: Int) -> [AgentWorkHourBucket] {
+            guard total > 0 else { return [] }
+            return weights.enumerated().compactMap { hour, weight in
+                guard weight > 0 else { return nil }
+                let tokens = total * weight / weightSum
+                return AgentWorkHourBucket(hour: hour, sources: [
+                    ("Codex", 87), ("Cursor", 8), ("Hermes Agent", 5)
+                ].map { source, share in
+                    AgentWorkHourlySource(
+                        source: source,
+                        tokens: tokens * share / 100,
+                        inputTokens: tokens * share / 100,
+                        cachedInputTokens: tokens * share * 97 / 10_000,
+                        outputTokens: tokens * share / 26_000,
+                        cacheCoverageComplete: true
+                    )
+                })
+            }
+        }
+        let hourlySources = hourly(total)
         let work = DailyAgentWork(
             date: today,
             totalTokens: total,
-            activeHours: total > 0 ? 13 : 0,
+            activeHours: total > 0 ? 10 : 0,
             modelRequestCount: total > 0 ? 3_324 : 0,
             toolCallCount: total > 0 ? 312 : 0,
             sources: [],
@@ -124,12 +135,41 @@ struct TodayDashboardRender {
             hourlyBuckets: hourlySources,
             unbucketedTokens: 0
         )
+
+        // Five weeks of history for the heatmap and the goal streak; empty
+        // scenarios keep none.
+        var history: [DailyUsage] = []
+        var yesterdayWork: DailyAgentWork?
+        if total > 0 {
+            let pattern = [1.3, 0.9, 1.1, 0.4, 0.0, 1.6, 1.2, 0.7, 1.05, 0.2, 1.4, 0.95, 1.1, 1.25]
+            for offset in stride(from: 34, through: 1, by: -1) {
+                guard let day = TokenStepClock.calendar.date(byAdding: .day, value: -offset, to: Date()) else { continue }
+                let tokens = Int(500_000_000 * pattern[offset % pattern.count])
+                let key = DateFormatter.tokenStepDay.string(from: day)
+                history.append(DailyUsage(date: key, tools: ["Codex": tokens], totalTokens: tokens, cost: Double(tokens) / 1_000_000))
+                if offset == 1 {
+                    yesterdayWork = DailyAgentWork(
+                        date: key,
+                        totalTokens: tokens,
+                        activeHours: 9,
+                        modelRequestCount: 2_900,
+                        toolCallCount: 280,
+                        sources: [],
+                        hourlyBuckets: hourly(tokens * 3 / 4)
+                    )
+                }
+            }
+        }
         let snapshot = UsageSnapshot(
             generatedAt: ISO8601DateFormatter().string(from: Date()),
             timezone: "Asia/Shanghai",
-            totals: UsageTotals(tokens: total, cost: daily.cost, activeDays: total > 0 ? 1 : 0),
-            daily: [daily],
-            agentWork: [work],
+            totals: UsageTotals(
+                tokens: total + history.map(\.totalTokens).reduce(0, +),
+                cost: daily.cost,
+                activeDays: (total > 0 ? 1 : 0) + history.filter { $0.totalTokens > 0 }.count
+            ),
+            daily: history + [daily],
+            agentWork: [yesterdayWork, work].compactMap { $0 },
             tools: [],
             models: [],
             sources: [:]
@@ -154,6 +194,12 @@ struct TodayDashboardRender {
         )
         try writeJSON(snapshot, to: AppPaths.usageJSON)
         try writeJSON(settings, to: AppPaths.settingsJSON)
+        // Without these markers the theme migrations switch a classic-theme
+        // fixture to Odyssey.
+        for marker in [AppPaths.voyageThemeMigrationMarker, AppPaths.odysseyThemePackMigrationMarker] {
+            try FileManager.default.createDirectory(at: marker.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: marker)
+        }
     }
 
     private static func writeJSON<T: Encodable>(_ value: T, to url: URL) throws {

@@ -19,6 +19,7 @@ FIXTURE_CHECKS=(
   test_claude_incremental_collector
   test_settings_codable
   test_compact_popover
+  test_today_overview
 )
 
 failed=()

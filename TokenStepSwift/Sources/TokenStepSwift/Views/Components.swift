@@ -260,11 +260,16 @@ struct TokenCard<Content: View>: View {
         self.content = content()
     }
 
+    /// Close to the Token Rank profile cards: a small radius, a hairline and,
+    /// on the classic theme, only a faint shadow.
+    static var cornerRadius: CGFloat { 16 }
+
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
 
         content
-            .padding(24)
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
                     shape.fill(Color.tokenSurface)
@@ -286,13 +291,18 @@ struct TokenCard<Content: View>: View {
                 ZStack {
                     shape.stroke(Color.tokenHairline)
                     if TokenStepThemeRuntime.isVoyage {
-                        VoyageCardOrnament(cornerRadius: 24)
+                        VoyageCardOrnament(cornerRadius: Self.cornerRadius)
                     } else if TokenStepThemeRuntime.isInterstellar {
-                        InterstellarCardOrnament(cornerRadius: 24)
+                        InterstellarCardOrnament(cornerRadius: Self.cornerRadius)
                     }
                 }
             }
-            .shadow(color: Color.tokenShadow, radius: 24, x: 0, y: 14)
+            .shadow(
+                color: TokenStepThemeRuntime.isCinematic ? Color.tokenShadow : Color.black.opacity(0.04),
+                radius: TokenStepThemeRuntime.isCinematic ? 24 : 2,
+                x: 0,
+                y: TokenStepThemeRuntime.isCinematic ? 14 : 1
+            )
     }
 }
 
