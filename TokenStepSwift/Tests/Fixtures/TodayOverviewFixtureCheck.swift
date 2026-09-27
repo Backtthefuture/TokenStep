@@ -19,6 +19,7 @@ struct TodayOverviewFixtureCheck {
             try checkGoalStreak()
             try checkDeltaVersusYesterday()
             try checkHourlyChart()
+            try checkLongestStreakAndBusySpan()
             print("Today overview fixture checks passed")
         } catch {
             fputs("Today overview fixture failed: \(error)\n", stderr)
@@ -113,6 +114,27 @@ struct TodayOverviewFixtureCheck {
         try expect(chart.hours[12].isFuture && !chart.hours[11].isFuture, "hours after now are future")
         let empty = TodayOverviewModel.hourlyChart(work: agentWork(date: "x", input: 0, cached: 0, output: 0), currentHour: nil)
         try expect(empty.peakHour == nil && empty.sourceOrder.isEmpty, "no usage has no peak")
+    }
+
+    private static func checkLongestStreakAndBusySpan() throws {
+        let daily = [
+            usage("2026-09-01", 100), usage("2026-09-02", 150), usage("2026-09-03", 120),
+            usage("2026-09-04", 10),
+            usage("2026-09-05", 100), usage("2026-09-06", 100)
+        ]
+        try expect(TodayOverviewModel.longestGoalStreak(daily: daily, goal: 100, calendar: calendar) == 3,
+                   "longest run of goal days")
+        try expect(TodayOverviewModel.longestGoalStreak(daily: [usage("2026-09-01", 100), usage("2026-09-03", 100)], goal: 100, calendar: calendar) == 1,
+                   "a missing day breaks a run")
+        var totals = Array(repeating: 0, count: 24)
+        totals[14] = 5; totals[15] = 9; totals[16] = 8; totals[17] = 6; totals[2] = 20
+        try expect(TodayOverviewModel.busiestSpan(totals) == 14, "busiest four hours start at 14")
+        try expect(TodayOverviewModel.busiestSpan(Array(repeating: 0, count: 24)) == nil, "no usage, no span")
+        let hours = TodayOverviewModel.hourOfDayTotals([
+            agentWork(date: "a", hours: [(9, 10), (10, 5)]),
+            agentWork(date: "b", hours: [(9, 1)])
+        ])
+        try expect(hours[9] == 11 && hours[10] == 5, "sums per hour across days")
     }
 
     // MARK: Helpers

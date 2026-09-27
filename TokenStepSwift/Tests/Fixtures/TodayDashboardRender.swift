@@ -30,7 +30,9 @@ struct TodayDashboardRender {
                 .frame(width: 720)
                 .fixedSize(horizontal: false, vertical: true)
             } else {
-                DashboardScreenshotView(section: .today)
+                DashboardScreenshotView(
+                    section: ProcessInfo.processInfo.environment["TOKENSTEP_TODAY_SECTION"] == "history" ? .history : .today
+                )
                     .environmentObject(appState)
             }
         }
@@ -170,8 +172,16 @@ struct TodayDashboardRender {
             ),
             daily: history + [daily],
             agentWork: [yesterdayWork, work].compactMap { $0 },
-            tools: [],
-            models: [],
+            tools: total > 0 ? [
+                ToolUsage(tool: "Codex", tokens: 14_000_000_000, percent: 85.5),
+                ToolUsage(tool: "Cursor", tokens: 1_600_000_000, percent: 9.8),
+                ToolUsage(tool: "Hermes Agent", tokens: 765_000_000, percent: 4.7)
+            ] : [],
+            models: total > 0 ? [
+                ModelUsage(model: "gpt-5.2-codex", tool: "Codex", tokens: 12_100_000_000, percent: 73.9),
+                ModelUsage(model: "claude-opus-4.1", tool: "Claude Code", tokens: 2_900_000_000, percent: 17.7),
+                ModelUsage(model: "gemini-2.5-pro", tool: "Cursor", tokens: 1_365_000_000, percent: 8.4)
+            ] : [],
             sources: [:]
         )
         let settings = TokenStepSettings(

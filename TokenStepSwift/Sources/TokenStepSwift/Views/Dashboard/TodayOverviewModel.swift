@@ -125,6 +125,56 @@ enum TodayOverviewModel {
         return streak
     }
 
+    /// The longest run of consecutive goal days anywhere in `daily`.
+    static func longestGoalStreak(daily: [DailyUsage], goal: Int, calendar: Calendar) -> Int {
+        guard goal > 0 else { return 0 }
+        let formatter = dayFormatter(calendar)
+        let goalDays = daily
+            .filter { $0.totalTokens >= goal }
+            .compactMap { formatter.date(from: $0.date) }
+            .map { calendar.startOfDay(for: $0) }
+            .sorted()
+        var longest = 0
+        var current = 0
+        var previous: Date?
+        for day in goalDays {
+            if let previous, let next = calendar.date(byAdding: .day, value: 1, to: previous), next == day {
+                current += 1
+            } else if previous != day {
+                current = 1
+            }
+            longest = max(longest, current)
+            previous = day
+        }
+        return longest
+    }
+
+    /// Tokens per hour of day summed over the given days' hourly buckets.
+    static func hourOfDayTotals(_ works: [DailyAgentWork]) -> [Int] {
+        var totals = Array(repeating: 0, count: 24)
+        for work in works {
+            for bucket in work.hourlyBuckets where (0..<24).contains(bucket.hour) {
+                totals[bucket.hour] += bucket.totalTokens
+            }
+        }
+        return totals
+    }
+
+    /// The busiest contiguous 4-hour span in `totals`, as its start hour.
+    static func busiestSpan(_ totals: [Int], length: Int = 4) -> Int? {
+        guard totals.count == 24, totals.contains(where: { $0 > 0 }) else { return nil }
+        var best = 0
+        var bestSum = -1
+        for start in 0...(24 - length) {
+            let sum = totals[start..<(start + length)].reduce(0, +)
+            if sum > bestSum {
+                bestSum = sum
+                best = start
+            }
+        }
+        return best
+    }
+
     // MARK: - Hourly chart
 
     struct HourStack: Equatable, Identifiable {
