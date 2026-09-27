@@ -370,7 +370,9 @@ struct TodayRecentWeeksCard: View {
 
 struct TodayHourlyStackCard: View {
     @EnvironmentObject private var appState: AppState
+    @State private var hoveredHour: Int?
     private let chartHeight: CGFloat = 120
+    private let barSpacing: CGFloat = 6
 
     var body: some View {
         let chart = TodayOverviewModel.hourlyChart(work: appState.todayAgentWork, currentHour: currentHour)
@@ -400,7 +402,7 @@ struct TodayHourlyStackCard: View {
                     }
                 }
 
-                HStack(alignment: .bottom, spacing: 6) {
+                HStack(alignment: .bottom, spacing: barSpacing) {
                     ForEach(chart.hours) { hour in
                         VStack(spacing: 1) {
                             ForEach(Array(hour.parts.enumerated().reversed()), id: \.offset) { index, tokens in
@@ -416,14 +418,38 @@ struct TodayHourlyStackCard: View {
                                     .frame(height: 3)
                             }
                         }
-                        .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                        .help(hourHelp(hour, chart: chart))
+                        .opacity(hoveredHour == nil || hoveredHour == hour.hour ? 1 : 0.45)
+                        // The whole column, not just the bar, takes the hover.
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .contentShape(Rectangle())
+                        .onHover { inside in
+                            if inside {
+                                hoveredHour = hour.hour
+                            } else if hoveredHour == hour.hour {
+                                hoveredHour = nil
+                            }
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(hourSummary(hour, chart: chart))
                     }
                 }
                 .frame(height: chartHeight, alignment: .bottom)
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(Color.tokenHairline).frame(height: 1)
+                }
+                .overlay(alignment: .topLeading) {
+                    if let hoveredHour, chart.hours.indices.contains(hoveredHour) {
+                        GeometryReader { proxy in
+                            let column = (proxy.size.width - barSpacing * 23) / 24
+                            let center = CGFloat(hoveredHour) * (column + barSpacing) + column / 2
+                            let calloutWidth: CGFloat = 176
+                            hourCallout(chart.hours[hoveredHour], chart: chart)
+                                .frame(width: calloutWidth)
+                                .offset(x: min(max(center - calloutWidth / 2, 0), proxy.size.width - calloutWidth), y: -8)
+                        }
+                        .allowsHitTesting(false)
+                    }
                 }
 
                 HStack {
@@ -456,12 +482,46 @@ struct TodayHourlyStackCard: View {
         return Swift.max(2, (chartHeight - 4) * CGFloat(tokens) / CGFloat(maxTotal))
     }
 
-    private func hourHelp(_ hour: TodayOverviewModel.HourStack, chart: TodayOverviewModel.HourlyChart) -> String {
-        let parts = zip(chart.sourceOrder, hour.parts)
-            .filter { $0.1 > 0 }
-            .map { "\($0.0.isEmpty ? L("其他") : $0.0) \(TokenStepFormat.tokens($0.1, compact: true))" }
-        let head = String(format: "%02d:00 · %@", hour.hour, TokenStepFormat.tokens(hour.total, compact: true))
-        return parts.isEmpty ? head : head + "\n" + parts.joined(separator: "\n")
+    private func hourSummary(_ hour: TodayOverviewModel.HourStack, chart: TodayOverviewModel.HourlyChart) -> String {
+        String(format: "%02d:00–%02d:00 · %@", hour.hour, (hour.hour + 1) % 24, TokenStepFormat.tokens(hour.total, compact: true))
+    }
+
+    private func hourCallout(_ hour: TodayOverviewModel.HourStack, chart: TodayOverviewModel.HourlyChart) -> some View {
+        let parts = zip(chart.sourceOrder, hour.parts).filter { $0.1 > 0 }
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(String(format: "%02d:00–%02d:00", hour.hour, (hour.hour + 1) % 24))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 6)
+                Text(hour.isFuture ? L("还没到") : TokenStepFormat.tokens(hour.total, compact: true))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.tokenInk)
+                    .monospacedDigit()
+            }
+            ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                HStack(spacing: 6) {
+                    Circle().fill(color(part.0)).frame(width: 7, height: 7)
+                    Text(part.0.isEmpty ? L("其他") : part.0)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(TokenStepFormat.tokens(part.1, compact: true))
+                        .monospacedDigit()
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(Color.tokenInk.opacity(0.8))
+            }
+            if parts.isEmpty && !hour.isFuture {
+                Text(L("这一小时没有用量"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.tokenHairlineStrong))
+        .shadow(color: Color.black.opacity(0.12), radius: 8, y: 3)
     }
 }
 

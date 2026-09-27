@@ -30,6 +30,8 @@ enum TokenStepLocalization {
 
     private static let translations: [TokenStepLanguage: [String: String]] = [
         .en: [
+            "还没到": "Not yet",
+            "这一小时没有用量": "No usage this hour",
             "改动立即生效，不需要保存。": "Changes apply right away. Nothing to save.",
             "主题和配色，随时切换。": "Themes and colors. Switch any time.",
             "只读取本机日志里的用量数字，不读对话内容。": "Reads only usage numbers from local logs, never conversations.",
@@ -782,6 +784,8 @@ enum TokenStepLocalization {
             "榜": "Rank",
         ],
         .zhHant: [
+            "还没到": "還沒到",
+            "这一小时没有用量": "這一小時沒有用量",
             "改动立即生效，不需要保存。": "改動立即生效，不需要儲存。",
             "主题和配色，随时切换。": "主題和配色，隨時切換。",
             "只读取本机日志里的用量数字，不读对话内容。": "只讀取本機日誌裡的用量數字，不讀對話內容。",
