@@ -32,6 +32,21 @@ struct QuotaProviderIcon: View {
                         .stroke(Color.black.opacity(0.08), lineWidth: 0.5)
                 }
                 .accessibilityHidden(true)
+        } else if provider == .grok {
+            // Black tile with the white mark, like Grok's app icon.
+            RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+                .fill(Color.black)
+                .frame(width: size, height: size)
+                .overlay {
+                    SVGPathShape(pathData: ProviderMark.grokPath, viewBox: ProviderMark.grokViewBox)
+                        .fill(Color.white, style: FillStyle(eoFill: true))
+                        .padding(size * 0.2)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                }
+                .accessibilityHidden(true)
         } else {
             RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
                 .fill(AgentSourceRegistry.color(for: provider.rawValue))
@@ -95,6 +110,22 @@ enum CompactPopoverStyle {
 
     static func textColor(for level: CompactPopoverModel.QuotaLevel) -> Color {
         level == .normal ? Color.tokenInk : color(for: level)
+    }
+
+    /// A large compact token count. CJK units carry a wide left side bearing
+    /// that reads as a space after big digits, so the unit is set smaller and
+    /// pulled in to sit against them.
+    static func tokens(_ value: Int, size: CGFloat, weight: Font.Weight, design: Font.Design) -> some View {
+        let text = TokenStepFormat.tokens(value, compact: true)
+        let digits = String(text.prefix { $0.isASCII })
+        let unit = String(text.dropFirst(digits.count))
+        return HStack(alignment: .firstTextBaseline, spacing: unit.isEmpty ? 0 : -size * 0.08) {
+            Text(digits).font(.system(size: size, weight: weight, design: design))
+            if !unit.isEmpty {
+                Text(unit).font(.system(size: size * 0.8, weight: weight))
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     static func percent(_ value: Double) -> String {
@@ -187,14 +218,17 @@ private struct CompactBar: View {
                 Capsule()
                     .fill(color)
                     .frame(width: max(proxy.size.width * min(max(fraction, 0), 1), fraction > 0 ? height : 0))
+            }
+            // The marker overhangs the bar; drawn over it so a bar with a
+            // marker keeps the same thickness as one without.
+            .overlay(alignment: .topLeading) {
                 if let marker {
                     RoundedRectangle(cornerRadius: 1)
                         .fill(Color.tokenInk.opacity(0.55))
                         .frame(width: 2, height: height + 6)
-                        .offset(x: proxy.size.width * min(max(marker, 0), 1) - 1)
+                        .position(x: proxy.size.width * min(max(marker, 0), 1), y: proxy.size.height / 2)
                 }
             }
-            .frame(height: proxy.size.height)
         }
         .frame(height: height)
     }
@@ -349,9 +383,7 @@ struct CompactTokenSection: View {
                     Text(L("今日 Token"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    Text(TokenStepFormat.tokens(usage.totalTokens, compact: true))
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .monospacedDigit()
+                    CompactPopoverStyle.tokens(usage.totalTokens, size: 24, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.tokenInk)
                 }
                 Spacer(minLength: 4)
@@ -370,7 +402,7 @@ struct CompactTokenSection: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Color.tokenInk)
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(.tail)
                         .frame(width: 112, alignment: .leading)
                     CompactBar(fraction: model.share, color: Color.tokenGreen.opacity(0.85), height: 5)
                     Text(TokenStepFormat.tokens(model.tokens, compact: true))
@@ -419,11 +451,6 @@ struct CompactRankSection: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
-                if let board = section.myBoardTokens {
-                    Text(LFormat("榜上 %@", TokenStepFormat.tokens(board, compact: true)))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
             }
             .contentShape(Rectangle())
             .onTapGesture { openMyPage?() }
@@ -448,15 +475,25 @@ struct CompactRankSection: View {
                         .font(.system(size: 12, weight: .semibold))
                         .monospacedDigit()
                         .foregroundStyle(Color.tokenInk)
-                    Text(entry.leadOverMe.map { LFormat("差 %@", TokenStepFormat.tokens($0, compact: true)) } ?? "")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 70, alignment: .trailing)
                 }
                 .accessibilityElement(children: .combine)
             }
             if let chase = section.chase {
                 chaseCard(chase)
+            }
+            if let behind = section.behind {
+                HStack(spacing: 4) {
+                    Text(LFormat("身后 #%d %@", behind.rank, behind.name))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 4)
+                    Text(LFormat("领先 %@", TokenStepFormat.tokens(behind.lead, compact: true)))
+                        .monospacedDigit()
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .accessibilityElement(children: .combine)
             }
         }
     }
@@ -551,9 +588,7 @@ struct CompactRankSection: View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(L("再跑"))
                 .font(.system(size: 12, weight: .medium))
-            Text(TokenStepFormat.tokens(gap, compact: true))
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .monospacedDigit()
+            CompactPopoverStyle.tokens(gap, size: 13, weight: .bold, design: .rounded)
             Text(target)
                 .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)

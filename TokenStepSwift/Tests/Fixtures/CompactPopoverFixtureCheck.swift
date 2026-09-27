@@ -94,7 +94,8 @@ struct CompactPopoverFixtureCheck {
 
     private static func checkWindowLengths() throws {
         try expect(row(.session, used: 50, resetsIn: hours(1)).elapsedFraction == nil, "unknown session length has no marker")
-        try expect(row(.cursorModels, used: 50, resetsIn: hours(1)).elapsedFraction == nil, "cursor model window has no marker")
+        let cursor = row(.cursorModels, used: 50, resetsIn: hours(24)).elapsedFraction ?? 0
+        try expect(cursor > 0.9 && cursor < 1, "cursor model window follows the monthly billing cycle: \(cursor)")
         try expect(row(.fiveHour, used: 50, resetsIn: nil).elapsedFraction == nil, "no reset time has no marker")
         // Resets 2026-10-01 00:00 Shanghai; the window began 2026-09-01 00:00.
         let reset = ISO8601DateFormatter().date(from: "2026-09-30T16:00:00Z")!
@@ -150,7 +151,8 @@ struct CompactPopoverFixtureCheck {
         try expect(rank == 34 && name == "Next" && gap == 4_120_001, "gap to #34 is \(gap)")
         try expect(abs(progress - 28_510_000.0 / 32_630_000) < 1e-9, "progress toward #34")
         try expect(section.etaMinutes == 26, "ETA rounds up: \(String(describing: section.etaMinutes))")
-        try expect(section.podium.map(\.leadOverMe) == [831_490_000, 687_490_000, 637_490_000], "podium leads over me")
+        try expect(section.podium.isEmpty, "no podium outside the top \(CompactPopoverModel.podiumRankLimit)")
+        try expect(section.behind == .init(rank: 36, name: "Below", lead: 8_510_000), "closest entry behind: \(String(describing: section.behind))")
         try expect(section.unsyncedTokens == nil && section.projectedRank == nil, "different days are not compared")
     }
 
@@ -161,7 +163,8 @@ struct CompactPopoverFixtureCheck {
         )
         try expect(section.chase == .leading(lead: 300), "first place shows its lead")
         try expect(section.etaMinutes == nil, "no ETA when leading")
-        try expect(section.podium.first?.isMe == true && section.podium.first?.leadOverMe == nil, "podium marks me")
+        try expect(section.podium.map(\.rank) == [1, 2, 3] && section.podium.first?.isMe == true, "podium near the top marks me")
+        try expect(section.behind == nil, "first place shows its lead instead of who is behind")
     }
 
     private static func checkOutsideBoard() throws {
@@ -194,6 +197,12 @@ struct CompactPopoverFixtureCheck {
         )
         try expect(section.unsyncedTokens == 150, "unsynced local tokens")
         try expect(section.projectedRank == 3, "350 would place third: \(String(describing: section.projectedRank))")
+        // Gaps count the local total, not the board's stale one.
+        guard case let .next(rank, _, gap, _) = section.chase else {
+            throw FixtureError("expected a next-rank chase, got \(String(describing: section.chase))")
+        }
+        try expect(rank == 2 && gap == 51, "local 350 chases #2 at 400: #\(rank) gap \(gap)")
+        try expect(section.behind == .init(rank: 3, name: "C", lead: 50), "local 350 leads #3: \(String(describing: section.behind))")
         let behind = CompactPopoverModel.rankSection(
             board: board, myUserID: 99, localTodayTokens: 180, tokensPerHour: 0, localTimeZoneIdentifier: "Asia/Shanghai"
         )

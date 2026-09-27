@@ -143,9 +143,10 @@ enum CompactPopoverModel {
             return resetsAt.addingTimeInterval(-5 * 60 * 60)
         case .sevenDay, .weekly:
             return resetsAt.addingTimeInterval(-7 * 24 * 60 * 60)
-        case .monthlyCredits:
+        case .monthlyCredits, .cursorModels, .otherModels:
+            // Cursor's model pools reset with its monthly billing cycle.
             return calendar.date(byAdding: .month, value: -1, to: resetsAt)
-        case .session, .tokenWindow, .spend, .cursorModels, .otherModels:
+        case .session, .tokenWindow, .spend:
             return nil
         }
     }
@@ -198,14 +199,23 @@ enum CompactPopoverModel {
     /// Token Rank's public board counts days in this zone.
     static let rankBoardTimeZoneIdentifier = "Asia/Shanghai"
 
+    /// The podium is only worth showing to viewers near it; further down the
+    /// board the gap to the top is too large to act on.
+    static let podiumRankLimit = 10
+
     struct Podium: Equatable, Identifiable {
         var id: Int { rank }
         var rank: Int
         var name: String
         var tokens: Int
         var isMe: Bool
-        /// How far ahead of the viewer this entry is; nil when unknown or not ahead.
-        var leadOverMe: Int?
+    }
+
+    /// The closest entry behind the viewer, and by how much the viewer leads it.
+    struct Behind: Equatable {
+        var rank: Int
+        var name: String
+        var lead: Int
     }
 
     enum Chase: Equatable {
@@ -222,8 +232,10 @@ enum CompactPopoverModel {
         var rankedUsers: Int
         var listedLimit: Int
         var myBoardTokens: Int?
+        /// Empty unless the viewer ranks within `podiumRankLimit`.
         var podium: [Podium]
         var chase: Chase?
+        var behind: Behind?
         /// Minutes to close the chase gap at the last hour's pace.
         var etaMinutes: Int?
         var tokensPerHour: Int
@@ -242,29 +254,32 @@ enum CompactPopoverModel {
     ) -> RankSection {
         let entries = board.entries.sorted { $0.rank < $1.rank }
         let mine = myUserID.flatMap { id in entries.first { $0.userID == id } }
-        let podium = entries.prefix(3).map { entry in
-            Podium(
-                rank: entry.rank,
-                name: entry.name,
-                tokens: entry.totalTokens,
-                isMe: entry.userID == mine?.userID,
-                leadOverMe: mine.flatMap { me in
-                    entry.rank < me.rank ? max(entry.totalTokens - me.totalTokens, 0) : nil
-                }
-            )
-        }
+        let podium = (mine.map { $0.rank <= podiumRankLimit } ?? false)
+            ? entries.prefix(3).map { entry in
+                Podium(rank: entry.rank, name: entry.name, tokens: entry.totalTokens, isMe: entry.userID == mine?.userID)
+            }
+            : []
 
         let sameDay = localTimeZoneIdentifier == rankBoardTimeZoneIdentifier
         var chase: Chase?
+        var behind: Behind?
         var gap: Int?
         if let mine {
-            if let next = entries.last(where: { $0.rank < mine.rank }) {
-                let needed = max(next.totalTokens - mine.totalTokens, 0) + 1
+            // Local tokens run ahead of the board between uploads; on the same
+            // day they are the truer count to measure gaps from.
+            let myTokens = sameDay ? max(mine.totalTokens, localTodayTokens) : mine.totalTokens
+            let others = entries.filter { $0.userID != mine.userID }
+            if let next = others.last(where: { $0.totalTokens >= myTokens }) {
+                let needed = next.totalTokens - myTokens + 1
                 gap = needed
-                let progress = next.totalTokens > 0 ? Double(mine.totalTokens) / Double(next.totalTokens) : 0
+                let progress = next.totalTokens > 0 ? Double(myTokens) / Double(next.totalTokens) : 0
                 chase = .next(rank: next.rank, name: next.name, gap: needed, progress: min(max(progress, 0), 1))
-            } else if let second = entries.first(where: { $0.rank > mine.rank }) {
-                chase = .leading(lead: max(mine.totalTokens - second.totalTokens, 0))
+            } else if let second = others.first {
+                chase = .leading(lead: max(myTokens - second.totalTokens, 0))
+            }
+            // First place already shows its lead over second.
+            if case .next = chase, let below = others.first(where: { $0.totalTokens < myTokens }) {
+                behind = Behind(rank: below.rank, name: below.name, lead: myTokens - below.totalTokens)
             }
         } else if myUserID != nil, let last = entries.last, entries.count >= board.topLimit {
             // Not listed: the board only returns the top `topLimit`. Local tokens are
@@ -296,6 +311,7 @@ enum CompactPopoverModel {
             myBoardTokens: mine?.totalTokens,
             podium: podium,
             chase: chase,
+            behind: behind,
             etaMinutes: eta,
             tokensPerHour: tokensPerHour,
             unsyncedTokens: unsynced,
