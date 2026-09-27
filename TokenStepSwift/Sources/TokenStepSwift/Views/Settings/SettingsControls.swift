@@ -134,58 +134,43 @@ struct SettingsSectionCard<Content: View>: View {
         self.content = content()
     }
 
+    /// A grouped section as in System Settings: the title and note sit above
+    /// a plain rounded group that holds the rows.
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 8) {
-                Text(title)
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.tokenInk)
-                if let badge {
-                    SettingsBadge(text: badge, style: badgeStyle)
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.tokenInk.opacity(0.78))
+                    if let badge {
+                        SettingsBadge(text: badge, style: badgeStyle)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 4)
+
+            // One stack so a multi-part body stays in one group.
+            VStack(alignment: .leading, spacing: 10) {
+                content
             }
-            content
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.tokenHairline)
+                )
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(sectionBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(sectionBorder)
-        )
-    }
-
-    private var sectionBackground: Color {
-        if TokenStepThemeRuntime.isCinematic {
-            return Color.tokenSurface
-        }
-        switch tint ?? badgeStyle {
-        case .l2: return Color(red: 0.97, green: 0.98, blue: 0.99)
-        case .l3: return Color(red: 0.98, green: 0.97, blue: 0.99)
-        default: return Color.tokenSurface
-        }
-    }
-
-    private var sectionBorder: Color {
-        if TokenStepThemeRuntime.isCinematic {
-            switch tint ?? badgeStyle {
-            case .l2: return Color.tokenGreen.opacity(0.30)
-            case .l3: return Color.tokenGreenDark.opacity(0.34)
-            default: return Color.tokenHairline
-            }
-        }
-        switch tint ?? badgeStyle {
-        case .l2: return Color(red: 0.81, green: 0.84, blue: 0.92)
-        case .l3: return Color(red: 0.87, green: 0.84, blue: 0.91)
-        default: return Color.black.opacity(0.06)
-        }
     }
 }
 
@@ -197,20 +182,22 @@ struct SettingsPickerChip: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(selected ? Color.tokenActionText : Color.tokenInk.opacity(0.68))
+                .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Color.tokenGreenDark : Color.tokenInk.opacity(0.72))
                 .padding(.horizontal, 10)
                 .frame(height: 28)
                 .background(
-                    selected ? Color.tokenGreenDark : Color.tokenTrack.opacity(0.45),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    selected ? Color.tokenGreen.opacity(0.14) : Color.tokenSurface,
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(selected ? Color.tokenHairlineStrong : Color.tokenHairline)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(selected ? Color.tokenGreen.opacity(0.7) : Color.tokenHairline)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 
@@ -615,7 +602,7 @@ struct TokenStepSwitchToggleStyle: ToggleStyle {
                             : Color.tokenTrack.opacity(TokenStepThemeRuntime.isCinematic ? 0.82 : 0.72)
                     )
                 Circle()
-                    .fill(configuration.isOn ? Color.tokenInk : Color.tokenInk.opacity(0.62))
+                    .fill(Color.white)
                     .padding(2)
                     .shadow(color: Color.black.opacity(0.24), radius: 2, x: 0, y: 1)
             }

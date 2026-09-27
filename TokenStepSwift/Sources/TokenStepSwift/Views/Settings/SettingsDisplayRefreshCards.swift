@@ -85,18 +85,27 @@ struct SettingsTokenRankCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("Agent 消耗榜"), symbol: "list.number", height: 282) {
+        SettingsSectionCard(
+            title: L("Token Rank 排行榜"),
+            subtitle: L("只读取公开榜单和本机 Token Rank 账号，TokenStep 不上传任何用量")
+        ) {
             VStack(alignment: .leading, spacing: 13) {
-                Picker("", selection: Binding(
-                    get: { appState.settings.agentWorkRankVisibility },
-                    set: { appState.setAgentWorkRankVisibility($0) }
-                )) {
-                    Text(L("自动")).tag(AgentWorkRankVisibility.automatic)
-                    Text(L("显示")).tag(AgentWorkRankVisibility.visible)
-                    Text(L("隐藏")).tag(AgentWorkRankVisibility.hidden)
+                HStack {
+                    Text(L("在面板里显示"))
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    HStack(spacing: 5) {
+                        ForEach([
+                            (L("自动"), AgentWorkRankVisibility.automatic),
+                            (L("显示"), AgentWorkRankVisibility.visible),
+                            (L("隐藏"), AgentWorkRankVisibility.hidden)
+                        ], id: \.0) { title, value in
+                            SettingsPickerChip(title: title, selected: appState.settings.agentWorkRankVisibility == value) {
+                                appState.setAgentWorkRankVisibility(value)
+                            }
+                        }
+                    }
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
 
                 StatusLine(
                     symbol: statusSymbol,
@@ -135,8 +144,6 @@ struct SettingsTokenRankCard: View {
                         .buttonStyle(SettingsSecondaryButtonStyle())
                     }
                 }
-
-                Spacer(minLength: 0)
             }
         }
     }

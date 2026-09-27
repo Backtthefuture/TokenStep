@@ -22,7 +22,14 @@ struct TodayDashboardRender {
 
         let isNarrow = scenario == "zh-narrow"
         let content = Group {
-            if isNarrow {
+            if let section = ProcessInfo.processInfo.environment["TOKENSTEP_TODAY_SECTION"],
+               section.hasPrefix("settings") {
+                SettingsView(
+                    captureMode: true,
+                    capturePane: SettingsPane(rawValue: String(section.dropFirst("settings-".count)))
+                )
+                .environmentObject(appState)
+            } else if isNarrow {
                 ZStack {
                     TokenStepBackdrop()
                     TodayView().environmentObject(appState).padding(16)
@@ -49,7 +56,9 @@ struct TodayDashboardRender {
             throw NSError(domain: "TodayDashboardRender", code: 1)
         }
         try png.write(to: output, options: .atomic)
-        guard bitmap.pixelsWide == (isNarrow ? 1_440 : 2_000), bitmap.pixelsHigh > 900 else {
+        let isSettings = ProcessInfo.processInfo.environment["TOKENSTEP_TODAY_SECTION"]?.hasPrefix("settings") == true
+        let expectedWidth = isSettings ? 1_840 : (isNarrow ? 1_440 : 2_000)
+        guard bitmap.pixelsWide == expectedWidth, bitmap.pixelsHigh > (isSettings ? 400 : 900) else {
             throw NSError(domain: "TodayDashboardRender", code: 2, userInfo: [
                 NSLocalizedDescriptionKey: "Unexpected render size: \(bitmap.pixelsWide)x\(bitmap.pixelsHigh)"
             ])
