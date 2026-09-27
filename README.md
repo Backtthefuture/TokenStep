@@ -22,7 +22,7 @@ TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claud
 
 下载最新版 DMG，打开后把 `TokenStep.app` 拖进「应用程序」即可使用：
 
-[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.18.dmg)
+[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.19.dmg)
 
 也可以从 Release 页面查看所有版本：
 
@@ -32,9 +32,9 @@ TokenStep 已使用 Developer ID 签名并通过 Apple 公证。首次打开时�
 
 Windows版本由十七做了移植，欢迎大家前往使用：https://github.com/canyexuanfan/TokenStep-Windows/releases 
 
-## 最新版本：0.2.18
+## 最新版本：0.2.19
 
-额度提前用完的提示会写出是哪个窗口，例如「7 天额度会提前用完」；面板里的排名可以直接打开 Token Rank 网页。0.2.16 起菜单栏面板改为一列紧凑面板，额度刷新也更及时。详见 [0.2.18 发布说明](docs/RELEASE_NOTES_0.2.18.md)。
+面板的额度和排名更精简：额度条粗细统一，排名只在前 10 名时显示前三名，并显示离你最近的后一名。0.2.16 起菜单栏面板改为一列紧凑面板，额度刷新更及时。详见 [0.2.19 发布说明](docs/RELEASE_NOTES_0.2.19.md)。
 
 历次更新（主题包、引力动效、自动更新等）见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -95,7 +95,7 @@ TokenStep 默认只做本地统计。
 
 ## 安装方式
 
-1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.18.dmg)。
+1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.19.dmg)。
 2. 打开 DMG。
 3. 把 `TokenStep.app` 拖到「应用程序」。
 4. 启动 TokenStep。
@@ -166,7 +166,7 @@ TokenStepSwift/dist/TokenStep.app
 公开发布强制执行 Developer ID 签名、Apple 公证、票据装订、系统分发检查和隔离安装验证。不再生成可被误上传的“仅签名、未公证”发布包：
 
 ```bash
-TOKENSTEP_VERSION=0.2.18 \
+TOKENSTEP_VERSION=0.2.19 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
 ./script/package_release.sh --notarize
