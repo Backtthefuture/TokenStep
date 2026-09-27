@@ -38,6 +38,7 @@ final class AppState: ObservableObject {
     private var pendingRefreshAfterCurrent = false
     private var pendingForcedRefresh = false
     private var lastQuotaRefreshAttemptAt: Date?
+    private var quotaResetTimer: Timer?
     private var lastCursorUsageRefreshAttemptAt: Date?
     private var lastRankRefreshAttemptAt: Date?
     private var lastAutomaticUsageRefreshAttemptAt: Date?
@@ -325,6 +326,28 @@ final class AppState: ObservableObject {
             }
             quotas = quotas.filter { providers.contains($0.key) }
             isRefreshingCodexQuota = false
+            scheduleQuotaResetRefresh()
+        }
+    }
+
+    /// Checks quota again right after the soonest window resets, so a reset
+    /// window does not wait out the regular interval showing no reading.
+    private func scheduleQuotaResetRefresh(now: Date = Date()) {
+        quotaResetTimer?.invalidate()
+        quotaResetTimer = nil
+        let nextReset = quotas.values
+            .filter(\.isAvailable)
+            .flatMap(\.windows)
+            .compactMap(\.resetsAt)
+            .filter { $0 > now }
+            .min()
+        guard let nextReset else { return }
+        // A short grace period lets the provider roll the window over first.
+        let delay = nextReset.timeIntervalSince(now) + 30
+        quotaResetTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshCodexQuota(force: true, bypassCache: true)
+            }
         }
     }
 

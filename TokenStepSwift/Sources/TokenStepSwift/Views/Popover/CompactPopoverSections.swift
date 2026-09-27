@@ -94,6 +94,25 @@ struct QuotaProviderIcon: View {
     }
 }
 
+/// Shows the pointing hand over a clickable area. It sets the cursor rather
+/// than pushing it, so a popover that closes under the mouse (and never sends
+/// the hover end) cannot leave an unbalanced cursor stack behind.
+private struct LinkCursor: ViewModifier {
+    var isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        content.onContinuousHover { phase in
+            guard isEnabled else { return }
+            switch phase {
+            case .active:
+                NSCursor.pointingHand.set()
+            case .ended:
+                NSCursor.arrow.set()
+            }
+        }
+    }
+}
+
 // MARK: - Shared styling
 
 enum CompactPopoverStyle {
@@ -300,6 +319,9 @@ struct CompactQuotaSection: View {
 
     /// Explains the bar's tick: how much of the window's time has passed.
     private func paceHelp(_ window: CompactPopoverModel.QuotaWindowRow) -> String {
+        if window.isReset {
+            return L("已过重置时间，等待下一次读取额度")
+        }
         guard let elapsed = window.elapsedFraction else {
             return LFormat("已用 %@", CompactPopoverStyle.percent(window.usedPercent))
         }
@@ -342,12 +364,12 @@ struct CompactQuotaSection: View {
                         color: CompactPopoverStyle.color(for: window.level),
                         marker: window.elapsedFraction
                     )
-                    Text(CompactPopoverStyle.percent(window.usedPercent))
+                    Text(window.isReset ? "—" : CompactPopoverStyle.percent(window.usedPercent))
                         .font(.system(size: 12, weight: .bold))
                         .monospacedDigit()
                         .foregroundStyle(CompactPopoverStyle.textColor(for: window.level))
                         .frame(width: 38, alignment: .trailing)
-                    Text(CompactPopoverStyle.resetText(window.resetsAt) ?? "")
+                    Text(window.isReset ? L("已重置") : CompactPopoverStyle.resetText(window.resetsAt) ?? "")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -454,10 +476,7 @@ struct CompactRankSection: View {
             }
             .contentShape(Rectangle())
             .onTapGesture { openMyPage?() }
-            .onHover { hovering in
-                guard openMyPage != nil else { return }
-                if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-            }
+            .modifier(LinkCursor(isEnabled: openMyPage != nil))
             .help(openMyPage == nil ? "" : L("打开我的 Token Rank 主页"))
             ForEach(section.podium) { entry in
                 HStack(spacing: 8) {
@@ -513,9 +532,7 @@ struct CompactRankSection: View {
         if let openBoard {
             Button(action: openBoard) { label.contentShape(Rectangle()) }
                 .buttonStyle(.plain)
-                .onHover { hovering in
-                    if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-                }
+                .modifier(LinkCursor(isEnabled: true))
                 .help(L("在浏览器打开 Token Rank 榜单"))
         } else {
             label

@@ -37,6 +37,9 @@ enum CompactPopoverModel {
         var elapsedFraction: Double?
         /// At the current pace the window runs out before it resets.
         var runsOutEarly: Bool
+        /// The reset time has passed since the reading, so its percentage is
+        /// stale until the next quota check.
+        var isReset = false
     }
 
     struct QuotaProviderRow: Equatable, Identifiable {
@@ -116,6 +119,18 @@ enum CompactPopoverModel {
     }
 
     static func windowRow(_ window: QuotaWindow, now: Date, calendar: Calendar) -> QuotaWindowRow {
+        if let resetsAt = window.resetsAt, resetsAt <= now {
+            return QuotaWindowRow(
+                kind: window.kind,
+                title: window.title,
+                usedPercent: 0,
+                level: .normal,
+                resetsAt: resetsAt,
+                elapsedFraction: nil,
+                runsOutEarly: false,
+                isReset: true
+            )
+        }
         let used = min(max(100 - window.remainingPercent, 0), 100)
         let elapsed = elapsedFraction(kind: window.kind, resetsAt: window.resetsAt, now: now, calendar: calendar)
         let runsOutEarly: Bool

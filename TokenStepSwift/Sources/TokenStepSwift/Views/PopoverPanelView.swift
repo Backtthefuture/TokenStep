@@ -9,30 +9,14 @@ struct PopoverPanelView: View {
     @State private var interstellarManualPulseTrigger = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            let quotaSection = CompactPopoverModel.quotaSection(quotas: appState.visibleQuotas, now: Date())
-            if !quotaSection.isEmpty {
-                section {
-                    CompactQuotaSection(section: quotaSection, updatedAt: quotaUpdatedAt)
-                }
-                sectionDivider
+        // Reset countdowns, "N minutes ago", pace markers and the run-out
+        // warning depend on the clock, so redraw every minute while open.
+        TimelineView(.everyMinute) { context in
+            VStack(alignment: .leading, spacing: 0) {
+                content(now: context.date)
+                notices
+                footer
             }
-            section {
-                CompactTokenSection(usage: appState.today, lap: appState.todayLap)
-            }
-            if let rank = rankSection, let board = appState.tokenRank {
-                sectionDivider
-                section {
-                    CompactRankSection(
-                        section: rank,
-                        fetchedAt: board.fetchedAt,
-                        openBoard: { appState.openTokenRankLeaderboardPage() },
-                        openMyPage: { appState.openTokenRankUserPage() }
-                    )
-                }
-            }
-            notices
-            footer
         }
         .frame(width: CompactPopoverStyle.width)
         .background {
@@ -75,6 +59,31 @@ struct PopoverPanelView: View {
         }
         .onDisappear {
             odysseyMotionSurfaceVisible = false
+        }
+    }
+
+    @ViewBuilder
+    private func content(now: Date) -> some View {
+        let quotaSection = CompactPopoverModel.quotaSection(quotas: appState.visibleQuotas, now: now)
+        if !quotaSection.isEmpty {
+            section {
+                CompactQuotaSection(section: quotaSection, updatedAt: quotaUpdatedAt)
+            }
+            sectionDivider
+        }
+        section {
+            CompactTokenSection(usage: appState.today, lap: appState.todayLap)
+        }
+        if let rank = rankSection, let board = appState.tokenRank {
+            sectionDivider
+            section {
+                CompactRankSection(
+                    section: rank,
+                    fetchedAt: board.fetchedAt,
+                    openBoard: { appState.openTokenRankLeaderboardPage() },
+                    openMyPage: { appState.openTokenRankUserPage() }
+                )
+            }
         }
     }
 
