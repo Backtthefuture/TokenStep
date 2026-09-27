@@ -170,13 +170,6 @@ struct PopoverPanelView: View {
 
             Spacer(minLength: 4)
 
-            Text(appState.settings.refreshIntervalSeconds == 0
-                ? L("手动刷新")
-                : LFormat("刷新 %@", TokenStepFormat.intervalLabel(appState.settings.refreshIntervalSeconds)))
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
             if appState.availableUpdate != nil || appState.isCheckingForUpdates {
                 let update = appState.updateActionVisualState
                 Button {

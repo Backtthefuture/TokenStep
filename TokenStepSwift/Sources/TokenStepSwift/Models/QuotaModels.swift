@@ -53,7 +53,7 @@ enum QuotaWindowKind: String, Codable, Equatable {
         case .monthlyCredits: return L("本月额度")
         case .tokenWindow: return L("Token 窗")
         case .spend: return L("花费")
-        case .cursorModels: return L("Cursor 模型")
+        case .cursorModels: return L("自带")
         case .otherModels: return L("其他模型")
         }
     }
@@ -67,7 +67,7 @@ enum QuotaWindowKind: String, Codable, Equatable {
         case .monthlyCredits: return L("本月")
         case .tokenWindow: return L("Token")
         case .spend: return L("花费")
-        case .cursorModels: return L("自有")
+        case .cursorModels: return L("自带")
         case .otherModels: return L("其他")
         }
     }
