@@ -150,7 +150,7 @@ struct PopoverPanelView: View {
                 appState.refreshNow()
             } label: {
                 Group {
-                    if appState.isRefreshing {
+                    if appState.isRefreshingForDisplay {
                         ProgressView().controlSize(.small)
                     } else {
                         Image(systemName: "arrow.clockwise")
@@ -161,8 +161,8 @@ struct PopoverPanelView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(appState.isRefreshing)
-            .help(appState.isRefreshing ? L("同步中") : L("刷新"))
+            .disabled(appState.isRefreshingForDisplay)
+            .help(appState.isRefreshingForDisplay ? L("同步中") : L("刷新"))
             .accessibilityLabel(L("刷新"))
 
             Button {
