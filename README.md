@@ -34,7 +34,7 @@ Windows版本由十七做了移植，欢迎大家前往使用：https://github.c
 
 ## 最新版本：0.2.22
 
-面板和主窗口的刷新按钮（以及 ⌘R）现在会跳过缓存重新读取 Token Rank 榜单和排名，关联了 Token Rank 时刷新按钮会等榜单读取完再停止转圈。详见 [0.2.22 发布说明](docs/RELEASE_NOTES_0.2.22.md)。
+面板和主窗口的刷新按钮（以及 ⌘R）现在会跳过缓存重新读取 Token Rank 榜单和排名，关联了 Token Rank 时刷新按钮会等榜单读取完再停止转圈；面板的「今日排名」在名次旁显示你在榜单上的 Token 用量。详见 [0.2.22 发布说明](docs/RELEASE_NOTES_0.2.22.md)。
 
 历次更新（主题包、引力动效、自动更新等）见 [CHANGELOG.md](CHANGELOG.md)。
 
