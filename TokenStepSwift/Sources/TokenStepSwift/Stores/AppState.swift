@@ -164,6 +164,11 @@ final class AppState: ObservableObject {
         settings.agentWorkRankVisibility.shouldShow(hasLocalIdentity: agentWorkRankIdentity != nil)
     }
 
+    /// What the refresh buttons show as syncing: usage, plus the TokenRank board when it is linked.
+    var isRefreshingForDisplay: Bool {
+        isRefreshing || (shouldShowAgentWorkRank && isRefreshingTokenRank)
+    }
+
     func load() {
         defer { MemoryPressure.relieveAllocatorPressure() }
         let loadedSettings = DataService.loadSettingsForAppLaunch()
@@ -196,10 +201,11 @@ final class AppState: ObservableObject {
         autostartEnabled = AutostartService.isEnabled
     }
 
-    /// The refresh button and ⌘R: usage plus quotas, skipping quota caches.
+    /// The refresh button and ⌘R: usage, quotas and the TokenRank board, skipping caches.
     func refreshNow() {
         refresh()
         refreshCodexQuota(force: true, bypassCache: true)
+        refreshTokenRank(force: true)
     }
 
     func refresh(forceCollection: Bool = true) {

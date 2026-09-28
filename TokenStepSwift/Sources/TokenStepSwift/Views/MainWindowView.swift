@@ -117,9 +117,9 @@ struct MainWindowView: View {
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(appState.isRefreshing ? Color.secondary.opacity(0.7) : Color.tokenSuccess)
+                        .fill(appState.isRefreshingForDisplay ? Color.secondary.opacity(0.7) : Color.tokenSuccess)
                         .frame(width: 7, height: 7)
-                    Text(appState.isRefreshing ? L("同步中") : L("已同步"))
+                    Text(appState.isRefreshingForDisplay ? L("同步中") : L("已同步"))
                         .font(.caption.weight(.heavy))
                 }
                 .padding(.horizontal, 10)
@@ -135,8 +135,8 @@ struct MainWindowView: View {
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
-                .disabled(appState.isRefreshing)
-                .help(appState.isRefreshing ? L("同步中") : L("刷新"))
+                .disabled(appState.isRefreshingForDisplay)
+                .help(appState.isRefreshingForDisplay ? L("同步中") : L("刷新"))
 
                 DashboardUpdateButton()
 
