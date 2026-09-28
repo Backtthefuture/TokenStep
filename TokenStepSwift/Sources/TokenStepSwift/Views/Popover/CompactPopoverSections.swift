@@ -473,6 +473,12 @@ struct CompactRankSection: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
+                if let tokens = section.myBoardTokens {
+                    Text(LFormat("榜单用量 %@", TokenStepFormat.tokens(tokens, compact: true)))
+                        .font(.system(size: 12, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.tokenInk)
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture { openMyPage?() }
