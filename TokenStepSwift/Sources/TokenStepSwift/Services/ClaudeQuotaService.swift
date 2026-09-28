@@ -36,11 +36,11 @@ enum ClaudeQuotaService {
         )
     }
 
+    // The usage endpoint reports utilization on a 0–100 scale, so 1.0 means 1%,
+    // not a 0–1 fraction; scaling small values would turn 1% into 100%.
     private static func normalizedPercent(_ value: Double?) -> Double? {
         guard let value, value.isFinite else { return nil }
-        if value <= 0 { return 0 }
-        if value <= 1 { return min(value * 100, 100) }
-        return min(value, 100)
+        return min(max(value, 0), 100)
     }
 
     private static func readAccessToken() throws -> String {
