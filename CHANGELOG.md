@@ -2,6 +2,10 @@
 
 TokenStep 各版本的更新内容，新版本在前。每个版本的完整说明在 [docs/RELEASE_NOTES_<版本号>.md](docs/)。
 
+## 0.2.24 更新：新增 Trae / Trae CN 额度监控
+
+设置页可开启 Trae（trae.ai）与 Trae CN（trae.cn）额度显示，粘贴登录令牌后读取官方用量接口；客户端本地用量库为加密存储，Trae 暂不进入 Token 消耗统计。详见 [0.2.24 发布说明](docs/RELEASE_NOTES_0.2.24.md)。
+
 ## 0.2.23 更新：修复 Claude Code 7 天额度误显示为 100%
 
 Claude Code 的额度用量在 1% 及以下时（例如周额度刚重置），面板不再误显示为红色的 100%，改为按接口返回的百分比显示。详见 [0.2.23 发布说明](docs/RELEASE_NOTES_0.2.23.md)。
