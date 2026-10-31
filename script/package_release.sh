@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/script/lib/release_retry.sh"
 APP_NAME="TokenStep"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
 BUILT_APP_BUNDLE="$SWIFT_DIR/dist/$APP_NAME.app"
@@ -134,8 +135,8 @@ submit_for_notarization() {
 echo "Submitting zip for notarization..."
 submit_for_notarization "$ZIP_PATH"
 echo "Stapling app ticket..."
-/usr/bin/xcrun stapler staple "$APP_BUNDLE"
-/usr/bin/xcrun stapler validate "$APP_BUNDLE"
+retry_transient "stapler staple (app)" /usr/bin/xcrun stapler staple "$APP_BUNDLE"
+retry_transient "stapler validate (app)" /usr/bin/xcrun stapler validate "$APP_BUNDLE"
 echo "Recreating zip with the stapled app..."
 /bin/rm -f "$ZIP_PATH"
 /usr/bin/ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP_PATH"
@@ -173,8 +174,8 @@ echo "Signing dmg with Developer ID..."
 echo "Submitting dmg for notarization..."
 submit_for_notarization "$DMG_PATH"
 echo "Stapling dmg ticket..."
-/usr/bin/xcrun stapler staple "$DMG_PATH"
-/usr/bin/xcrun stapler validate "$DMG_PATH"
+retry_transient "stapler staple (dmg)" /usr/bin/xcrun stapler staple "$DMG_PATH"
+retry_transient "stapler validate (dmg)" /usr/bin/xcrun stapler validate "$DMG_PATH"
 
 echo "Running distribution and artifact verification..."
 TOKENSTEP_EXPECTED_TEAM_ID="$EXPECTED_TEAM_ID" \
