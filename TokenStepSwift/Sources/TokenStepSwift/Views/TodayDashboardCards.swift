@@ -173,10 +173,12 @@ struct TodayQuotaCard: View {
                 Text(credits)
                     .font(.system(size: 12, weight: .semibold))
                     .monospacedDigit()
-                    .foregroundStyle(CompactPopoverStyle.textColor(for: row.level))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .frame(width: 132, alignment: .trailing)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .foregroundStyle(CompactPopoverStyle.textColor(for: row.level))
+                    .frame(minWidth: 132, alignment: .trailing)
+                    .layoutPriority(1)
             } else {
                 Text(CompactPopoverStyle.percent(row.usedPercent))
                     .font(.system(size: 12, weight: .semibold))
@@ -194,8 +196,8 @@ struct TodayQuotaCard: View {
     }
 
     private func windowHelp(_ row: CompactPopoverModel.QuotaWindowRow) -> String {
-        if let usage = row.creditUsageText, let remaining = row.creditRemainingText {
-            return LFormat("%@，%@", usage, remaining)
+        if let usage = row.creditUsageText, let total = row.creditTotalText {
+            return LFormat("%@ · %@", usage, total)
         }
         return LFormat("已用 %@", CompactPopoverStyle.percent(row.usedPercent))
     }
