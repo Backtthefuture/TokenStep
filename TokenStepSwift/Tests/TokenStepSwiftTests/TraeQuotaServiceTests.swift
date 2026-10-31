@@ -3,6 +3,14 @@ import XCTest
 @testable import TokenStepSwift
 
 final class TraeQuotaServiceTests: XCTestCase {
+    /// 形状合法的占位 JWT，只用于断言请求头，不含真实令牌。
+    private let sampleJWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0cmFlIn0.signature"
+
+    override func tearDown() {
+        HTTPJSONClient.resetTransport()
+        super.tearDown()
+    }
+
     // Trae CN：credits 口径，汇总所有额度包
     func testTraeCNWindowsSumCreditPacks() {
         let payload: [String: Any] = [
@@ -124,4 +132,105 @@ final class TraeQuotaServiceTests: XCTestCase {
         XCTAssertEqual(windows.count, 1)
         XCTAssertEqual(windows[0].resetsAt, Date(timeIntervalSince1970: 1_900_000_000))
     }
+
+    // MARK: - 鉴权方式（真实联调结论：Bearer 401，Cloud-IDE-JWT 200）
+
+    /// 真实账号响应的裁剪样本：三个有额度的包（4000 / 500 / 100），
+    /// 已用 151.0772 credits；另一个包的 quota 为空，应被跳过。
+    private let liveCNPayload = #"""
+    {
+      "is_credits_billing": true,
+      "is_dollar_usage_billing": false,
+      "usage_summary": {"consumed_amount": 151.0772, "consumption_ratio": 0.03284347826086957, "total_amount": 4600},
+      "user_entitlement_pack_list": [
+        {"entitlement_base_info": {"quota": {"credits_limit": 4000}, "end_time": 1796047504}},
+        {"entitlement_base_info": {"quota": {}, "end_time": 1793462399}},
+        {"entitlement_base_info": {"quota": {"credits_limit": 500}, "end_time": 1793462399}, "usage": {"credits_amount": 151.0772}},
+        {"entitlement_base_info": {"quota": {"credits_limit": 100}, "end_time": 1796086160}}
+      ]
+    }
+    """#
+
+    func testTraeCNRequestUsesCloudIDEJWTHeaderAndParsesLivePayload() throws {
+        var seen: URLRequest?
+        HTTPJSONClient.transport = { request in
+            seen = request
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (Data(self.liveCNPayload.utf8), response)
+        }
+        let payload = try TraeCNQuotaService.fetchPayload(token: sampleJWT)
+        XCTAssertEqual(seen?.value(forHTTPHeaderField: "Authorization"), "Cloud-IDE-JWT \(sampleJWT)")
+        XCTAssertEqual(seen?.url?.absoluteString, "https://api.trae.cn/trae/api/v2/pay/ide_user_ent_usage")
+        let body = try XCTUnwrap(seen?.httpBody)
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(object["require_usage"] as? Bool, true)
+        XCTAssertEqual(object["req_source"] as? Int, 0)
+
+        let windows = TraeCNQuotaService.windows(from: payload)
+        XCTAssertEqual(windows.count, 1)
+        XCTAssertEqual(windows[0].total ?? -1, 4600, accuracy: 0.01)
+        XCTAssertEqual(windows[0].remaining ?? -1, 4448.9228, accuracy: 0.01)
+        XCTAssertEqual(windows[0].usedPercent, 3.2843, accuracy: 0.01)
+        XCTAssertEqual(windows[0].resetsAt, Date(timeIntervalSince1970: 1_793_462_399))
+    }
+
+    func testTraeGlobalRequestUsesCloudIDEJWTHeader() throws {
+        var seen: URLRequest?
+        HTTPJSONClient.transport = { request in
+            seen = request
+            let body = #"""
+            {"user_entitlement_pack_list":[{"entitlement_base_info":{"quota":{"basic_usage_limit":10,"bonus_usage_limit":5},"end_time":1900000000},"usage":{"basic_usage_amount":3,"bonus_usage_amount":1.5}}]}
+            """#
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (Data(body.utf8), response)
+        }
+        let payload = try TraeQuotaService.fetchPayload(token: sampleJWT)
+        XCTAssertEqual(seen?.value(forHTTPHeaderField: "Authorization"), "Cloud-IDE-JWT \(sampleJWT)")
+        XCTAssertEqual(seen?.url?.host, "api-sg-central.trae.ai")
+        XCTAssertEqual(TraeQuotaService.windows(from: payload).first?.total ?? -1, 15, accuracy: 0.01)
+    }
+
+    // 401 不是笼统错误：要带上状态与业务 code，并继续走自动刷新
+    func testTraeCNUnauthorizedIsClassifiedAsAuthFailure() {
+        HTTPJSONClient.transport = { request in
+            let body = #"{"code":1001,"message":"not able to authenticate you"}"#
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            return (Data(body.utf8), response)
+        }
+        XCTAssertThrowsError(try TraeCNQuotaService.fetchPayload(token: sampleJWT)) { error in
+            let text = error.localizedDescription
+            XCTAssertTrue(text.contains("HTTP 401"))
+            XCTAssertTrue(text.contains("code 1001"))
+            XCTAssertTrue(text.contains("用浏览器登录"))
+            XCTAssertTrue(TraeQuotaAuth.isAuthFailure(error))
+        }
+    }
+
+    // 服务端 5xx 不属于鉴权问题，不能被刷新掩盖
+    func testTraeCNServerErrorIsNotAuthFailure() {
+        HTTPJSONClient.transport = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
+            return (Data("{}".utf8), response)
+        }
+        XCTAssertThrowsError(try TraeCNQuotaService.fetchPayload(token: sampleJWT)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("HTTP 500"))
+            XCTAssertFalse(TraeQuotaAuth.isAuthFailure(error))
+        }
+    }
+
+    // 手动粘贴里混入非 JWT 值时不发请求，直接提示令牌类型不对
+    func testTraeCNRejectsNonJWTBeforeRequesting() {
+        var calls = 0
+        HTTPJSONClient.transport = { request in
+            calls += 1
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (Data(self.liveCNPayload.utf8), response)
+        }
+        XCTAssertThrowsError(try TraeCNQuotaService.fetchPayload(token: "api-key-not-a-jwt")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("不是 Trae IDE 版 JWT"))
+            XCTAssertTrue(TraeQuotaAuth.isAuthFailure(error))
+        }
+        XCTAssertEqual(calls, 0)
+    }
 }
+

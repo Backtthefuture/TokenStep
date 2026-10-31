@@ -147,7 +147,21 @@ final class TraeSignInServiceTests: XCTestCase {
             return (Data(#"{"ResponseMetadata":{"Error":{"Code":"20101"}}}"#.utf8), response)
         }
         XCTAssertThrowsError(try TraeSignInService.refresh(provider: .traeCN, refreshToken: "bad")) { error in
-            XCTAssertEqual(error.localizedDescription, "HTTP 401")
+            let text = error.localizedDescription
+            XCTAssertTrue(text.contains("刷新令牌失败"))
+            XCTAssertTrue(text.contains("HTTP 401"))
+        }
+    }
+
+    // 真实端点在无效 refresh token 上返回的 `__Message.error` 会被带进提示
+    func testRefreshSurfacesServerErrorMessage() {
+        HTTPJSONClient.transport = { request in
+            let body = #"{"ResponseMetadata":{"Error":{"Code":"20101","Data":{"__Message.error":"refresh token is invalid"}}}}"#
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            return (Data(body.utf8), response)
+        }
+        XCTAssertThrowsError(try TraeSignInService.refresh(provider: .traeCN, refreshToken: "bad")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("refresh token is invalid"))
         }
     }
 
@@ -258,7 +272,7 @@ final class TraeSignInServiceTests: XCTestCase {
             )
         ) { error in
             let text = error.localizedDescription
-            XCTAssertTrue(text.contains("未登录或登录已过期"))
+            XCTAssertTrue(text.contains("登录不可用"))
             XCTAssertTrue(text.contains("用浏览器登录"))
         }
     }
@@ -275,7 +289,7 @@ final class TraeSignInServiceTests: XCTestCase {
             )
         ) { error in
             let text = error.localizedDescription
-            XCTAssertTrue(text.contains("未登录或登录已过期"))
+            XCTAssertTrue(text.contains("登录不可用"))
             XCTAssertTrue(text.contains("refresh token is invalid"))
             XCTAssertTrue(text.contains("用浏览器登录"))
         }

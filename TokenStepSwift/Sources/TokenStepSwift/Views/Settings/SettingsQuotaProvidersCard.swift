@@ -203,7 +203,7 @@ struct SettingsQuotaProviderBlock: View {
                 .foregroundStyle(.secondary)
             Text(L("1. 用浏览器登录 \(site)（与客户端同一账号）"))
             Text(L("2. 打开开发者工具的 Network（网络）面板"))
-            Text(L("3. 找一条发往 \(host) 的请求，复制请求头 Authorization 中 Bearer 之后的令牌"))
+            Text(L("3. 找一条发往 \(host) 的请求，复制请求头 Authorization 中 Cloud-IDE-JWT 之后的令牌（Trae 不用 Bearer）"))
             Text(L("4. 粘贴到上方输入框，点「保存并检测」"))
             Text(L("令牌过期后会自动尝试刷新；刷新也失效时重新登录即可。浏览器面板的具体名称以你的浏览器为准（待确认）。"))
                 .foregroundStyle(.tertiary)
@@ -229,8 +229,8 @@ struct SettingsQuotaProviderBlock: View {
         case .glm: return L("粘贴 Coding Plan API Key")
         case .kimi: return L("粘贴 Kimi access_token")
         case .grok: return L("一般不用填，短码不要贴到这里")
-        case .trae: return L("粘贴 Trae 访问令牌（Bearer token）")
-        case .traeCN: return L("粘贴 Trae CN 访问令牌（Bearer token）")
+        case .trae: return L("粘贴 Trae 的 IDE JWT（Cloud-IDE-JWT）")
+        case .traeCN: return L("粘贴 Trae CN 的 IDE JWT（Cloud-IDE-JWT）")
         default: return ""
         }
     }
