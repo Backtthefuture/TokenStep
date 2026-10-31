@@ -149,6 +149,10 @@ struct SettingsQuotaProviderBlock: View {
                 }
             }
 
+            if provider == .trae || provider == .traeCN {
+                tokenGuide
+            }
+
             Text(L("密钥只保存在钥匙串，不会写入 settings.json"))
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -156,6 +160,28 @@ struct SettingsQuotaProviderBlock: View {
         .padding(10)
         .background(Color.tokenTrack.opacity(0.28), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .padding(.bottom, 8)
+    }
+
+    /// Trae / Trae CN 的「如何获取令牌」引导。客户端把登录态加密保存在本机
+    /// （实测 database.db 与 storage.json 均非明文），TokenStep 无法直接读取，
+    /// 只能让用户手动粘贴。浏览器内具体面板名称未逐一验证，文案用通用表述。
+    private var tokenGuide: some View {
+        let site = provider == .traeCN ? "trae.cn" : "trae.ai"
+        let host = provider == .traeCN ? "api.trae.cn" : "*.trae.ai"
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(L("如何获取令牌（客户端登录态已加密，无法自动读取）："))
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(.secondary)
+            Text(L("1. 用浏览器登录 \(site)（与客户端同一账号）"))
+            Text(L("2. 打开开发者工具的 Network（网络）面板"))
+            Text(L("3. 找一条发往 \(host) 的请求，复制请求头 Authorization 中 Bearer 之后的令牌"))
+            Text(L("4. 粘贴到上方输入框，点「保存并检测」"))
+            Text(L("令牌过期后检测会失败，重新粘贴即可。浏览器面板的具体名称以你的浏览器为准（待确认）。"))
+                .foregroundStyle(.tertiary)
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func compactButton(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
@@ -174,6 +200,8 @@ struct SettingsQuotaProviderBlock: View {
         case .glm: return L("粘贴 Coding Plan API Key")
         case .kimi: return L("粘贴 Kimi access_token")
         case .grok: return L("一般不用填，短码不要贴到这里")
+        case .trae: return L("粘贴 Trae 访问令牌（Bearer token）")
+        case .traeCN: return L("粘贴 Trae CN 访问令牌（Bearer token）")
         default: return ""
         }
     }

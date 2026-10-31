@@ -39,6 +39,10 @@ enum QuotaRefreshCoordinator {
                 return try KimiQuotaService.read()
             case .grok:
                 return try GrokQuotaService.read()
+            case .trae:
+                return try TraeQuotaService.read()
+            case .traeCN:
+                return try TraeCNQuotaService.read()
             }
         } catch {
             return ProviderQuota.unavailable(

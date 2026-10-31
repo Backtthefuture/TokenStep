@@ -68,6 +68,8 @@ struct QuotaProviderIcon: View {
         case .glm: return "GL"
         case .kimi: return "Km"
         case .grok: return "Gk"
+        case .trae: return "Tr"
+        case .traeCN: return "TC"
         }
     }
 
@@ -75,7 +77,9 @@ struct QuotaProviderIcon: View {
     private static let bundleIdentifiers: [QuotaProviderID: [String]] = [
         .codex: ["com.openai.codex", "com.openai.chat"],
         .claude: ["com.anthropic.claudefordesktop"],
-        .cursor: ["com.todesktop.230313mzl4w4u92"]
+        .cursor: ["com.todesktop.230313mzl4w4u92"],
+        .trae: ["com.trae.app"],
+        .traeCN: ["cn.trae.app"]
     ]
 
     private static var iconCache: [QuotaProviderID: NSImage?] = [:]
