@@ -87,14 +87,35 @@ enum QuotaStatus: String, Codable, Equatable {
     case needsLogin
 }
 
+/// How a window's `remaining` / `total` numbers are meant to be read.
+/// Optional on `QuotaWindow` so cached readings written before this field
+/// existed still decode; a missing unit keeps the historic percent reading.
+enum QuotaUnit: String, Codable, Equatable {
+    case percent
+    case credits
+    case usd
+    case count
+}
+
 struct QuotaWindow: Equatable, Identifiable, Codable {
     var kind: QuotaWindowKind
     var usedPercent: Double
     var remaining: Double?
     var total: Double?
     var resetsAt: Date?
+    var unit: QuotaUnit?
 
     var id: String { kind.rawValue }
+
+    var resolvedUnit: QuotaUnit { unit ?? .percent }
+
+    /// Whole credits used and granted; nil for every non-credits window.
+    var creditAmounts: (used: Int, total: Int)? {
+        guard resolvedUnit == .credits, let total, total > 0 else { return nil }
+        let totalCredits = Int(total.rounded())
+        let remainingCredits = Int(max(remaining ?? 0, 0).rounded())
+        return (max(totalCredits - remainingCredits, 0), max(totalCredits, 1))
+    }
 
     var remainingPercent: Double {
         if let remaining, let total, total > 0 {
@@ -103,7 +124,15 @@ struct QuotaWindow: Equatable, Identifiable, Codable {
         return min(max(100 - usedPercent, 0), 100)
     }
 
-    var title: String { kind.title }
+    /// Trae CN reports credits rather than a share of a plan, so its row is
+    /// labelled by unit instead of by the shared `.monthlyCredits` kind.
+    var title: String {
+        switch resolvedUnit {
+        case .credits: return L("积分额度")
+        case .usd: return kind == .spend ? kind.title : L("花费")
+        case .percent, .count: return kind.title
+        }
+    }
 
     var isLow: Bool {
         remainingPercent < 20
@@ -195,6 +224,39 @@ extension CodexQuotaSnapshot {
             fetchedAt: fetchedAt,
             message: isAvailable ? nil : L("暂不可用")
         )
+    }
+}
+
+/// Assembly and copy rules for the main-window quota card. Kept out of the
+/// view so the enabled/unavailable behaviour is covered by unit tests.
+enum QuotaPresentation {
+    /// Every enabled provider, including ones without a reading yet: the card
+    /// explains why a provider is missing instead of silently dropping it.
+    static func displayQuotas(
+        enabled: Set<QuotaProviderID>,
+        quotas: [QuotaProviderID: ProviderQuota]
+    ) -> [ProviderQuota] {
+        QuotaProviderID.allCases.compactMap { id in
+            guard enabled.contains(id) else { return nil }
+            return quotas[id] ?? ProviderQuota.unavailable(id)
+        }
+    }
+
+    static func unavailableReason(_ quota: ProviderQuota, isRefreshing: Bool) -> String {
+        guard !quota.isAvailable else { return "" }
+        if let message = quota.message, !message.isEmpty {
+            return message
+        }
+        switch quota.status {
+        case .notLoggedIn:
+            return L("未登录，请在设置里授权")
+        case .wrongKeyType:
+            return L("凭证类型不对，请在设置里更新")
+        case .needsLogin:
+            return L("登录已过期，请在设置里重新授权")
+        case .available, .unavailable:
+            return isRefreshing ? L("正在读取额度…") : L("尚未读取到额度，稍后会自动重试")
+        }
     }
 }
 

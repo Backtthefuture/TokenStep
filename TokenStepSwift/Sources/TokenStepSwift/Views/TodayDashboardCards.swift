@@ -82,3 +82,121 @@ enum TodayModelUsageRows {
         return usage.models.values.filter { $0 > 0 }.reduce(0, +) != usage.totalTokens
     }
 }
+
+// MARK: - Subscription quotas
+
+/// Quota of every enabled provider, rendered by unit: Trae CN in credits,
+/// Trae in dollars, everything else as the historic percent reading.
+struct TodayQuotaCard: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        let quotas = appState.dashboardQuotas
+        TokenCard {
+            VStack(alignment: .leading, spacing: 14) {
+                DashboardCardHeader(L("订阅额度")) {
+                    if appState.isRefreshingCodexQuota {
+                        Text(L("读取中…"))
+                    } else if let updated = quotas.compactMap(\.fetchedAt).max() {
+                        Text(LFormat("已用 · %@", CompactPopoverStyle.relative(updated)))
+                    }
+                }
+                if quotas.isEmpty {
+                    Text(L("在设置里启用额度监控后，这里会显示各订阅的剩余额度。"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+                } else {
+                    ForEach(quotas) { quota in
+                        providerBlock(quota)
+                    }
+                }
+            }
+        }
+    }
+
+    private func providerBlock(_ quota: ProviderQuota) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                QuotaProviderIcon(provider: quota.provider, size: 18)
+                Text(quota.provider.displayName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.tokenInk)
+                if quota.isAvailable, quota.isLow {
+                    Text(L("额度偏低"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(CompactPopoverStyle.color(for: .warning))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(CompactPopoverStyle.color(for: .warning).opacity(0.14), in: Capsule())
+                }
+                Spacer(minLength: 8)
+                if let fetchedAt = quota.fetchedAt {
+                    Text(CompactPopoverStyle.relative(fetchedAt))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if quota.isAvailable {
+                ForEach(quota.windows) { window in
+                    windowRow(window)
+                }
+            } else {
+                Text(QuotaPresentation.unavailableReason(quota, isRefreshing: appState.isRefreshingCodexQuota))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func windowRow(_ window: QuotaWindow) -> some View {
+        let row = CompactPopoverModel.windowRow(window, now: Date(), calendar: TokenStepClock.calendar)
+        return HStack(spacing: 10) {
+            Text(row.title)
+                .font(.system(size: 12, weight: row.runsOutEarly ? .semibold : .regular))
+                .foregroundStyle(row.runsOutEarly ? CompactPopoverStyle.color(for: .warning) : Color.secondary)
+                .frame(width: 72, alignment: .leading)
+                .lineLimit(1)
+            CompactBar(
+                fraction: row.usedPercent / 100,
+                color: CompactPopoverStyle.color(for: row.level),
+                marker: row.elapsedFraction
+            )
+            if row.isReset {
+                Text("—")
+                    .font(.system(size: 12, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(CompactPopoverStyle.textColor(for: row.level))
+                    .frame(width: 132, alignment: .trailing)
+            } else if let credits = row.creditUsageText {
+                Text(credits)
+                    .font(.system(size: 12, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(CompactPopoverStyle.textColor(for: row.level))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(width: 132, alignment: .trailing)
+            } else {
+                Text(CompactPopoverStyle.percent(row.usedPercent))
+                    .font(.system(size: 12, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(CompactPopoverStyle.textColor(for: row.level))
+                    .frame(width: 48, alignment: .trailing)
+            }
+            Text(row.isReset ? L("已重置") : CompactPopoverStyle.resetText(row.resetsAt) ?? "")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(width: 80, alignment: .trailing)
+        }
+        .help(windowHelp(row))
+    }
+
+    private func windowHelp(_ row: CompactPopoverModel.QuotaWindowRow) -> String {
+        if let usage = row.creditUsageText, let remaining = row.creditRemainingText {
+            return LFormat("%@，%@", usage, remaining)
+        }
+        return LFormat("已用 %@", CompactPopoverStyle.percent(row.usedPercent))
+    }
+}

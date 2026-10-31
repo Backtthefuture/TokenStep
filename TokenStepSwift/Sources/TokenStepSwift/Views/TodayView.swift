@@ -35,6 +35,8 @@ struct TodayView: View {
 
             TodayHourlyStackCard()
 
+            TodayQuotaCard()
+
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 16) {
                     TodayClientsCard()

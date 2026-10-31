@@ -39,6 +39,20 @@ enum TokenStepFormat {
         return formatter.string(from: NSNumber(value: value)) ?? "$0.00"
     }
 
+    /// Whole amounts with thousands separators, for credit balances.
+    static func whole(_ value: Int) -> String {
+        wholeFormatter.locale = TokenStepLocalization.locale
+        return wholeFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    private static let wholeFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        formatter.locale = TokenStepLocalization.locale
+        return formatter
+    }()
+
     static func percent(_ value: Double) -> String {
         if value >= 100 { return "\(Int(value.rounded()))%" }
         if value >= 10 { return String(format: "%.1f%%", value) }

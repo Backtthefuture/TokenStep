@@ -181,14 +181,22 @@ enum TraeCNQuotaService {
         }
         // 不限量没有百分比口径，按客户端面板处理方式不显示额度窗。
         guard !unlimited, limit > 0 else { return [] }
-        let usedPercent = min(max(used / limit * 100, 0), 100)
+        // `usage_summary` 是 IDE 面板自己显示的口径，`consumption_ratio`
+        // 也由它推导；存在时优先使用，保证积分数与百分比一致。
+        let summary = (object["usage_summary"] as? [String: Any]) ?? [:]
+        let summaryTotal = QuotaJSON.number(summary["total_amount"]) ?? 0
+        let summaryUsed = QuotaJSON.number(summary["consumed_amount"]) ?? 0
+        let total = summaryTotal > 0 ? summaryTotal : limit
+        let effectiveUsed = summaryTotal > 0 ? summaryUsed : used
+        let usedPercent = min(max(effectiveUsed / total * 100, 0), 100)
         return [
             QuotaWindow(
                 kind: .monthlyCredits,
                 usedPercent: usedPercent,
-                remaining: max(limit - used, 0),
-                total: limit,
-                resetsAt: soonest
+                remaining: max(total - effectiveUsed, 0),
+                total: total,
+                resetsAt: soonest,
+                unit: .credits
             )
         ]
     }
@@ -267,7 +275,8 @@ enum TraeQuotaService {
                 usedPercent: usedPercent,
                 remaining: max(total - used, 0),
                 total: total,
-                resetsAt: epochDate(base["end_time"])
+                resetsAt: epochDate(base["end_time"]),
+                unit: .usd
             )
         ]
     }

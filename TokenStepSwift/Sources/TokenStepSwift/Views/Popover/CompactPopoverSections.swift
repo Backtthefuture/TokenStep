@@ -228,7 +228,7 @@ private struct CompactSectionHeader: View {
     }
 }
 
-private struct CompactBar: View {
+struct CompactBar: View {
     var fraction: Double
     var color: Color
     var height: CGFloat = 6
@@ -326,6 +326,9 @@ struct CompactQuotaSection: View {
         if window.isReset {
             return L("已过重置时间，等待下一次读取额度")
         }
+        if let usage = window.creditUsageText, let remaining = window.creditRemainingText {
+            return LFormat("%@，%@", usage, remaining)
+        }
         guard let elapsed = window.elapsedFraction else {
             return LFormat("已用 %@", CompactPopoverStyle.percent(window.usedPercent))
         }
@@ -368,11 +371,28 @@ struct CompactQuotaSection: View {
                         color: CompactPopoverStyle.color(for: window.level),
                         marker: window.elapsedFraction
                     )
-                    Text(window.isReset ? "—" : CompactPopoverStyle.percent(window.usedPercent))
-                        .font(.system(size: 12, weight: .bold))
-                        .monospacedDigit()
-                        .foregroundStyle(CompactPopoverStyle.textColor(for: window.level))
-                        .frame(width: 38, alignment: .trailing)
+                    if window.isReset {
+                        Text("—")
+                            .font(.system(size: 12, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(CompactPopoverStyle.textColor(for: window.level))
+                            .frame(width: 38, alignment: .trailing)
+                    } else if let credits = window.creditUsageText {
+                        // Trae CN is a credit balance, not a percentage of a plan.
+                        Text(credits)
+                            .font(.system(size: 11, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(CompactPopoverStyle.textColor(for: window.level))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .frame(width: 88, alignment: .trailing)
+                    } else {
+                        Text(CompactPopoverStyle.percent(window.usedPercent))
+                            .font(.system(size: 12, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(CompactPopoverStyle.textColor(for: window.level))
+                            .frame(width: 38, alignment: .trailing)
+                    }
                     Text(window.isReset ? L("已重置") : CompactPopoverStyle.resetText(window.resetsAt) ?? "")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
