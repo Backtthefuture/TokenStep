@@ -2,6 +2,10 @@
 
 TokenStep 各版本的更新内容，新版本在前。每个版本的完整说明在 [docs/RELEASE_NOTES_<版本号>.md](docs/)。
 
+## 0.2.25 更新：Trae 浏览器一键登录与令牌自动续期
+
+Trae 与 Trae CN 额度新增「用浏览器登录」：点一下即可完成授权，令牌自动写入钥匙串并在过期后自动续期，手动粘贴令牌保留为兜底。详见 [0.2.25 发布说明](docs/RELEASE_NOTES_0.2.25.md)。
+
 ## 0.2.24 更新：新增 Trae / Trae CN 额度监控
 
 设置页可开启 Trae（trae.ai）与 Trae CN（trae.cn）额度显示，粘贴登录令牌后读取官方用量接口；客户端本地用量库为加密存储，Trae 暂不进入 Token 消耗统计。详见 [0.2.24 发布说明](docs/RELEASE_NOTES_0.2.24.md)。

@@ -33,8 +33,8 @@ enum QuotaProviderID: String, Codable, CaseIterable, Identifiable, Hashable {
         case .glm: return L("填写 Coding Plan API Key，只进钥匙串")
         case .kimi: return L("粘贴 ~/.kimi 的 access_token，不要用开放平台 key")
         case .grok: return L("读取 ~/.grok/auth.json，短码不要贴到 TokenStep")
-        case .trae: return L("粘贴 trae.ai 登录后的访问令牌，只进钥匙串")
-        case .traeCN: return L("粘贴 trae.cn 登录后的访问令牌，只进钥匙串")
+        case .trae: return L("浏览器登录自动取令牌，也可手动粘贴")
+        case .traeCN: return L("浏览器登录自动取令牌，也可手动粘贴")
         }
     }
 }
