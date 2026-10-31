@@ -33,6 +33,10 @@ enum CompactPopoverModel {
         var usedPercent: Double
         var level: QuotaLevel
         var resetsAt: Date?
+        var unit: QuotaUnit = .percent
+        /// Whole credits used and granted, only for `unit == .credits`.
+        var creditUsed: Int?
+        var creditTotal: Int?
         /// Share of the window that has passed, 0...1; nil when the window length is unknown.
         var elapsedFraction: Double?
         /// At the current pace the window runs out before it resets.
@@ -40,6 +44,21 @@ enum CompactPopoverModel {
         /// The reset time has passed since the reading, so its percentage is
         /// stale until the next quota check.
         var isReset = false
+
+        /// "已用 163 / 4,600 积分" — absolute credits, never a percent.
+        var creditUsageText: String? {
+            guard let creditUsed, let creditTotal else { return nil }
+            return LFormat(
+                "已用 %@ / %@ 积分",
+                TokenStepFormat.whole(creditUsed),
+                TokenStepFormat.whole(creditTotal)
+            )
+        }
+
+        var creditRemainingText: String? {
+            guard let creditUsed, let creditTotal else { return nil }
+            return LFormat("剩余 %@ 积分", TokenStepFormat.whole(max(creditTotal - creditUsed, 0)))
+        }
     }
 
     struct QuotaProviderRow: Equatable, Identifiable {
@@ -119,6 +138,7 @@ enum CompactPopoverModel {
     }
 
     static func windowRow(_ window: QuotaWindow, now: Date, calendar: Calendar) -> QuotaWindowRow {
+        let credits = window.creditAmounts
         if let resetsAt = window.resetsAt, resetsAt <= now {
             return QuotaWindowRow(
                 kind: window.kind,
@@ -126,13 +146,20 @@ enum CompactPopoverModel {
                 usedPercent: 0,
                 level: .normal,
                 resetsAt: resetsAt,
+                unit: window.resolvedUnit,
+                creditUsed: credits?.used,
+                creditTotal: credits?.total,
                 elapsedFraction: nil,
                 runsOutEarly: false,
                 isReset: true
             )
         }
         let used = min(max(100 - window.remainingPercent, 0), 100)
-        let elapsed = elapsedFraction(kind: window.kind, resetsAt: window.resetsAt, now: now, calendar: calendar)
+        // Credits carry no fixed window length, so a pace marker would invent
+        // one; only percent windows get it.
+        let elapsed = window.resolvedUnit == .percent
+            ? elapsedFraction(kind: window.kind, resetsAt: window.resetsAt, now: now, calendar: calendar)
+            : nil
         let runsOutEarly: Bool
         if let elapsed, elapsed >= 0.1, used < 100 {
             // Straight-line projection of the current pace to the end of the window.
@@ -146,6 +173,9 @@ enum CompactPopoverModel {
             usedPercent: used,
             level: QuotaLevel(usedPercent: used),
             resetsAt: window.resetsAt,
+            unit: window.resolvedUnit,
+            creditUsed: credits?.used,
+            creditTotal: credits?.total,
             elapsedFraction: elapsed,
             runsOutEarly: runsOutEarly
         )

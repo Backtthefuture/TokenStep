@@ -35,10 +35,34 @@ final class TraeQuotaServiceTests: XCTestCase {
         let windows = TraeCNQuotaService.windows(from: payload)
         XCTAssertEqual(windows.count, 1)
         XCTAssertEqual(windows[0].kind, .monthlyCredits)
+        XCTAssertEqual(windows[0].unit, .credits)
         XCTAssertEqual(windows[0].total ?? -1, 1500, accuracy: 0.01)
         XCTAssertEqual(windows[0].remaining ?? -1, 1200, accuracy: 0.01)
         XCTAssertEqual(windows[0].usedPercent, 20, accuracy: 0.01)
         XCTAssertEqual(windows[0].resetsAt, Date(timeIntervalSince1970: 1_900_000_000))
+    }
+
+    // Trae CN：usage_summary 与 consumption_ratio 是 IDE 面板口径，优先于额度包汇总
+    func testTraeCNPrefersUsageSummaryOverPackSums() {
+        let payload: [String: Any] = [
+            "usage_summary": [
+                "consumed_amount": 200.0,
+                "total_amount": 1000.0,
+                "consumption_ratio": 0.2
+            ],
+            "user_entitlement_pack_list": [
+                [
+                    "entitlement_base_info": ["quota": ["credits_limit": 1000]],
+                    "usage": ["credits_amount": 10]
+                ]
+            ]
+        ]
+        let windows = TraeCNQuotaService.windows(from: payload)
+        XCTAssertEqual(windows.count, 1)
+        XCTAssertEqual(windows[0].unit, .credits)
+        XCTAssertEqual(windows[0].total ?? -1, 1000, accuracy: 0.01)
+        XCTAssertEqual(windows[0].remaining ?? -1, 800, accuracy: 0.01)
+        XCTAssertEqual(windows[0].usedPercent, 20, accuracy: 0.01)
     }
 
     // Trae CN：存在不限量包（credits_limit = -1）时不显示额度窗
@@ -88,6 +112,7 @@ final class TraeQuotaServiceTests: XCTestCase {
         let windows = TraeQuotaService.windows(from: payload)
         XCTAssertEqual(windows.count, 1)
         XCTAssertEqual(windows[0].kind, .spend)
+        XCTAssertEqual(windows[0].unit, .usd)
         XCTAssertEqual(windows[0].total ?? -1, 15, accuracy: 0.01)
         XCTAssertEqual(windows[0].remaining ?? -1, 10.5, accuracy: 0.01)
         XCTAssertEqual(windows[0].usedPercent, 30, accuracy: 0.01)
@@ -168,6 +193,7 @@ final class TraeQuotaServiceTests: XCTestCase {
 
         let windows = TraeCNQuotaService.windows(from: payload)
         XCTAssertEqual(windows.count, 1)
+        XCTAssertEqual(windows[0].unit, .credits)
         XCTAssertEqual(windows[0].total ?? -1, 4600, accuracy: 0.01)
         XCTAssertEqual(windows[0].remaining ?? -1, 4448.9228, accuracy: 0.01)
         XCTAssertEqual(windows[0].usedPercent, 3.2843, accuracy: 0.01)

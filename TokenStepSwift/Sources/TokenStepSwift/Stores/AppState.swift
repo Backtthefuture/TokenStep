@@ -408,6 +408,15 @@ final class AppState: ObservableObject {
         return 2
     }
 
+    /// Every enabled provider for the dashboard card, including ones whose
+    /// reading failed so the card can name the reason instead of hiding them.
+    var dashboardQuotas: [ProviderQuota] {
+        QuotaPresentation.displayQuotas(
+            enabled: settings.enabledQuotaProviders,
+            quotas: quotas
+        )
+    }
+
     var hasLowQuotaWarning: Bool {
         visibleQuotas.contains { $0.isAvailable && $0.isLow }
     }
