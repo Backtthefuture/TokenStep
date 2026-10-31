@@ -9,6 +9,8 @@ enum TokenStepSecrets {
         case grokAccessToken = "grok-access-token"
         case traeAccessToken = "trae-access-token"
         case traeCNAccessToken = "traecn-access-token"
+        case traeRefreshToken = "trae-refresh-token"
+        case traeCNRefreshToken = "traecn-refresh-token"
     }
 
     static func has(_ account: Account) -> Bool {

@@ -25,6 +25,7 @@ final class AppState: ObservableObject {
     @Published private(set) var updateDownloadedURL: URL?
     @Published private(set) var tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable
     @Published private(set) var showsUsageRecalibrationNotice = false
+    @Published private(set) var signingInQuotaProvider: QuotaProviderID?
     @Published var lastError: String?
 
     private var timer: Timer?
@@ -605,8 +606,37 @@ final class AppState: ObservableObject {
     func clearQuotaSecret(_ id: QuotaProviderID) {
         guard let account = id.secretAccount else { return }
         TokenStepSecrets.delete(account)
+        if id == .trae || id == .traeCN {
+            TokenStepSecrets.delete(TraeSignInService.refreshAccount(provider: id))
+        }
         objectWillChange.send()
         refreshCodexQuota(force: true)
+    }
+
+    /// 打开浏览器授权：Trae 客户端同款的本地回环回调，完成后令牌只进钥匙串。
+    /// 失败时把原因写到 `lastError`，不静默。
+    func startBrowserSignIn(_ id: QuotaProviderID) {
+        guard id == .trae || id == .traeCN, signingInQuotaProvider == nil else { return }
+        signingInQuotaProvider = id
+        lastError = nil
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try TraeSignInService.signIn(provider: id) }
+            }.value
+            signingInQuotaProvider = nil
+            switch result {
+            case .success(let credentials):
+                TraeSignInService.save(credentials, provider: id)
+                objectWillChange.send()
+                if settings.enabledQuotaProviders.contains(id) {
+                    refreshCodexQuota(force: true)
+                } else {
+                    setQuotaProvider(id, enabled: true, confirmNetworkAccess: false)
+                }
+            case .failure(let error):
+                lastError = error.localizedDescription
+            }
+        }
     }
 
     func revealQuotaCredentialFolder(_ id: QuotaProviderID) {

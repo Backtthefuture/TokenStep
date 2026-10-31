@@ -7,7 +7,7 @@ struct SettingsQuotaProvidersPane: View {
         VStack(spacing: 16) {
             SettingsSectionCard(
                 title: L("订阅额度提供商"),
-                subtitle: L("本机登录态或手动填写 · 密钥只进钥匙串")
+                subtitle: L("浏览器登录自动取令牌 · 手动粘贴仍可用 · 密钥只进钥匙串")
             ) {
                 VStack(spacing: 0) {
                     ForEach(QuotaProviderID.allCases) { provider in
@@ -120,6 +120,10 @@ struct SettingsQuotaProviderBlock: View {
 
     private var credentialEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if provider == .trae || provider == .traeCN {
+                browserSignInRow
+            }
+
             if appState.hasQuotaSecret(provider) {
                 Text(L("已保存在钥匙串，重新输入可覆盖"))
                     .font(.caption.weight(.semibold))
@@ -162,21 +166,46 @@ struct SettingsQuotaProviderBlock: View {
         .padding(.bottom, 8)
     }
 
+    /// 一键浏览器授权：打开官网登录页，回调拿令牌并写入钥匙串。
+    private var browserSignInRow: some View {
+        HStack(spacing: 8) {
+            let isSigningIn = appState.signingInQuotaProvider == provider
+            compactButton(
+                isSigningIn ? L("等待浏览器授权…") : L("用浏览器登录"),
+                disabled: appState.signingInQuotaProvider != nil
+            ) {
+                appState.startBrowserSignIn(provider)
+            }
+            Text(
+                isSigningIn
+                    ? L("请在浏览器完成登录，成功后自动显示额度")
+                    : L("推荐：点一下登录，令牌自动写入钥匙串")
+            )
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     /// Trae / Trae CN 的「如何获取令牌」引导。客户端把登录态加密保存在本机
     /// （实测 database.db 与 storage.json 均非明文），TokenStep 无法直接读取，
-    /// 只能让用户手动粘贴。浏览器内具体面板名称未逐一验证，文案用通用表述。
+    /// 所以首选浏览器授权；手动粘贴作为兜底。浏览器内具体面板名称未逐一验证，
+    /// 文案用通用表述。
     private var tokenGuide: some View {
         let site = provider == .traeCN ? "trae.cn" : "trae.ai"
         let host = provider == .traeCN ? "api.trae.cn" : "*.trae.ai"
         return VStack(alignment: .leading, spacing: 4) {
-            Text(L("如何获取令牌（客户端登录态已加密，无法自动读取）："))
+            Text(L("自动获取（推荐）：点上方「用浏览器登录」，授权页会回跳本机并自动保存令牌。"))
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(.secondary)
+            Text(L("手动粘贴（兜底）："))
                 .font(.caption2.weight(.heavy))
                 .foregroundStyle(.secondary)
             Text(L("1. 用浏览器登录 \(site)（与客户端同一账号）"))
             Text(L("2. 打开开发者工具的 Network（网络）面板"))
             Text(L("3. 找一条发往 \(host) 的请求，复制请求头 Authorization 中 Bearer 之后的令牌"))
             Text(L("4. 粘贴到上方输入框，点「保存并检测」"))
-            Text(L("令牌过期后检测会失败，重新粘贴即可。浏览器面板的具体名称以你的浏览器为准（待确认）。"))
+            Text(L("令牌过期后会自动尝试刷新；刷新也失效时重新登录即可。浏览器面板的具体名称以你的浏览器为准（待确认）。"))
                 .foregroundStyle(.tertiary)
         }
         .font(.caption2.weight(.semibold))
