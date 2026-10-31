@@ -2,6 +2,10 @@
 
 TokenStep 各版本的更新内容，新版本在前。每个版本的完整说明在 [docs/RELEASE_NOTES_<版本号>.md](docs/)。
 
+## 0.2.26 更新：修复 Trae 额度鉴权（Cloud-IDE-JWT）
+
+Trae / Trae CN 改用 IDE 同款 Cloud-IDE-JWT 鉴权，修复 0.2.25 浏览器登录后仍报 401、额度不显示的问题；令牌过期与类型错误的提示也已区分。详见 [0.2.26 发布说明](docs/RELEASE_NOTES_0.2.26.md)。
+
 ## 0.2.25 更新：Trae 浏览器一键登录与令牌自动续期
 
 Trae 与 Trae CN 额度新增「用浏览器登录」：点一下即可完成授权，令牌自动写入钥匙串并在过期后自动续期，手动粘贴令牌保留为兜底。详见 [0.2.25 发布说明](docs/RELEASE_NOTES_0.2.25.md)。
