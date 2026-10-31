@@ -2,6 +2,10 @@
 
 TokenStep 各版本的更新内容，新版本在前。每个版本的完整说明在 [docs/RELEASE_NOTES_<版本号>.md](docs/)。
 
+## 0.2.27 更新：Trae CN 额度改为积分口径，今日新增订阅额度卡片
+
+Trae CN 的额度改按积分显示「已用 / 总量积分」，主窗口「今日」页新增「订阅额度」卡片；其他 provider 的百分比渲染保持不变。详见 [0.2.27 发布说明](docs/RELEASE_NOTES_0.2.27.md)。
+
 ## 0.2.26 更新：修复 Trae 额度鉴权（Cloud-IDE-JWT）
 
 Trae / Trae CN 改用 IDE 同款 Cloud-IDE-JWT 鉴权，修复 0.2.25 浏览器登录后仍报 401、额度不显示的问题；令牌过期与类型错误的提示也已区分。详见 [0.2.26 发布说明](docs/RELEASE_NOTES_0.2.26.md)。
