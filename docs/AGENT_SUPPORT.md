@@ -82,7 +82,8 @@ TokenStep 采用：
 | Cline | 较高 | 需要真实任务目录样本确认模型和 usage 字段。 |
 | Kilo Code | 较高 | 可按 `api_req_started` 事件读取 token，但需要本机样本验证。 |
 | CodeBuddy | 中 | 本机看到 VS Code secret buffer 和产品缓存，但不是明文 usage；需要官方 usage 文件或可验证字段。 |
-| Cursor / Windsurf / Trae | 中 | 需要确认是否本地暴露 token usage，不应只按聊天字数估算。 |
+| Cursor / Windsurf | 中 | 需要确认是否本地暴露 token usage，不应只按聊天字数估算。 |
+| Trae / Trae CN | 仅额度 | 本地用量数据库 `ModularData/ai-agent/database.db` 为加密存储（非 SQLite 明文），无法按规则 1/3 统计 token，不进入正式统计。额度走官方 pay 接口（Trae CN：`api.trae.cn/trae/api/v2/pay/ide_user_ent_usage`，credits 口径；Trae 国际版：`api-sg-central.trae.ai` / `api-us-east.trae.ai` 的 `user_current_entitlement_list`，美元口径），端点存在性已验证；登录态在客户端本地加密存储，TokenStep 需用户手动粘贴访问令牌（只进钥匙串），故标记为实验。 |
 | Hermes Agent | 待确认 | 本机日志存在 `tokens=~` 估算和压缩/错误记录，暂不进入正式总量。需要真实 API usage 或统一事件。 |
 | WorkBuddy | 待确认 | 本机未找到稳定 token usage 日志；需要产品侧提供本地统计文件或事件。 |
 

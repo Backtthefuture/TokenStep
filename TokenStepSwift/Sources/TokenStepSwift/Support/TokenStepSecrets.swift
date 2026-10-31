@@ -7,6 +7,8 @@ enum TokenStepSecrets {
         case glmAPIKey = "glm-api-key"
         case kimiAccessToken = "kimi-access-token"
         case grokAccessToken = "grok-access-token"
+        case traeAccessToken = "trae-access-token"
+        case traeCNAccessToken = "traecn-access-token"
     }
 
     static func has(_ account: Account) -> Bool {
@@ -93,6 +95,8 @@ extension QuotaProviderID {
         case .glm: return .glmAPIKey
         case .kimi: return .kimiAccessToken
         case .grok: return .grokAccessToken
+        case .trae: return .traeAccessToken
+        case .traeCN: return .traeCNAccessToken
         default: return nil
         }
     }

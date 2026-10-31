@@ -138,6 +138,31 @@ enum AgentSourceRegistry {
             rankClientKeys: ["grok"]
         ),
         AgentSourceDescriptor(
+            id: "trae",
+            displayName: "Trae",
+            tier: .quota,
+            colorToken: AgentSourceColorToken(red: 0.30, green: 0.42, blue: 0.98),
+            isExperimental: true,
+            probePaths: [
+                "~/Library/Application Support/Trae",
+                "~/Library/Application Support/Trae - Beta"
+            ],
+            aliases: ["Trae Global", "Trae International"],
+            rankClientKeys: ["trae"]
+        ),
+        AgentSourceDescriptor(
+            id: "traecn",
+            displayName: "Trae CN",
+            tier: .quota,
+            colorToken: AgentSourceColorToken(red: 0.13, green: 0.52, blue: 0.90),
+            isExperimental: true,
+            probePaths: [
+                "~/Library/Application Support/Trae CN"
+            ],
+            aliases: ["TraeCN", "Trae 中国版"],
+            rankClientKeys: ["traecn"]
+        ),
+        AgentSourceDescriptor(
             id: "cursor-code",
             displayName: "Cursor 代码产出",
             tier: .signal,
