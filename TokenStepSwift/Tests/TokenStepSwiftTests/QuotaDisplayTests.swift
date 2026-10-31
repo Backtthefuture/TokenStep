@@ -138,4 +138,12 @@ final class QuotaDisplayTests: XCTestCase {
         let quotas = QuotaPresentation.displayQuotas(enabled: [.traeCN], quotas: [:])
         XCTAssertEqual(quotas.map(\.provider), [.traeCN])
     }
+
+    // 英文表构建时会校验重复键；这条确保积分文案真的有翻译
+    func testEnglishTranslationsLoadForCreditsCopy() {
+        TokenStepLocalization.apply(.en)
+        defer { TokenStepLocalization.apply(.system) }
+        XCTAssertEqual(L("积分额度"), "Credit balance")
+        XCTAssertTrue(L("订阅额度").contains("Quota"))
+    }
 }

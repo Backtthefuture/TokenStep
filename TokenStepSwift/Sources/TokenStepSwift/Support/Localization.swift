@@ -669,7 +669,6 @@ enum TokenStepLocalization {
             "积分额度": "Credit balance",
             "已用 %@ / %@ 积分": "%@ of %@ credits used",
             "剩余 %@ 积分": "%@ credits left",
-            "订阅额度": "Subscription quotas",
             "在设置里启用额度监控后，这里会显示各订阅的剩余额度。": "Enable quota monitoring in Settings to see each subscription's remaining quota here.",
             "正在读取额度…": "Reading quotas…",
             "尚未读取到额度，稍后会自动重试": "No quota reading yet; it will retry automatically",
