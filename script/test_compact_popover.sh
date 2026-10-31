@@ -52,9 +52,11 @@ swiftc \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/AppPaths.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/TokenStepClock.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Localization.swift" \
+  "$SWIFT_DIR/Sources/TokenStepSwift/Support/Formatters.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/Theme.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/SQLiteReadonly.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/QuotaModels.swift" \
+  "$SWIFT_DIR/Sources/TokenStepSwift/Models/AgentSourceRegistry.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/Collector/"*.swift \
   "$SWIFT_DIR/Sources/TokenStepSwift/Views/Popover/CompactPopoverModel.swift" \
