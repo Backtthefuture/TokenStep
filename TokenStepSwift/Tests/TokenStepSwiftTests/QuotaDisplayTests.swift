@@ -6,12 +6,12 @@ final class QuotaDisplayTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let calendar = Calendar(identifier: .gregorian)
 
-    // Trae CN：积分口径渲染的是绝对值，不是“本月额度 4%”
-    func testCreditsWindowRendersAbsoluteCreditAmounts() {
+    // Trae CN：积分口径渲染的是绝对值，第二个数字是剩余积分
+    func testCreditsWindowRendersUsedAndRemainingCredits() {
         let window = QuotaWindow(
             kind: .monthlyCredits,
-            usedPercent: 163.12 / 4_600 * 100,
-            remaining: 4_600 - 163.12,
+            usedPercent: 267 / 4_600 * 100,
+            remaining: 4_600 - 267,
             total: 4_600,
             resetsAt: now.addingTimeInterval(86_400),
             unit: .credits
@@ -20,21 +20,50 @@ final class QuotaDisplayTests: XCTestCase {
         XCTAssertEqual(window.title, L("积分额度"))
 
         let row = CompactPopoverModel.windowRow(window, now: now, calendar: calendar)
-        let expectedUsage = LFormat(
-            "已用 %@ / %@ 积分",
-            TokenStepFormat.whole(163),
-            TokenStepFormat.whole(4_600)
-        )
         XCTAssertEqual(row.unit, .credits)
-        XCTAssertEqual(row.creditUsageText, expectedUsage)
+        XCTAssertEqual(
+            row.creditUsageText,
+            LFormat("今用 %@ / %@", TokenStepFormat.whole(267), TokenStepFormat.whole(4_333))
+        )
+        XCTAssertEqual(row.creditRemaining, 4_333)
         XCTAssertEqual(
             row.creditRemainingText,
-            LFormat("剩余 %@ 积分", TokenStepFormat.whole(4_437))
+            LFormat("剩余 %@ 积分", TokenStepFormat.whole(4_333))
         )
+        XCTAssertEqual(row.creditTotalText, LFormat("共 %@ 积分", TokenStepFormat.whole(4_600)))
         // Credits have no fixed window length, so no pace tick is invented.
         XCTAssertNil(row.elapsedFraction)
         XCTAssertFalse(row.runsOutEarly)
-        XCTAssertEqual(row.usedPercent, 163.12 / 4_600 * 100, accuracy: 0.0001)
+    }
+
+    // 用满或超额时不出现负数，剩余按 0 显示
+    func testCreditsWindowClampsRemainingAtZero() {
+        let exact = QuotaWindow(
+            kind: .monthlyCredits,
+            usedPercent: 100,
+            remaining: 0,
+            total: 1_000,
+            resetsAt: nil,
+            unit: .credits
+        )
+        let exactRow = CompactPopoverModel.windowRow(exact, now: now, calendar: calendar)
+        XCTAssertEqual(exactRow.creditRemaining, 0)
+        XCTAssertEqual(
+            exactRow.creditUsageText,
+            LFormat("今用 %@ / %@", TokenStepFormat.whole(1_000), TokenStepFormat.whole(0))
+        )
+
+        let overspent = QuotaWindow(
+            kind: .monthlyCredits,
+            usedPercent: 120,
+            remaining: -200,
+            total: 1_000,
+            resetsAt: nil,
+            unit: .credits
+        )
+        let overRow = CompactPopoverModel.windowRow(overspent, now: now, calendar: calendar)
+        XCTAssertEqual(overRow.creditRemaining, 0, "remaining must never go negative")
+        XCTAssertEqual(overRow.creditRemainingText, LFormat("剩余 %@ 积分", TokenStepFormat.whole(0)))
     }
 
     // 原有 percent provider 完全不受影响

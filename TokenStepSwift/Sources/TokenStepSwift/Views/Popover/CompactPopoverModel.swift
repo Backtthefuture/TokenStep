@@ -45,19 +45,33 @@ enum CompactPopoverModel {
         /// stale until the next quota check.
         var isReset = false
 
-        /// "已用 163 / 4,600 积分" — absolute credits, never a percent.
-        var creditUsageText: String? {
+        /// Whole credits left in the window, never negative.
+        var creditRemaining: Int? {
             guard let creditUsed, let creditTotal else { return nil }
+            return max(creditTotal - creditUsed, 0)
+        }
+
+        /// "今用 267 / 4,333" — credits used, then credits left. Absolute
+        /// amounts only, never a percent.
+        var creditUsageText: String? {
+            guard let creditUsed, let remaining = creditRemaining else { return nil }
             return LFormat(
-                "已用 %@ / %@ 积分",
-                TokenStepFormat.whole(creditUsed),
-                TokenStepFormat.whole(creditTotal)
+                "今用 %@ / %@",
+                TokenStepFormat.whole(max(creditUsed, 0)),
+                TokenStepFormat.whole(remaining)
             )
         }
 
+        /// "剩余 4,333 积分" — the same remaining amount spelled out.
         var creditRemainingText: String? {
-            guard let creditUsed, let creditTotal else { return nil }
-            return LFormat("剩余 %@ 积分", TokenStepFormat.whole(max(creditTotal - creditUsed, 0)))
+            guard let remaining = creditRemaining else { return nil }
+            return LFormat("剩余 %@ 积分", TokenStepFormat.whole(remaining))
+        }
+
+        /// "共 4,600 积分" — the window's granted total, for tooltips.
+        var creditTotalText: String? {
+            guard let creditTotal else { return nil }
+            return LFormat("共 %@ 积分", TokenStepFormat.whole(max(creditTotal, 0)))
         }
     }
 

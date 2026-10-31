@@ -326,8 +326,8 @@ struct CompactQuotaSection: View {
         if window.isReset {
             return L("已过重置时间，等待下一次读取额度")
         }
-        if let usage = window.creditUsageText, let remaining = window.creditRemainingText {
-            return LFormat("%@，%@", usage, remaining)
+        if let usage = window.creditUsageText, let total = window.creditTotalText {
+            return LFormat("%@ · %@", usage, total)
         }
         guard let elapsed = window.elapsedFraction else {
             return LFormat("已用 %@", CompactPopoverStyle.percent(window.usedPercent))
@@ -379,13 +379,17 @@ struct CompactQuotaSection: View {
                             .frame(width: 38, alignment: .trailing)
                     } else if let credits = window.creditUsageText {
                         // Trae CN is a credit balance, not a percentage of a plan.
+                        // Fixed-size text plus a higher layout priority keeps every
+                        // digit on screen; the bar gives up width instead.
                         Text(credits)
                             .font(.system(size: 11, weight: .bold))
                             .monospacedDigit()
-                            .foregroundStyle(CompactPopoverStyle.textColor(for: window.level))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                            .frame(width: 88, alignment: .trailing)
+                            .minimumScaleFactor(0.8)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .foregroundStyle(CompactPopoverStyle.textColor(for: window.level))
+                            .frame(minWidth: 88, alignment: .trailing)
+                            .layoutPriority(1)
                     } else {
                         Text(CompactPopoverStyle.percent(window.usedPercent))
                             .font(.system(size: 12, weight: .bold))
