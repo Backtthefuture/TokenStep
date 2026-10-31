@@ -166,6 +166,8 @@ enum TraeSignInService {
     }
 
     /// 用 refresh token 换新 JWT。Trae 每次刷新都会换发新的 refresh token。
+    /// 失败时把服务端的 HTTP 状态与 `ResponseMetadata.Error` 文案带出来，
+    /// 便于区分「refresh token 已失效」与网络错误。
     static func refresh(provider: QuotaProviderID, refreshToken: String) throws -> Credentials {
         guard let body = exchangeBody(provider: provider, refreshToken: refreshToken) else {
             throw TokenStepError.message(L("无法构造刷新请求"))
@@ -175,11 +177,34 @@ enum TraeSignInService {
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
-        let data = try HTTPJSONClient.data(for: request)
+        let (data, response) = try HTTPJSONClient.transport(request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+        guard (200..<300).contains(status) else {
+            let detail = exchangeErrorMessage(data).map { LFormat("：%@", $0) } ?? ""
+            throw TokenStepError.message(LFormat("刷新令牌失败（HTTP %d%@）", status, detail))
+        }
         guard let credentials = parseExchangeResponse(data) else {
-            throw TokenStepError.message(L("登录已过期，请重新用浏览器登录"))
+            throw TokenStepError.message(L("刷新响应里没有访问令牌，请重新用浏览器登录"))
         }
         return credentials
+    }
+
+    /// `{"ResponseMetadata":{"Error":{"Code":"20101","Data":{"__Message.error":"refresh token is invalid"}}}`
+    static func exchangeErrorMessage(_ data: Data) -> String? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let metadata = root["ResponseMetadata"] as? [String: Any],
+              let error = metadata["Error"] as? [String: Any]
+        else { return nil }
+        if let message = (error["Data"] as? [String: Any])?["__Message.error"] as? String, !message.isEmpty {
+            return message
+        }
+        if let message = error["Message"] as? String, !message.isEmpty {
+            return message
+        }
+        if let code = error["Code"].map(String.init(describing:)) {
+            return LFormat("code %@", code)
+        }
+        return nil
     }
 
     static func save(_ credentials: Credentials, provider: QuotaProviderID) {
