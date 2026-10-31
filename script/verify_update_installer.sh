@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/release_retry.sh"
+
 if [[ $# -ne 3 ]]; then
   echo "Usage: $0 /path/to/TokenStep.dmg EXPECTED_VERSION /path/to/TokenStepHelper" >&2
   exit 2
@@ -20,7 +23,7 @@ if [[ ! -x "$HELPER_SOURCE" ]]; then
 fi
 
 /usr/bin/codesign --verify --verbose=2 "$DMG_PATH"
-/usr/bin/xcrun stapler validate "$DMG_PATH"
+retry_transient "stapler validate (dmg)" /usr/bin/xcrun stapler validate "$DMG_PATH"
 
 VERIFY_ROOT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/tokenstep-update-verify.XXXXXX")"
 VERIFY_DESTINATION="$VERIFY_ROOT/Applications/TokenStep.app"
@@ -38,7 +41,8 @@ trap cleanup EXIT
 /bin/cp "$HELPER_SOURCE" "$VERIFY_HELPER"
 /bin/chmod 755 "$VERIFY_HELPER"
 
-"$VERIFY_HELPER" install \
+retry_transient "update installer verification" \
+  "$VERIFY_HELPER" install \
   --dmg "$DMG_PATH" \
   --version "$EXPECTED_VERSION" \
   --current-pid 0 \
@@ -56,8 +60,8 @@ if [[ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]]; then
 fi
 
 /usr/bin/codesign --verify --deep --strict "$VERIFY_DESTINATION"
-/usr/bin/xcrun stapler validate "$VERIFY_DESTINATION"
-/usr/bin/syspolicy_check distribution "$VERIFY_DESTINATION"
-/usr/sbin/spctl --assess --type execute "$VERIFY_DESTINATION"
+retry_transient "stapler validate (installed app)" /usr/bin/xcrun stapler validate "$VERIFY_DESTINATION"
+retry_transient "syspolicy_check distribution (installed app)" /usr/bin/syspolicy_check distribution "$VERIFY_DESTINATION"
+retry_transient "spctl assess (installed app)" /usr/sbin/spctl --assess --type execute "$VERIFY_DESTINATION"
 /bin/cat "$VERIFY_LOG"
 echo "Verified signed, notarized TokenStep $INSTALLED_VERSION update installation in an isolated destination."
