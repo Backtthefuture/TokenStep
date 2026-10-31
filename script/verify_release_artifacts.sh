@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/release_retry.sh"
+
 if [[ $# -ne 3 ]]; then
   echo "Usage: $0 /path/to/TokenStep.dmg /path/to/TokenStep.zip EXPECTED_VERSION" >&2
   exit 2
@@ -69,7 +72,7 @@ validate_app() {
   fi
 
   /usr/bin/codesign --verify --deep --strict --verbose=2 "$app_path"
-  /usr/bin/xcrun stapler validate "$app_path"
+  retry_transient "stapler validate ($label)" /usr/bin/xcrun stapler validate "$app_path"
   /usr/bin/syspolicy_check distribution "$app_path"
   /usr/sbin/spctl --assess --type execute --verbose=2 "$app_path"
 
@@ -86,7 +89,7 @@ validate_app() {
 
 echo "Verifying DMG signature and notarization ticket..."
 /usr/bin/codesign --verify --verbose=2 "$DMG_PATH"
-/usr/bin/xcrun stapler validate "$DMG_PATH"
+retry_transient "stapler validate (dmg)" /usr/bin/xcrun stapler validate "$DMG_PATH"
 
 echo "Verifying the app mounted from the DMG..."
 /usr/bin/hdiutil attach -readonly -nobrowse -quiet -mountpoint "$DMG_MOUNT" "$DMG_PATH"
