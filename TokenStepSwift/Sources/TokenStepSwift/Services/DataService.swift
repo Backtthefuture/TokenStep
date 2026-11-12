@@ -179,9 +179,17 @@ enum DataService {
         let requiredRevision = UsageCollector.codexAccountingRevision
         guard previousRevision < requiredRevision else { return }
         let currentCodex = collectedSnapshot.sources["Codex"]
-        guard currentCodex?.accountingRevision == requiredRevision,
-              (currentCodex?.records ?? 0) > 0,
-              currentCodex?.status == "ok"
+        // The exact revision-8 accounting requires the JSONL rollout path. When a
+        // machine no longer produces fresh Codex rollouts, the SQLite fallback
+        // (ok_sqlite, per-session-start-day approximation) is the best obtainable
+        // data; rejecting it would wedge every future collection behind an
+        // unreachable recalibration. Accept either outcome.
+        let hasExactAccounting = currentCodex?.accountingRevision == requiredRevision
+            && (currentCodex?.records ?? 0) > 0
+            && currentCodex?.status == "ok"
+        let hasApproximateFallback = currentCodex?.status == "ok_sqlite"
+            && (currentCodex?.records ?? 0) > 0
+        guard hasExactAccounting || hasApproximateFallback
         else {
             throw NSError(
                 domain: "TokenStepCollector",
