@@ -73,6 +73,35 @@ enum GrokQuotaService {
            let window = window(from: config["credits"] ?? object["credits"] ?? config["credit"] ?? object["credit"], kind: .monthlyCredits) {
             windows.append(window)
         }
+
+        if windows.isEmpty,
+           let cap = cent(config["onDemandCap"] ?? object["onDemandCap"]),
+           cap > 0,
+           let used = cent(config["onDemandUsed"] ?? object["onDemandUsed"]),
+           let usedPercent = QuotaJSON.percent(used: used, remaining: nil, total: cap) {
+            let period = config["currentPeriod"] as? [String: Any]
+            let reset = date(from: period?["end"] ?? config["billingPeriodEnd"] ?? object["billingPeriodEnd"])
+            windows.append(
+                QuotaWindow(kind: .monthlyCredits, usedPercent: usedPercent, remaining: max(cap - used, 0), total: cap, resetsAt: reset)
+            )
+        }
+
+        if windows.isEmpty {
+            let period = config["currentPeriod"] as? [String: Any]
+            let reset = date(from: period?["end"] ?? config["billingPeriodEnd"] ?? object["billingPeriodEnd"])
+            if let reset {
+                let isWeekly = (period?["type"] as? String ?? "").uppercased().contains("WEEK")
+                windows.append(
+                    QuotaWindow(
+                        kind: isWeekly ? .weekly : .monthlyCredits,
+                        usedPercent: 0,
+                        remaining: 100,
+                        total: 100,
+                        resetsAt: reset
+                    )
+                )
+            }
+        }
         return windows
     }
 

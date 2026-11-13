@@ -52,14 +52,17 @@ enum GLMQuotaService {
 
     private static var endpoints: [URL] {
         [
+            "https://api.z.ai/api/monitor/usage/quota/limit",
             "https://open.bigmodel.cn/api/paas/v4/usage",
-            "https://open.bigmodel.cn/api/biz/v1/subscription/usage",
             "https://api.z.ai/api/coding/usage"
         ].compactMap(URL.init(string:))
     }
 
     static func windows(from payload: Any) -> [QuotaWindow] {
         let object = unwrap(payload)
+        if let limitWindows = limitWindows(from: object) {
+            return limitWindows
+        }
         var windows: [QuotaWindow] = []
         let candidates: [(Any?, QuotaWindowKind)] = [
             (object["token_window"] ?? object["tokenWindow"], .tokenWindow),
@@ -73,6 +76,75 @@ enum GLMQuotaService {
         }
         if windows.isEmpty, let window = window(from: object, kind: .monthlyCredits) {
             windows.append(window)
+        }
+        return windows
+    }
+
+    private static func limitWindows(from object: [String: Any]) -> [QuotaWindow]? {
+        guard let limits = object["limits"] as? [[String: Any]], !limits.isEmpty else {
+            return nil
+        }
+        var tokenLimits: [(percent: Double, resetsAt: Date?)] = []
+        var monthlyUsage: Double?
+        var monthlyResetsAt: Date?
+        for limit in limits {
+            let type = (limit["type"] as? String) ?? ""
+            let percentage = QuotaJSON.number(limit["percentage"])
+            switch type {
+            case "TOKENS_LIMIT":
+                if let percentage {
+                    let resetMillis = QuotaJSON.number(limit["nextResetTime"])
+                    let resetDate = resetMillis.map { Date(timeIntervalSince1970: $0 / 1000) }
+                    tokenLimits.append((percentage, resetDate))
+                    if (limit["unit"] as? Int) == 6 {
+                        monthlyUsage = percentage
+                        monthlyResetsAt = resetDate
+                    }
+                }
+            case "TIME_LIMIT":
+                if let usageDetails = limit["usageDetails"] as? [[String: Any]] {
+                    // Z.ai auxiliary tool calls are not model tokens; ignore them.
+                    _ = usageDetails
+                }
+            default:
+                break
+            }
+        }
+        guard !tokenLimits.isEmpty else { return nil }
+        var windows: [QuotaWindow] = []
+        if let first = tokenLimits.first {
+            windows.append(
+                QuotaWindow(
+                    kind: .fiveHour,
+                    usedPercent: min(max(first.percent, 0), 100),
+                    remaining: nil,
+                    total: nil,
+                    resetsAt: first.resetsAt
+                )
+            )
+        }
+        if tokenLimits.count > 1 {
+            let second = tokenLimits[1].percent
+            windows.append(
+                QuotaWindow(
+                    kind: .sevenDay,
+                    usedPercent: min(max(second, 0), 100),
+                    remaining: nil,
+                    total: nil,
+                    resetsAt: tokenLimits[1].resetsAt
+                )
+            )
+        }
+        if let monthlyUsage {
+            windows.append(
+                QuotaWindow(
+                    kind: .monthlyCredits,
+                    usedPercent: min(max(monthlyUsage, 0), 100),
+                    remaining: nil,
+                    total: nil,
+                    resetsAt: monthlyResetsAt
+                    )
+            )
         }
         return windows
     }
