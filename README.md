@@ -22,7 +22,7 @@ TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claud
 
 下载最新版 DMG，打开后把 `TokenStep.app` 拖进「应用程序」即可使用：
 
-[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.28.dmg)
+[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.29.dmg)
 
 也可以从 Release 页面查看所有版本：
 
@@ -32,9 +32,9 @@ TokenStep 已使用 Developer ID 签名并通过 Apple 公证。首次打开时�
 
 Windows版本由十七做了移植，欢迎大家前往使用：https://github.com/canyexuanfan/TokenStep-Windows/releases 
 
-## 最新版本：0.2.28
+## 最新版本：0.2.29
 
-Trae CN 额度显示改为「今用 279 / 4,321」：已用积分 + 当前剩余积分，数值完整显示不再被省略号截断；其他 provider 与 Trae 国际版口径不变。详见 [0.2.28 发布说明](docs/RELEASE_NOTES_0.2.28.md)。
+其他应用退出后读不到它们的 WAL 用量库时自动兜底，不再出现数据突然变空；同一天记录很多时跨来源去重大幅提速，避免采集超时。详见 [0.2.29 发布说明](docs/RELEASE_NOTES_0.2.29.md)。
 
 历次更新（主题包、引力动效、自动更新等）见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -95,7 +95,7 @@ TokenStep 默认只做本地统计。
 
 ## 安装方式
 
-1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.28.dmg)。
+1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.29.dmg)。
 2. 打开 DMG。
 3. 把 `TokenStep.app` 拖到「应用程序」。
 4. 启动 TokenStep。
@@ -166,7 +166,7 @@ TokenStepSwift/dist/TokenStep.app
 公开发布强制执行 Developer ID 签名、Apple 公证、票据装订、系统分发检查和隔离安装验证。不再生成可被误上传的“仅签名、未公证”发布包：
 
 ```bash
-TOKENSTEP_VERSION=0.2.28 \
+TOKENSTEP_VERSION=0.2.29 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
 ./script/package_release.sh --notarize
